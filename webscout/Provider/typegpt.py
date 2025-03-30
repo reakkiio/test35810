@@ -146,6 +146,7 @@ class TypeGPT(Provider):
         "deepseek-r1-distill-llama-70b",
         # "deepseek-reasoner", >>>> NOT WORKING
         "deepseek-v3",
+        "uncensored-r1", 
         
         # Specialized Models and Tools
         "@cf/defog/sqlcoder-7b-2",
@@ -162,45 +163,7 @@ class TypeGPT(Provider):
         # "@hf/thebloke/neural-chat-7b-v3-1-awq", >>>> NOT WORKING
         # "@hf/thebloke/openhermes-2.5-mistral-7b-awq", >>>> NOT WORKING
         # "@hf/thebloke/zephyr-7b-beta-awq", >>>> NOT WORKING
-        
-        # Development Agents
-        "AndroidDeveloper",
-        "AngularJSAgent",
-        "AzureAgent",
-        "BitbucketAgent",
-        "DigitalOceanAgent",
-        "DockerAgent",
-        "ElectronAgent",
-        "ErlangAgent",
-        "FastAPIAgent",
-        "FirebaseAgent",
-        "FlaskAgent",
-        "FlutterAgent",
-        "GitAgent",
-        "GitlabAgent",
-        "GoAgent",
-        "GodotAgent",
-        "GoogleCloudAgent",
-        "HTMLAgent",
-        "JavaAgent",
-        "JavaScriptAgent",
-        "MongoDBAgent",
-        "Next.jsAgent",
-        "PyTorchAgent",
-        "PythonAgent",
-        "ReactAgent",
-        "RepoMap",
-        "SwiftDeveloper",
-        "XcodeAgent",
-        # "YoutubeAgent", >>>> NOT WORKING
-        
-        # Other Models
-        "blackboxai",
-        "blackboxai-pro",
-        "builderAgent",
-        # "Cipher-20b", >>>> NOT WORKING
-        # "dify", >>>> NOT WORKING
-        "flux",
+        "Image-Generator",
         # "flux-1-schnell", >>>> NOT WORKING
         # "HelpingAI-15B", >>>> NOT WORKING
         # "HelpingAI2-3b", >>>> NOT WORKING

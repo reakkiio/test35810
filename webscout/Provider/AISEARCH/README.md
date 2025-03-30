@@ -142,24 +142,28 @@ response = ai.search("Hello", stream=True)
 ## 🔧 Provider-Specific Details
 
 ### DeepFind
+
 - Web-based AI search provider
 - Automatic reference removal
 - Clean response formatting
 - Streaming support with progress tracking
 
 ### Felo
+
 - Advanced search capabilities
 - Real-time response streaming
 - JSON-based response parsing
 - Automatic text cleaning
 
 ### Isou
+
 - Multiple model selection
 - Scientific and general category support
 - Citation and reference handling
 - Deep and simple search modes
 
 ### Genspark
+
 - Fast response generation
 - Automatic markdown link removal
 - JSON structure normalization
@@ -194,12 +198,14 @@ print(response.text)
 ## 🔒 Best Practices
 
 1. **Use Streaming for Long Responses**
+
    ```python
    for chunk in ai.search("Long query", stream=True):
        print(chunk, end="", flush=True)
    ```
 
 2. **Handle Errors Appropriately**
+
    ```python
    try:
        response = ai.search("Query")

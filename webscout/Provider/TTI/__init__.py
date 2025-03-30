@@ -8,3 +8,5 @@ from .talkai import *
 from .piclumen import *
 from .MagicStudio import *
 from .fastflux import *
+from .pixelmuse import *
+from .ImgSys import *

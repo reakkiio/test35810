@@ -15,6 +15,7 @@ Welcome to WebScout's Text-to-Image providers - your ultimate collection of AI a
 * **[MagicStudio](MagicStudio/README.md):** Generate amazing images with MagicStudio's AI art generator! 🚀
 * **[FastFlux](fastflux/README.md):** Generate amazing images with FastFlux's AI art generator! 🚀
 * **[ImgSys](ImgSys/README.md):** Multi-provider image generation that creates 2 unique images from random AI models for each prompt, with comprehensive error handling and async support 🎨
+* **[PixelMuse](pixelmuse/README.md):** Create stunning AI art with PixelMuse's powerful models including flux-schnell, imagen-3, and recraft-v3, featuring both sync and async support for optimal performance 🎨
 
 ## 🚀 Features
 

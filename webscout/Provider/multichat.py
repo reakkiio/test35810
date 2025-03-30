@@ -76,11 +76,11 @@ class MultiChatAI(Provider):
         "deepseek-r1-distill-llama-70b",
         
         # Cohere Models
-        # "command-r", >>>> NOT WORKING
-        # "command", >>>> NOT WORKING
+        # "command-r", # >>>> NOT WORKING
+        # "command", # >>>> NOT WORKING
         
         # Google Models
-        # "gemini-1.5-flash-002", >>>> NOT WORKING
+        # "gemini-1.5-flash-002", #>>>> NOT WORKING
         "gemma2-9b-it",
         "gemini-2.0-flash",
         
@@ -91,13 +91,13 @@ class MultiChatAI(Provider):
         "deepseek-ai/DeepSeek-V3",
         "meta-llama/Meta-Llama-3.1-405B-Instruct",
         "NousResearch/Hermes-3-Llama-3.1-405B",
-        # "gemma-2-27b-it", >>>> NOT WORKING
+        # "gemma-2-27b-it", # >>>> NOT WORKING
         
         # Mistral Models
-        # "mistral-small-latest", >>>> NOT WORKING
-        # "codestral-latest", >>>> NOT WORKING
-        # "open-mistral-7b", >>>> NOT WORKING
-        # "open-mixtral-8x7b", >>>> NOT WORKING
+        # "mistral-small-latest", # >>>> NOT WORKING
+        # "codestral-latest", # >>>> NOT WORKING
+        # "open-mistral-7b", # >>>> NOT WORKING
+        # "open-mixtral-8x7b", # >>>> NOT WORKING
         
         # Alibaba Models
         "Qwen/Qwen2.5-72B-Instruct",

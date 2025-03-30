@@ -38,12 +38,14 @@ print(f"Saved images to: {paths}")
 ## Parameters ⚙️
 
 ### Initialization
+
 - `model` (str): Which model to use (default: "flux-schnell")
 - `timeout` (int): Request timeout in seconds (default: 60)
 - `proxies` (dict): Proxy settings for requests (default: {})
 - `logging` (bool): Enable logging (default: True)
 
 ### Generate Method
+
 - `prompt` (str): Your creative prompt
 - `amount` (int): Number of images to generate (default: 1)
 - `max_retries` (int): Maximum retry attempts (default: 3)
@@ -52,6 +54,7 @@ print(f"Saved images to: {paths}")
 - `aspect_ratio` (str): Aspect ratio (default: "1:1")
 
 ### Save Method
+
 - `response` (List[bytes]): List of image data
 - `name` (str): Base name for saved files (default: prompt)
 - `dir` (str): Directory to save images (default: current directory)
@@ -73,4 +76,4 @@ print(f"Saved images to: {paths}")
 
 ## License 📄
 
-This provider is part of the webscout package. See the main package license for details. 
+This provider is part of the webscout package. See the main package license for details.

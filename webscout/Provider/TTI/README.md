@@ -22,27 +22,33 @@ Welcome to WebScout's Text-to-Image providers - your ultimate collection of AI a
 All providers come with these fire features:
 
 ### 🛠️ Core Features
-- Both sync and async implementations
-- Comprehensive error handling
-- Optional logging with cyberpunk theme
-- Dynamic user agent generation
-- Proxy support
-- Customizable timeouts
-- Smart retry mechanisms
+
+* Both sync and async implementations
+
+* Comprehensive error handling
+* Optional logging with cyberpunk theme
+* Dynamic user agent generation
+* Proxy support
+* Customizable timeouts
+* Smart retry mechanisms
 
 ### 💫 Developer Experience
-- Consistent API across all providers
-- Detailed documentation with examples
-- Type hints for better IDE support
-- Comprehensive error messages
-- Easy-to-use interface
+
+* Consistent API across all providers
+
+* Detailed documentation with examples
+* Type hints for better IDE support
+* Comprehensive error messages
+* Easy-to-use interface
 
 ### 🔒 Security Features
-- Proxy support for privacy
-- Configurable timeouts
-- Safe error handling
-- Optional verbose logging
-- Dynamic user agent rotation
+
+* Proxy support for privacy
+
+* Configurable timeouts
+* Safe error handling
+* Optional verbose logging
+* Dynamic user agent rotation
 
 ## 🎯 Usage Example
 
@@ -75,8 +81,9 @@ pip install webscout
 ## 📚 Common Interface
 
 All providers implement these base classes:
-- `ImageProvider` for sync operations
-- `AsyncImageProvider` for async operations
+
+* `ImageProvider` for sync operations
+* `AsyncImageProvider` for async operations
 
 ### 🎨 Common Methods
 
@@ -103,13 +110,15 @@ def save(
 ## 🛡️ Error Handling
 
 All providers use these standard exceptions:
-- `APIConnectionError`: Network/connection issues
-- `InvalidResponseError`: Invalid API responses
-- `FailedToGenerateResponseError`: Generation failures
+
+* `APIConnectionError`: Network/connection issues
+* `InvalidResponseError`: Invalid API responses
+* `FailedToGenerateResponseError`: Generation failures
 
 ## 🎛️ Configuration
 
 Common configuration options:
+
 ```python
 imager = Provider(
     timeout=60,      # Request timeout
@@ -117,4 +126,3 @@ imager = Provider(
 
 )
 ```
-

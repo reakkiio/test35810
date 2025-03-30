@@ -1,7 +1,7 @@
 import requests
 import json
 import re
-from typing import Dict, Optional, Generator, Any
+from typing import Dict, Optional, Generator, Any, Union
 from webscout import LitAgent
 from webscout import exceptions
 from webscout.AIbase import AISearch
@@ -118,7 +118,7 @@ class Isou(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]][Dict[str, Any], None, None]:
+    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
         """Search using the Isou API and get AI-generated responses.
         
         Args:

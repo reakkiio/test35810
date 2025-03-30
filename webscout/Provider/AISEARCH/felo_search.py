@@ -1,7 +1,7 @@
 import requests
 from uuid import uuid4
 import json
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional, Union
 
 from webscout.AIbase import AISearch
 from webscout import exceptions
@@ -9,7 +9,7 @@ from webscout import LitAgent
 
 
 class Response:
-    """A wrapper class for Felo API responses.
+    """A wrapper class for API responses.
     
     This class automatically converts response objects to their text representation
     when printed or converted to string.
@@ -115,7 +115,7 @@ class Felo(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]][str, None, None]:
+    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
         """Search using the Felo API and get AI-generated responses.
         
         This method sends a search query to Felo and returns the AI-generated response.
@@ -130,9 +130,9 @@ class Felo(AISearch):
                                 Defaults to False.
         
         Returns:
-            Union[Dict[str, Any], Generator[str, None, None]]: 
-                - If stream=False: Returns complete response
-                - If stream=True: Yields response chunks as they arrive
+            Union[Response, Generator[Union[Dict[str, str], Response], None, None]]: 
+                - If stream=False: Returns complete response as Response object
+                - If stream=True: Yields response chunks as either Dict or Response objects
         
         Raises:
             APIConnectionError: If the API request fails

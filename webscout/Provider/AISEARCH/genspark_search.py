@@ -117,7 +117,7 @@ class Genspark(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Union[Dict[str, Any], str], None, None]]:
+    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
         """Search using the Genspark API and get AI-generated responses.
         
         Args:

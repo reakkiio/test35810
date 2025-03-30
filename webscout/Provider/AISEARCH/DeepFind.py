@@ -1,7 +1,7 @@
 from uuid import uuid4
 import requests
 import re
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional, Union
 
 from webscout.AIbase import AISearch
 from webscout import exceptions
@@ -114,7 +114,7 @@ class DeepFind(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]][str, None, None]:
+    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
         """Search using the DeepFind API and get AI-generated responses.
         
         This method sends a search query to DeepFind and returns the AI-generated response.

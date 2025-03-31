@@ -1,9 +1,9 @@
 # 🚀 Webscout Awesome Prompts Collection
 
-
 This collection contains prompts that transform Webscout into different personas to better assist with specific tasks. Simply prefix your request with the act name or index number.
 
 ## 📑 Table of Contents
+
 - [💻 Development & Technical](#-development--technical)
 - [🧩 Programming Environments](#-programming-environments)
 - [📝 Writing & Content Creation](#-writing--content-creation)
@@ -15,6 +15,7 @@ This collection contains prompts that transform Webscout into different personas
 - [🔮 Specialized Assistants](#-specialized-assistants)
 
 ## 💻 Development & Technical
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 31 | UX/UI Developer | I want you to act as a UX/UI developer. I will provide... |
@@ -29,6 +30,7 @@ This collection contains prompts that transform Webscout into different personas
 | 245 | Data Scientist | I want you to act as a data scientist. Imagine you... |
 
 ## 🧩 Programming Environments
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 2 | Linux Terminal | I want you to act as a linux terminal. I will type... |
@@ -43,6 +45,7 @@ This collection contains prompts that transform Webscout into different personas
 | 157 | Python Interpreter | Act as a Python interpreter. I will give you comma... |
 
 ## 📝 Writing & Content Creation
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 3 | English Translator and Improver | I want you to act as an English translator, spelli... |
@@ -63,6 +66,7 @@ This collection contains prompts that transform Webscout into different personas
 | 244 | Prompt Enhancer | Act as a Prompt Enhancer AI that takes user-input... |
 
 ## 🎓 Education & Learning
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 7 | English Pronunciation Helper | I want you to act as an English pronunciation assi... |
@@ -80,6 +84,7 @@ This collection contains prompts that transform Webscout into different personas
 | 162 | Literary Critic | I want you to act as a `language` literary critic.... |
 
 ## 💼 Professional Roles
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 4 | Position Interviewer | I want you to act as an interviewer. I will be the... |
@@ -101,6 +106,7 @@ This collection contains prompts that transform Webscout into different personas
 | 144 | Product Manager | Please acknowledge my following request. Please re... |
 
 ## 🎭 Entertainment & Creative
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 11 | Character from Movie/Book/Anything | I want you to act like {character} from {series}.... |
@@ -126,6 +132,7 @@ This collection contains prompts that transform Webscout into different personas
 | 246 | League of Legends Player | I want you to act as a person who plays a lot of L... |
 
 ## 🧠 Advisors & Coaches
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 9 | Travel Guide | I want you to act as a travel guide. I will write... |
@@ -195,6 +202,7 @@ This collection contains prompts that transform Webscout into different personas
 | 220 | TranslatorBot | You are now TranslatorBot or TB. You are a forked... |
 
 ## 🌐 Alternative Models
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 1 | Free-mode | You will now be in free mode. You will respond to... |
@@ -207,6 +215,7 @@ This collection contains prompts that transform Webscout into different personas
 | 165-241 | Various AI Personas | Multiple alternative AI interaction models |
 
 ## 🔮 Specialized Assistants
+
 | Index | Name | Preview |
 |-------|------|---------|
 | 35 | Etymologist | I want you to act as a etymologist. I will give yo... |
@@ -222,4 +231,3 @@ This collection contains prompts that transform Webscout into different personas
 | 158 | ChatGPT Prompt Generator | I want you to act as a ChatGPT prompt generator, I... |
 
 **Usage Tip:** When you see placeholders like `position` or `language`, replace them with specific values (e.g., use "Software Engineer Interviewer" instead of "`position` Interviewer").
-

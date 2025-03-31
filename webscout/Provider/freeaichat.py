@@ -12,35 +12,57 @@ from webscout import LitAgent
 
 class FreeAIChat(Provider):
     """
-    A class to interact with the FreeAIChat API with LitAgent user-agent.
+    A class to interact with the FreeAIChat API
     """
 
     AVAILABLE_MODELS = [
-        "mistral-nemo",
-        "mistral-large",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-2.0-pro-exp-02-05",
-        # "deepseek-r1", >>>> NOT WORKING
-        "deepseek-v3",
-        # "Deepseek r1 14B", >>>> NOT WORKING
-        # "Deepseek r1 32B", >>>> NOT WORKING
-        "o3-mini-high",
-        "o3-mini-medium",
-        "o3-mini-low",
-        "o3-mini",
-        "GPT-4o-mini",
-        "o1",
-        "o1-mini",
+        # OpenAI Models
         "GPT-4o",
-        "Qwen coder",
-        # "Qwen 2.5 72B", >>>> NOT WORKING
-        "Llama 3.1 405B",
-        # "llama3.1-70b-fast", >>>> NOT WORKING
+        "o1-mini",
+        # "o1", >>>> NOT WORKING
+        "GPT-4o-mini",
+        "o3-mini",
+        "o3-mini-low",
+        # "o3-mini-medium", >>>> NOT WORKING
+        "o3-mini-high",
+        # "gpt-4.5-preview", >>>> NOT WORKING
+
+        # Anthropic Models
+        # "claude 3.5 haiku", >>>> NOT WORKING
+        # "claude 3.5 sonnet", >>>> NOT WORKING
+        # "claude-3-7-sonnet", >>>> NOT WORKING
+        # "claude-3-7-sonnet-thinking", >>>> NOT WORKING
+
+        # Deepseek Models
+        "deepseek-v3",
+        "deepseek-r1",
+        "deepseek-v3-0324",
+
+        # Google Models
+        "gemini-2.0-pro-exp-02-05",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-2.0-flash",
+        "gemini-2.5-pro-exp-03-25",
+
+        # Llama Models
         # "Llama 3.3 70B", >>>> NOT WORKING
-        "claude 3.5 haiku",
-        "claude 3.5 sonnet",
+        # "llama3.1-70b-fast", >>>> NOT WORKING
+        "Llama 3.1 405B",
+
+        # Mistral Models
+        "mistral-large",
+        "mistral-nemo",
+
+        # Qwen Models
+        "qwq-32b",
+        "qwq-plus",
+        "qwen-max",
+        "qwen-plus",
+        "qwen-turbo",
+
+        # XAI Models
+        # "grok 2" >>>> NOT WORKING
     ]
 
     def __init__(

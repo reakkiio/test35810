@@ -7,6 +7,7 @@ Scout is a powerful web parsing library designed to provide flexible and intelli
 ## ✨ New Features
 
 ### 🌐 Web Crawling
+
 Easily crawl websites:
 
 ```python
@@ -21,7 +22,6 @@ for page in crawled_pages:
     print(f"Title: {page['title']}")
 
 ```
-
 
 ## 🚀 Core Features
 

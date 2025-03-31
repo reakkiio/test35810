@@ -37,6 +37,7 @@ class Cloudflare(Provider):
         "@cf/meta/llama-3.2-1b-instruct",
         "@cf/meta/llama-3.2-3b-instruct",
         "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/meta/llama-guard-3-8b",
         "@hf/thebloke/llamaguard-7b-awq",
         "@hf/meta-llama/meta-llama-3-8b-instruct",
         "@cf/mistral/mistral-7b-instruct-v0.1",

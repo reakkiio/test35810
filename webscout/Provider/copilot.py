@@ -43,11 +43,11 @@ class Copilot(Provider):
     A class to interact with the Microsoft Copilot API.
     """
     
-    AVAILABLE_MODELS = ["Copilot"]
+    label = "Microsoft Copilot"
     url = "https://copilot.microsoft.com"
     websocket_url = "wss://copilot.microsoft.com/c/api/chat?api-version=2"
     conversation_url = f"{url}/c/api/conversations"
-
+    AVAILABLE_MODELS = ["Copilot", "Think Deeper"]
     _access_token: str = None
     _cookies: dict = None
 
@@ -226,6 +226,7 @@ class Copilot(Provider):
 
                     # Connect to WebSocket
                     wss = session.ws_connect(websocket_url)
+                    wss.send(json.dumps({"event":"setOptions","supportedCards":["weather","local","image","sports","video","ads","finance"],"ads":{"supportedTypes":["multimedia","product","tourActivity","propertyPromotion","text"]}}));
                     wss.send(json.dumps({
                         "event": "send",
                         "conversationId": conversation_id,
@@ -233,7 +234,7 @@ class Copilot(Provider):
                             "type": "text",
                             "text": conversation_prompt,
                         }],
-                        "mode": "chat"
+                        "mode": "reasoning" if "Think" in self.model else "chat"
                     }).encode(), CurlWsFlag.TEXT)
 
                     # Process response
@@ -263,6 +264,9 @@ class Copilot(Provider):
                                 yield {"type": "image", "url": msg.get("url"), "prompt": image_prompt, "preview": msg.get("thumbnailUrl")}
                             elif msg.get("event") == "done":
                                 break
+                            elif msg.get("event") == "suggestedFollowups":
+                                yield {"type": "suggested_followups", "suggestions": msg.get("suggestions")}
+                                break
                             elif msg.get("event") == "replaceText":
                                 content = msg.get("text")
                                 streaming_text += content
@@ -270,6 +274,8 @@ class Copilot(Provider):
                                 yield resp if raw else resp
                             elif msg.get("event") == "error":
                                 raise exceptions.FailedToGenerateResponseError(f"Error: {msg}")
+                            elif msg.get("event") not in ["received", "startMessage", "citation", "partCompleted"]:
+                                print(f"Copilot Message: {msg}")
                         
                         if not is_started:
                             raise exceptions.FailedToGenerateResponseError(f"Invalid response: {last_msg}")
@@ -310,10 +316,16 @@ class Copilot(Provider):
             for response in self.ask(prompt, True, optimizer=optimizer, 
                                      conversationally=conversationally, 
                                      images=images, api_key=api_key, **kwargs):
-                if isinstance(response, dict) and "text" in response:
-                    yield response["text"]
-                elif isinstance(response, dict) and "type" in response and response["type"] == "image":
-                    yield f"\n![Image]({response['url']})\n"
+                if isinstance(response, dict):
+                    if "text" in response:
+                        yield response["text"]
+                    elif "type" in response:
+                        if response["type"] == "image":
+                            yield f"\n![Image]({response['url']})\n"
+                        elif response["type"] == "suggested_followups":
+                            yield "\nSuggested follow-up questions:\n"
+                            for suggestion in response["suggestions"]:
+                                yield f"- {suggestion}\n"
                     
         def for_non_stream():
             response = self.ask(prompt, False, optimizer=optimizer, 
@@ -410,7 +422,7 @@ async def get_nodriver(proxy=None, user_data_dir=None):
 
 if __name__ == "__main__":
     from rich import print
-    ai = Copilot(timeout=900)
+    ai = Copilot(timeout=900, model="Think Deeper")
     response = ai.chat(input("> "), stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)

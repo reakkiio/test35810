@@ -14,6 +14,8 @@ from threading import Event
 from time import sleep, time
 from types import TracebackType
 from typing import Any, cast
+import os
+from typing import Literal, Iterator
 
 import primp  # type: ignore
 
@@ -45,15 +47,26 @@ class WEBS:
 
     _executor: ThreadPoolExecutor = ThreadPoolExecutor()
     _impersonates = (
-        "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106", "chrome_107", "chrome_108", 
-        "chrome_109", "chrome_114", "chrome_116", "chrome_117", "chrome_118", "chrome_119", "chrome_120", 
-        #"chrome_123", "chrome_124", "chrome_126",
-        "chrome_127", "chrome_128", "chrome_129",
-        "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_15.3", "safari_15.5", "safari_15.6.1", 
-        "safari_16", "safari_16.5", "safari_17.0", "safari_17.2.1", "safari_17.4.1", "safari_17.5", "safari_18", 
+        "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106", "chrome_107",
+        "chrome_108", "chrome_109", "chrome_114", "chrome_116", "chrome_117", "chrome_118",
+        "chrome_119", "chrome_120", "chrome_123", "chrome_124", "chrome_126", "chrome_127",
+        "chrome_128", "chrome_129", "chrome_130", "chrome_131", "chrome_133",
+        "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
+        "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16", "safari_16.5",
+        "safari_17.0", "safari_17.2.1", "safari_17.4.1", "safari_17.5",
+        "safari_18", "safari_18.2",
         "safari_ipad_18",
-        "edge_101", "edge_122", "edge_127",
+        "edge_101", "edge_122", "edge_127", "edge_131",
+        "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135",
     )  # fmt: skip
+    _impersonates_os = ("android", "ios", "linux", "macos", "windows")
+    _chat_models = {
+        "gpt-4o-mini": "gpt-4o-mini",
+        "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "claude-3-haiku": "claude-3-haiku-20240307",
+        "o3-mini": "o3-mini",
+        "mistral-small-3": "mistralai/Mistral-Small-24B-Instruct-2501",
+    }
 
     def __init__(
         self,
@@ -61,6 +74,7 @@ class WEBS:
         proxy: str | None = None,
         proxies: dict[str, str] | str | None = None,  # deprecated
         timeout: int | None = 10,
+        verify: bool = True,
     ) -> None:
         """Initialize the WEBS object.
 
@@ -69,8 +83,10 @@ class WEBS:
             proxy (str, optional): proxy for the HTTP client, supports http/https/socks5 protocols.
                 example: "http://user:pass@example.com:3128". Defaults to None.
             timeout (int, optional): Timeout value for the HTTP client. Defaults to 10.
+            verify (bool): SSL verification when making the request. Defaults to True.
         """
-        self.proxy: str | None = _expand_proxy_tb_alias(proxy)
+        ddgs_proxy: str | None = os.environ.get("DDGS_PROXY")
+        self.proxy: str | None = ddgs_proxy if ddgs_proxy else _expand_proxy_tb_alias(proxy)
         assert self.proxy is None or isinstance(self.proxy, str), "proxy must be a str"
         if not proxy and proxies:
             warnings.warn("'proxies' is deprecated, use 'proxy' instead.", stacklevel=1)
@@ -100,15 +116,19 @@ class WEBS:
             cookie_store=True,
             referer=True,
             impersonate=choice(self._impersonates),
-            follow_redirects=True,
-            verify=False,
+            impersonate_os=choice(self._impersonates_os),
+            follow_redirects=False,
+            verify=verify,
         )
+        self.timeout = timeout
         self.sleep_timestamp = 0.0
 
         self._exception_event = Event()
         self._chat_messages: list[dict[str, str]] = []
         self._chat_tokens_count = 0
         self._chat_vqd: str = ""
+        self._chat_vqd_hash: str = ""
+        self._chat_xfe: str = ""
 
     def __enter__(self) -> WEBS:
         return self
@@ -126,114 +146,153 @@ class WEBS:
         """Get HTML parser."""
         return LHTMLParser(remove_blank_text=True, remove_comments=True, remove_pis=True, collect_ids=False)
 
-    def _sleep(self, sleeptime: float = 2.0) -> None:
+    def _sleep(self, sleeptime: float = 0.75) -> None:
         """Sleep between API requests."""
-        delay = sleeptime if not self.sleep_timestamp else sleeptime if time() - self.sleep_timestamp >= 30 else sleeptime * 2
+        delay = 0.0 if not self.sleep_timestamp else 0.0 if time() - self.sleep_timestamp >= 20 else sleeptime
         self.sleep_timestamp = time()
         sleep(delay)
 
     def _get_url(
         self,
-        method: str,
+        method: Literal["GET", "HEAD", "OPTIONS", "DELETE", "POST", "PUT", "PATCH"],
         url: str,
         params: dict[str, str] | None = None,
         content: bytes | None = None,
         data: dict[str, str] | None = None,
-    ) -> bytes:
-        """Make HTTP request with proper rate limiting."""
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        json: Any = None,
+        timeout: float | None = None,
+    ) -> Any:
         self._sleep()
         try:
-            resp = self.client.request(method, url, params=params, content=content, data=data)
-            
-            # Add additional delay if we get a 429 or similar status
-            if resp.status_code in (429, 403, 503):
-                sleep(5.0)  # Additional delay for rate limit responses
-                resp = self.client.request(method, url, params=params, content=content, data=data)
-                
+            resp = self.client.request(
+                method,
+                url,
+                params=params,
+                content=content,
+                data=data,
+                headers=headers,
+                cookies=cookies,
+                json=json,
+                timeout=timeout or self.timeout,
+            )
         except Exception as ex:
             if "time" in str(ex).lower():
                 raise TimeoutE(f"{url} {type(ex).__name__}: {ex}") from ex
             raise WebscoutE(f"{url} {type(ex).__name__}: {ex}") from ex
-
         if resp.status_code == 200:
-            return resp.content
-        elif resp.status_code in (202, 301, 403, 429, 503):
-            raise RatelimitE(f"{url} {resp.status_code} Ratelimit - Please wait a few minutes before retrying")
-        raise WebscoutE(f"{url} return None. {params=} {content=} {data=}")
+            return resp
+        elif resp.status_code in (202, 301, 403, 400, 429, 418):
+            raise RatelimitE(f"{resp.url} {resp.status_code} Ratelimit")
+        raise WebscoutE(f"{resp.url} return None. {params=} {content=} {data=}")
 
     def _get_vqd(self, keywords: str) -> str:
         """Get vqd value for a search query."""
-        resp_content = self._get_url("GET", "https://duckduckgo.com", params={"q": keywords})
+        resp_content = self._get_url("GET", "https://duckduckgo.com", params={"q": keywords}).content
         return _extract_vqd(resp_content, keywords)
+
+    def chat_yield(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> Iterator[str]:
+        """Initiates a chat session with webscout AI.
+
+        Args:
+            keywords (str): The initial message or question to send to the AI.
+            model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
+                "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
+            timeout (int): Timeout value for the HTTP client. Defaults to 20.
+
+        Yields:
+            str: Chunks of the response from the AI.
+        """
+        # x-fe-version
+        if not self._chat_xfe:
+            resp_content = self._get_url(
+                method="GET",
+                url="https://duckduckgo.com/?q=DuckDuckGo+AI+Chat&ia=chat&duckai=1",
+            ).content
+            try:
+                xfe1 = resp_content.split(b'__DDG_BE_VERSION__="', maxsplit=1)[1].split(b'"', maxsplit=1)[0].decode()
+                xfe2 = resp_content.split(b'__DDG_FE_CHAT_HASH__="', maxsplit=1)[1].split(b'"', maxsplit=1)[0].decode()
+                self._chat_xfe = f"{xfe1}-{xfe2}"
+            except Exception as ex:
+                raise WebscoutE(
+                    f"chat_yield() Error to get _chat_xfe: {type(ex).__name__}: {ex}"
+                ) from ex
+        # vqd
+        if not self._chat_vqd:
+            resp = self._get_url(
+                method="GET", url="https://duckduckgo.com/duckchat/v1/status", headers={"x-vqd-accept": "1"}
+            )
+            self._chat_vqd = resp.headers.get("x-vqd-4", "")
+            self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
+
+        self._chat_messages.append({"role": "user", "content": keywords})
+        self._chat_tokens_count += max(len(keywords) // 4, 1)  # approximate number of tokens
+        if model not in self._chat_models:
+            warnings.warn(f"{model=} is unavailable. Using 'gpt-4o-mini'", stacklevel=1)
+            model = "gpt-4o-mini"
+        json_data = {
+            "model": self._chat_models[model],
+            "messages": self._chat_messages,
+        }
+        resp = self._get_url(
+            method="POST",
+            url="https://duckduckgo.com/duckchat/v1/chat",
+            headers={
+                "x-fe-version": self._chat_xfe,
+                "x-vqd-4": self._chat_vqd,
+                "x-vqd-hash-1": "",
+            },
+            json=json_data,
+            timeout=timeout,
+        )
+        self._chat_vqd = resp.headers.get("x-vqd-4", "")
+        self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
+        chunks = []
+        try:
+            for chunk in resp.stream():
+                lines = chunk.split(b"data:")
+                for line in lines:
+                    if line := line.strip():
+                        if line == b"[DONE]":
+                            break
+                        if line == b"[DONE][LIMIT_CONVERSATION]":
+                            raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
+                        x = json_loads(line)
+                        if isinstance(x, dict):
+                            if x.get("action") == "error":
+                                err_message = x.get("type", "")
+                                if x.get("status") == 429:
+                                    raise (
+                                        ConversationLimitException(err_message)
+                                        if err_message == "ERR_CONVERSATION_LIMIT"
+                                        else RatelimitE(err_message)
+                                    )
+                                raise WebscoutE(err_message)
+                            elif message := x.get("message"):
+                                chunks.append(message)
+                                yield message
+        except Exception as ex:
+            raise WebscoutE(f"chat_yield() {type(ex).__name__}: {ex}") from ex
+
+        result = "".join(chunks)
+        self._chat_messages.append({"role": "assistant", "content": result})
+        self._chat_tokens_count += len(result)
 
     def chat(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> str:
         """Initiates a chat session with webscout AI.
 
         Args:
             keywords (str): The initial message or question to send to the AI.
-            model (str): The model to use: "gpt-4o-mini", "claude-3-haiku", "llama-3.1-70b", "mixtral-8x7b".
-                Defaults to "gpt-4o-mini".
-            timeout (int): Timeout value for the HTTP client. Defaults to 20.
+            model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
+                "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
+            timeout (int): Timeout value for the HTTP client. Defaults to 30.
 
         Returns:
             str: The response from the AI.
         """
-        models_deprecated = {
-            "gpt-3.5": "gpt-4o-mini",
-            "llama-3.1-70b": "llama-3.3-70b",
-            "mixtral-8x7b": "mistral-24B"
-        }
-        if model in models_deprecated:
-            # logger.info(f"{model=} is deprecated, using {models_deprecated[model]}")
-            model = models_deprecated[model]
-        models = {
-            "claude-3-haiku": "claude-3-haiku-20240307",
-            "gpt-4o-mini": "gpt-4o-mini",
-            "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-            "o3-mini":"o3-mini",
-            "mistral-24B": "mistralai/Mistral-Small-24B-Instruct-2501"
-        }
-        # vqd
-        if not self._chat_vqd:
-            resp = self.client.get("https://duckduckgo.com/duckchat/v1/status", headers={"x-vqd-accept": "1"})
-            self._chat_vqd = resp.headers.get("x-vqd-4", "")
-
-        self._chat_messages.append({"role": "user", "content": keywords})
-        self._chat_tokens_count += len(keywords) // 4 if len(keywords) >= 4 else 1  # approximate number of tokens
-
-        json_data = {
-            "model": models[model],
-            "messages": self._chat_messages,
-        }
-        resp = self.client.post(
-            "https://duckduckgo.com/duckchat/v1/chat",
-            headers={"x-vqd-4": self._chat_vqd},
-            json=json_data,
-            timeout=timeout,
-        )
-        self._chat_vqd = resp.headers.get("x-vqd-4", "")
-
-        data = ",".join(line.strip() for line in resp.text.rstrip("[DONE]LIMT_CVRSA\n").split("data:") if line.strip())
-        data = json_loads("[" + data + "]")
-
-        results = []
-        for x in data:
-            if x.get("action") == "error":
-                err_message = x.get("type", "")
-                if x.get("status") == 429:
-                    raise (
-                        ConversationLimitException(err_message)
-                        if err_message == "ERR_CONVERSATION_LIMIT"
-                        else RatelimitE(err_message)
-                    )
-                raise WebscoutE(err_message)
-            elif message := x.get("message"):
-                results.append(message)
-        result = "".join(results)
-
-        self._chat_messages.append({"role": "assistant", "content": result})
-        self._chat_tokens_count += len(results)
-        return result
+        answer_generator = self.chat_yield(keywords, model, timeout)
+        return "".join(answer_generator)
 
     def text(
         self,
@@ -339,7 +398,7 @@ class WEBS:
 
         def _text_api_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("GET", "https://links.duckduckgo.com/d.js", params=payload)
+            resp_content = self._get_url("GET", "https://links.duckduckgo.com/d.js", params=payload).content
             page_data = _text_extract_json(resp_content, keywords)
             page_results = []
             for row in page_data:
@@ -413,7 +472,7 @@ class WEBS:
 
         def _text_html_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("POST", "https://html.duckduckgo.com/html", data=payload)
+            resp_content = self._get_url("POST", "https://html.duckduckgo.com/html", data=payload).content
             if b"No  results." in resp_content:
                 return []
 
@@ -500,7 +559,7 @@ class WEBS:
 
         def _text_lite_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("POST", "https://lite.duckduckgo.com/lite/", data=payload)
+            resp_content = self._get_url("POST", "https://lite.duckduckgo.com/lite/", data=payload).content
             if b"No more results." in resp_content:
                 return []
 
@@ -621,7 +680,7 @@ class WEBS:
 
         def _images_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("GET", "https://duckduckgo.com/i.js", params=payload)
+            resp_content = self._get_url("GET", "https://duckduckgo.com/i.js", params=payload).content
             resp_json = json_loads(resp_content)
 
             page_data = resp_json.get("results", [])
@@ -708,7 +767,7 @@ class WEBS:
 
         def _videos_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("GET", "https://duckduckgo.com/v.js", params=payload)
+            resp_content = self._get_url("GET", "https://duckduckgo.com/v.js", params=payload).content
             resp_json = json_loads(resp_content)
 
             page_data = resp_json.get("results", [])
@@ -777,7 +836,7 @@ class WEBS:
 
         def _news_page(s: int) -> list[dict[str, str]]:
             payload["s"] = f"{s}"
-            resp_content = self._get_url("GET", "https://duckduckgo.com/news.js", params=payload)
+            resp_content = self._get_url("GET", "https://duckduckgo.com/news.js", params=payload).content
             resp_json = json_loads(resp_content)
             page_data = resp_json.get("results", [])
             page_results = []
@@ -828,7 +887,7 @@ class WEBS:
             "q": f"what is {keywords}",
             "format": "json",
         }
-        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
+        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload).content
         page_data = json_loads(resp_content)
 
         results = []
@@ -849,7 +908,7 @@ class WEBS:
             "q": f"{keywords}",
             "format": "json",
         }
-        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload)
+        resp_content = self._get_url("GET", "https://api.duckduckgo.com/", params=payload).content
         resp_json = json_loads(resp_content)
         page_data = resp_json.get("RelatedTopics", [])
 
@@ -900,7 +959,7 @@ class WEBS:
             "q": keywords,
             "kl": region,
         }
-        resp_content = self._get_url("GET", "https://duckduckgo.com/ac/", params=payload)
+        resp_content = self._get_url("GET", "https://duckduckgo.com/ac/", params=payload).content
         page_data = json_loads(resp_content)
         return [r for r in page_data]
 
@@ -986,7 +1045,7 @@ class WEBS:
                 "GET",
                 "https://nominatim.openstreetmap.org/search.php",
                 params=params,
-            )
+            ).content
             if resp_content == b"[]":
                 raise WebscoutE("maps() Coordinates are not found, check function parameters.")
             resp_json = json_loads(resp_content)
@@ -1022,7 +1081,7 @@ class WEBS:
                 "bbox_br": f"{lat_b},{lon_r}",
                 "strict_bbox": "1",
             }
-            resp_content = self._get_url("GET", "https://duckduckgo.com/local.js", params=params)
+            resp_content = self._get_url("GET", "https://duckduckgo.com/local.js", params=params).content
             resp_json = json_loads(resp_content)
             page_data = resp_json.get("results", [])
 
@@ -1127,7 +1186,7 @@ class WEBS:
                 "https://duckduckgo.com/translation.js",
                 params=payload,
                 content=keyword.encode(),
-            )
+            ).content
             page_data: dict[str, str] = json_loads(resp_content)
             page_data["original"] = keyword
             return page_data
@@ -1167,7 +1226,7 @@ class WEBS:
         lang = language.split('-')[0]
         url = f"https://duckduckgo.com/js/spice/forecast/{quote(location)}/{lang}"
         
-        resp = self._get_url("GET", url)
+        resp = self._get_url("GET", url).content
         resp_text = resp.decode('utf-8')
         
         if "ddg_spice_forecast(" not in resp_text:

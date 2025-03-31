@@ -65,6 +65,7 @@ python -m webscout --help
 | Command                                   | Description                                                                                           |
 |-------------------------------------------|-------------------------------------------------------------------------------------------------------|
 | python -m webscout answers -k Text        | CLI function to perform an answers search using Webscout.                                       |
+| python -m webscout chat                   | Interactive AI chat using DuckDuckGo's AI.                                                       |
 | python -m webscout images -k Text         | CLI function to perform an images search using Webscout.                                        |
 | python -m webscout maps -k Text           | CLI function to perform a maps search using Webscout.                                           |
 | python -m webscout news -k Text           | CLI function to perform a news search using Webscout.                                           |
@@ -73,7 +74,7 @@ python -m webscout --help
 | python -m webscout translate -k Text      | CLI function to perform translate using Webscout.                                               |
 | python -m webscout version                | A command-line interface command that prints and returns the version of the program.            |
 | python -m webscout videos -k Text         | CLI function to perform a videos search using DuckDuckGo API.                                   |
-| python -m webscout weather -k Text        | CLI function to get weather information for a location using Webscout.                          |
+| python -m webscout weather -l qazigund       | CLI function to get weather information for a location using Webscout.                          |
 
 
 

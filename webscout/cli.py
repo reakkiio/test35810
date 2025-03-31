@@ -2,112 +2,61 @@ import sys
 from .swiftcli import CLI, option
 from .webscout_search import WEBS
 from .version import __version__
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
-
-COLORS = {
-    0: "black",
-    1: "red",
-    2: "green",
-    3: "yellow",
-    4: "blue",
-    5: "magenta",
-    6: "cyan",
-    7: "bright_black",
-    8: "bright_red",
-    9: "bright_green",
-    10: "bright_yellow",
-    11: "bright_blue",
-    12: "bright_magenta",
-    13: "bright_cyan",
-    14: "white",
-    15: "bright_white",
-}
 
 def _print_data(data):
-    """Prints data using rich panels and markdown."""
-    console = Console()
+    """Prints data in a simple formatted way."""
     if data:
         for i, e in enumerate(data, start=1):
-            table = Table(show_header=False, show_lines=True, expand=True, box=None)
-            table.add_column("Key", style="cyan", no_wrap=True, width=15)
-            table.add_column("Value", style="white")
-
-            for j, (k, v) in enumerate(e.items(), start=1):
+            print(f"\nResult {i}:")
+            print("-" * 50)
+            for k, v in e.items():
                 if v:
-                    width = 300 if k in ("content", "href", "image", "source", "thumbnail", "url") else 78
                     k = "language" if k == "detected_language" else k
-                    text = Text(str(v), style="white")
-                    text = text.wrap(width=width, console=console)
-                else:
-                    text = Text(str(v), style="white")
-                table.add_row(k, text)
-
-            console.print(Panel(table, title=f"Result {i}", expand=False, style="green on black"))
-            console.print("\n")
+                    print(f"{k:15}: {v}")
+            print("-" * 50)
 
 def _print_weather(data):
-    """Prints weather data in a clean, focused format."""
-    console = Console()
-    
-    # Current weather panel
+    """Prints weather data in a clean format."""
     current = data["current"]
-    current_table = Table(show_header=False, show_lines=True, expand=True, box=None)
-    current_table.add_column("Metric", style="cyan", no_wrap=True, width=15)
-    current_table.add_column("Value", style="white")
     
-    current_table.add_row("Temperature", f"{current['temperature_c']}°C")
-    current_table.add_row("Feels Like", f"{current['feels_like_c']}°C")
-    current_table.add_row("Humidity", f"{current['humidity']}%")
-    current_table.add_row("Wind", f"{current['wind_speed_ms']} m/s")
-    current_table.add_row("Direction", f"{current['wind_direction']}°")
+    print(f"\nCurrent Weather in {data['location']}:")
+    print("-" * 50)
+    print(f"Temperature: {current['temperature_c']}°C")
+    print(f"Feels Like: {current['feels_like_c']}°C")
+    print(f"Humidity: {current['humidity']}%")
+    print(f"Wind: {current['wind_speed_ms']} m/s")
+    print(f"Direction: {current['wind_direction']}°")
+    print("-" * 50)
     
-    console.print(Panel(current_table, title=f"Current Weather in {data['location']}", expand=False, style="green on black"))
-    console.print("\n")
+    print("\n5-Day Forecast:")
+    print("-" * 50)
+    print(f"{'Date':10} {'Condition':15} {'High':8} {'Low':8}")
+    print("-" * 50)
     
-    # Daily forecast panel
-    daily_table = Table(show_header=True, show_lines=True, expand=True, box=None)
-    daily_table.add_column("Date", style="cyan")
-    daily_table.add_column("Condition", style="white")
-    daily_table.add_column("High", style="red")
-    daily_table.add_column("Low", style="blue")
-    
-    for day in data["daily_forecast"][:5]:  # Show next 5 days
-        daily_table.add_row(
-            day["date"],
-            day["condition"],
-            f"{day['max_temp_c']}°C",
-            f"{day['min_temp_c']}°C"
-        )
-    
-    console.print(Panel(daily_table, title="5-Day Forecast", expand=False, style="green on black"))
+    for day in data["daily_forecast"][:5]:
+        print(f"{day['date']:10} {day['condition']:15} {day['max_temp_c']:8.1f}°C {day['min_temp_c']:8.1f}°C")
+    print("-" * 50)
 
 # Initialize CLI app
-app = CLI(name="webscout", help="Search the web with a rich UI", version=__version__)
+app = CLI(name="webscout", help="Search the web with a simple UI", version=__version__)
 
 @app.command()
 def version():
     """Show the version of webscout."""
-    console = Console()
-    console.print(f"[bold green]webscout[/bold green] version: {__version__}")
+    print(f"webscout version: {__version__}")
 
 @app.command()
 @option("--proxy", help="Proxy URL to use for requests")
 @option("--model", "-m", help="AI model to use", default="gpt-4o-mini", type=str)
-def chat(proxy: str = None, model: str = "gpt-4o-mini"):
+@option("--timeout", "-t", help="Timeout value for requests", type=int, default=10)
+def chat(proxy: str = None, model: str = "gpt-4o-mini", timeout: int = 10):
     """Interactive AI chat using DuckDuckGo's AI."""
-    webs = WEBS(proxy=proxy)
-    console = Console()
+    webs = WEBS(proxy=proxy, timeout=timeout)
     
-    # Display header
-    # console.print(f"[bold blue]{figlet_format('Webscout Chat')}[/]\n", justify="center")
-    console.print(f"[bold green]Using model:[/] {model}\n")
-    console.print("[cyan]Type your message and press Enter. Press Ctrl+C or type 'exit' to quit.[/]\n")
+    print(f"Using model: {model}")
+    print("Type your message and press Enter. Press Ctrl+C or type 'exit' to quit.\n")
     
-    # Start chat loop
     try:
         while True:
             try:
@@ -116,13 +65,13 @@ def chat(proxy: str = None, model: str = "gpt-4o-mini"):
                     break
                     
                 response = webs.chat(keywords=user_input, model=model)
-                console.print(f"\nAI: {response}\n")
+                print(f"\nAI: {response}\n")
                 
             except Exception as e:
-                console.print(f"[bold red]Error:[/] {str(e)}\n")
+                print(f"Error: {str(e)}\n")
                 
     except KeyboardInterrupt:
-        console.print("\n[bold red]Chat session interrupted. Exiting...[/]")
+        print("\nChat session interrupted. Exiting...")
 
 @app.command()
 @option("--keywords", "-k", help="Search keywords", required=True)
@@ -132,9 +81,10 @@ def chat(proxy: str = None, model: str = "gpt-4o-mini"):
 @option("--backend", "-b", help="Search backend to use", default="api")
 @option("--max-results", "-m", help="Maximum number of results", type=int, default=25)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def text(keywords: str, region: str, safesearch: str, timelimit: str, backend: str, max_results: int, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def text(keywords: str, region: str, safesearch: str, timelimit: str, backend: str, max_results: int, proxy: str = None, timeout: int = 10):
     """Perform a text search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.text(keywords, region, safesearch, timelimit, backend, max_results)
         _print_data(results)
@@ -144,9 +94,10 @@ def text(keywords: str, region: str, safesearch: str, timelimit: str, backend: s
 @app.command()
 @option("--keywords", "-k", help="Search keywords", required=True)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def answers(keywords: str, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def answers(keywords: str, proxy: str = None, timeout: int = 10):
     """Perform an answers search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.answers(keywords)
         _print_data(results)
@@ -165,6 +116,7 @@ def answers(keywords: str, proxy: str = None):
 @option("--license", "-lic", help="Image license", default=None)
 @option("--max-results", "-m", help="Maximum number of results", type=int, default=90)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
 def images(
     keywords: str,
     region: str,
@@ -177,9 +129,10 @@ def images(
     license: str,
     max_results: int,
     proxy: str = None,
+    timeout: int = 10,
 ):
     """Perform an images search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.images(keywords, region, safesearch, timelimit, size, color, type, layout, license, max_results)
         _print_data(results)
@@ -196,6 +149,7 @@ def images(
 @option("--license", "-lic", help="Video license", default=None)
 @option("--max-results", "-m", help="Maximum number of results", type=int, default=50)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
 def videos(
     keywords: str,
     region: str,
@@ -206,9 +160,10 @@ def videos(
     license: str,
     max_results: int,
     proxy: str = None,
+    timeout: int = 10,
 ):
     """Perform a videos search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.videos(keywords, region, safesearch, timelimit, resolution, duration, license, max_results)
         _print_data(results)
@@ -222,9 +177,10 @@ def videos(
 @option("--timelimit", "-t", help="Time limit for results", default=None)
 @option("--max-results", "-m", help="Maximum number of results", type=int, default=25)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def news(keywords: str, region: str, safesearch: str, timelimit: str, max_results: int, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def news(keywords: str, region: str, safesearch: str, timelimit: str, max_results: int, proxy: str = None, timeout: int = 10):
     """Perform a news search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.news(keywords, region, safesearch, timelimit, max_results)
         _print_data(results)
@@ -245,6 +201,7 @@ def news(keywords: str, region: str, safesearch: str, timelimit: str, max_result
 @option("--radius", "-r", help="Expand the search square by the distance in kilometers", type=int, default=0)
 @option("--max-results", "-m", help="Number of results", type=int, default=50)
 @option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
 def maps(
     keywords: str,
     place: str,
@@ -259,9 +216,10 @@ def maps(
     radius: int,
     max_results: int,
     proxy: str = None,
+    timeout: int = 10,
 ):
     """Perform a maps search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.maps(
             keywords,
@@ -286,9 +244,10 @@ def maps(
 @option("--from", "-f", help="Language to translate from (defaults automatically)")
 @option("--to", "-t", help="Language to translate to (default: 'en')", default="en")
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def translate(keywords: str, from_: str, to: str, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def translate(keywords: str, from_: str, to: str, proxy: str = None, timeout: int = 10):
     """Perform translation using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.translate(keywords, from_, to)
         _print_data(results)
@@ -299,9 +258,10 @@ def translate(keywords: str, from_: str, to: str, proxy: str = None):
 @option("--keywords", "-k", help="Search keywords", required=True)
 @option("--region", "-r", help="Region for search results", default="wt-wt")
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def suggestions(keywords: str, region: str, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def suggestions(keywords: str, region: str, proxy: str = None, timeout: int = 10):
     """Perform a suggestions search using DuckDuckGo API."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.suggestions(keywords, region)
         _print_data(results)
@@ -312,9 +272,10 @@ def suggestions(keywords: str, region: str, proxy: str = None):
 @option("--location", "-l", help="Location to get weather for", required=True)
 @option("--language", "-lang", help="Language code (e.g. 'en', 'es')", default="en")
 @option("--proxy", "-p", help="Proxy URL to use for requests")
-def weather(location: str, language: str, proxy: str = None):
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+def weather(location: str, language: str, proxy: str = None, timeout: int = 10):
     """Get weather information for a location from DuckDuckGo."""
-    webs = WEBS(proxy=proxy)
+    webs = WEBS(proxy=proxy, timeout=timeout)
     try:
         results = webs.weather(location, language)
         _print_weather(results)

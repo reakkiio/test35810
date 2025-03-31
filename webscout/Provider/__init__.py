@@ -86,6 +86,7 @@ from .LambdaChat import *
 from .ChatGPTClone import *
 from .VercelAI import *
 from .ExaChat import *
+from .asksteve import *
 __all__ = [
     'LLAMA',
     'LabyrinthAI',
@@ -175,4 +176,5 @@ __all__ = [
     'WebSim',
     'VercelAI',
     'ExaChat',
+    'AskSteve',
 ]

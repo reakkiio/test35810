@@ -11,9 +11,6 @@
   <a href="https://youtube.com/@OEvortex">▶️ Vortex's YouTube Channel</a>
 </div>
 <div align="center">
-  <a href="https://youtube.com/@devsdocode">▶️ Devs Do Code's YouTube Channel</a>
-</div>
-<div align="center">
   <a href="https://t.me/ANONYMOUS_56788">📢 Anonymous Coder's Telegram</a>
 </div>
 
@@ -75,8 +72,6 @@ python -m webscout --help
 | python -m webscout version                | A command-line interface command that prints and returns the version of the program.            |
 | python -m webscout videos -k Text         | CLI function to perform a videos search using DuckDuckGo API.                                   |
 | python -m webscout weather -l qazigund       | CLI function to get weather information for a location using Webscout.                          |
-
-
 
 ## ✉️ TempMail and VNEngine
 
@@ -395,7 +390,6 @@ with WEBS() as webs:
 
 ```
 
-
 #### 📜 List Available LLM Models
 
 Retrieve a comprehensive list of all supported LLMs.
@@ -487,9 +481,6 @@ elif isinstance(available_voices, dict):
 else:
     print(f"Available voices for {provider_name}: {available_voices}")
 ```
-
-
-
 
 ### 💬 `Duckchat` - Chat with LLM
 
@@ -806,7 +797,7 @@ a = AndiSearch()
 print(a.chat("HelpingAI-9B"))
 ```
 
-### `LLAMA`, `C4ai`, `Venice`, `Copilot`, `HuggingFaceChat`, `TwoAI`, `HeckAI`, `AllenAI`, `PerplexityLabs`, `AkashGPT`, `DeepSeek`, `WiseCat`, `IBMGranite`, `QwenLM`, `ChatGPTGratis`, `TextPollinationsAI`, `GliderAI`, `Cohere`, `REKA`, `GROQ`, `AsyncGROQ`, `OPENAI`, `AsyncOPENAI`, `KOBOLDAI`, `AsyncKOBOLDAI`, `BLACKBOXAI`, `PhindSearch`, `GEMINI`, `DeepInfra`, `AI4Chat`, `Phindv2`, `OLLAMA`, `AndiSearch`, `PIZZAGPT`, `Sambanova`, `DARKAI`, `KOALA`, `Meta`, `AskMyAI`, `PiAI`, `Julius`, `YouChat`, `YEPCHAT`, `Cloudflare`, `TurboSeek`, `Editee`, `TeachAnything`, `AI21`, `Chatify`, `X0GPT`, `Cerebras`, `Lepton`, `GEMINIAPI`, `Cleeai`, `Elmo`, `Free2GPT`, `GPTWeb`, `Netwrck`, `LlamaTutor`, `PromptRefine`, `TutorAI`, `ChatGPTES`, `Bagoodex`, `AIMathGPT`, `GaurishCerebras`, `GeminiPro`, `LLMChat`, `Talkai`, `Llama3Mitril`, `Marcus`, `TypeGPT`, `Netwrck`, `MultiChatAI`, `JadveOpenAI`, `ChatGLM`, `NousHermes`, `FreeAIChat`, `ElectronHub`, `GithubChat`, `Flowith`, `SonusAI`, `UncovrAI`, `LabyrinthAI`, `WebSim`, `LambdaChat`, `ChatGPTClone`, `VercelAI`, `ExaChat`
+### `LLAMA`, `C4ai`, `Venice`, `Copilot`, `HuggingFaceChat`, `TwoAI`, `HeckAI`, `AllenAI`, `PerplexityLabs`, `AkashGPT`, `DeepSeek`, `WiseCat`, `IBMGranite`, `QwenLM`, `ChatGPTGratis`, `TextPollinationsAI`, `GliderAI`, `Cohere`, `REKA`, `GROQ`, `AsyncGROQ`, `OPENAI`, `AsyncOPENAI`, `KOBOLDAI`, `AsyncKOBOLDAI`, `BLACKBOXAI`, `PhindSearch`, `GEMINI`, `DeepInfra`, `AI4Chat`, `Phindv2`, `OLLAMA`, `AndiSearch`, `PIZZAGPT`, `Sambanova`, `DARKAI`, `KOALA`, `Meta`, `AskMyAI`, `PiAI`, `Julius`, `YouChat`, `YEPCHAT`, `Cloudflare`, `TurboSeek`, `Editee`, `TeachAnything`, `AI21`, `Chatify`, `X0GPT`, `Cerebras`, `Lepton`, `GEMINIAPI`, `Cleeai`, `Elmo`, `Free2GPT`, `GPTWeb`, `Netwrck`, `LlamaTutor`, `PromptRefine`, `TutorAI`, `ChatGPTES`, `Bagoodex`, `AIMathGPT`, `GaurishCerebras`, `GeminiPro`, `LLMChat`, `Talkai`, `Llama3Mitril`, `Marcus`, `TypeGPT`, `Netwrck`, `MultiChatAI`, `JadveOpenAI`, `ChatGLM`, `NousHermes`, `FreeAIChat`, `ElectronHub`, `GithubChat`, `Flowith`, `SonusAI`, `UncovrAI`, `LabyrinthAI`, `WebSim`, `LambdaChat`, `ChatGPTClone`, `VercelAI`, `ExaChat`, `AskSteve`
 
 Code is similar to other providers.
 
@@ -855,7 +846,6 @@ converter = ModelConverter(
 converter.convert()
 ```
 
-
 **Command Line Usage:**
 
 * **GGUF Conversion:**
@@ -863,7 +853,6 @@ converter.convert()
    ```bash
     python -m webscout.Extra.gguf convert -m "prithivMLmods/QWQ-500M" -q "q2_k"
    ```
-
 
 **Note:**
 
@@ -883,9 +872,6 @@ converter.convert()
   <a href="https://youtube.com/@OEvortex">▶️ Vortex's YouTube Channel</a>
 </div>
 <div align="center">
-  <a href="https://youtube.com/@devsdocode">▶️ Devs Do Code's YouTube Channel</a>
-</div>
-<div align="center">
   <a href="https://t.me/ANONYMOUS_56788">📢 Anonymous Coder's Telegram</a>
 </div>
 
@@ -903,4 +889,3 @@ Contributions are welcome! If you'd like to contribute to Webscout, please follo
 
 * All the amazing developers who have contributed to the project!
 * The open-source community for their support and inspiration.
-

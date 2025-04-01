@@ -48,6 +48,7 @@ tts.play_audio(audio_file)
 ## 🎛️ Advanced Configuration
 
 ### Voice Selection
+
 Each TTS provider offers multiple voices:
 
 ```python
@@ -59,6 +60,7 @@ audio_file = tts.tts(text, voice="Alice")
 ```
 
 ### Verbose Logging
+
 Enable detailed logging for debugging:
 
 ```python
@@ -68,30 +70,36 @@ audio_file = tts.tts(text, verbose=True)
 ## 🔧 Provider-Specific Details
 
 ### ElevenlabsTTS
+
 - Supports multiple English voices
 - Multilingual text-to-speech
 
 ### GesseritTTS
+
 - Offers unique voice characteristics
 - Supports voice description customization
 
 ### MurfAITTS
+
 - Provides specific voice models
 - Supports custom voice descriptions
 
 ### ParlerTTS
+
 - Uses Gradio Client for TTS generation
 - Supports large and small model variants
 
 ### DeepgramTTS
+
 - Multiple voice options
 - Advanced voice selection
 
 ### StreamElementsTTS
+
 - Wide range of international voices
 
-
 ### SpeechMaTTS
+
 - Multilingual voices (Ava, Emma, Andrew, Brian)
 - Adjustable pitch and speech rate
 - Fast audio generation

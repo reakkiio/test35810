@@ -88,6 +88,7 @@ from .VercelAI import *
 from .ExaChat import *
 from .asksteve import *
 from .Aitopia import *
+from .searchchat import *
 __all__ = [
     'LLAMA',
     'LabyrinthAI',
@@ -179,4 +180,5 @@ __all__ = [
     'ExaChat',
     'AskSteve',
     'Aitopia',
+    'SearchChatAI',
 ]

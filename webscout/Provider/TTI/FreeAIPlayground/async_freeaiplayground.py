@@ -21,7 +21,9 @@ class AsyncFreeAIImager(AsyncImageProvider):
         "Flux Pro Ultra Raw",
         "Flux Schnell",
         "Flux Realism",
-        "grok-2-aurora"
+        "grok-2-aurora",
+        "Flux Dev",
+
     ]
 
     def __init__(

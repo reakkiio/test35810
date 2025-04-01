@@ -21,7 +21,8 @@ class FreeAIImager(ImageProvider):
         "Flux Pro Ultra Raw",
         "Flux Schnell",
         "Flux Realism",
-        "grok-2-aurora"
+        "grok-2-aurora",
+        "Flux Dev",
     ]
 
     def __init__(
@@ -29,7 +30,6 @@ class FreeAIImager(ImageProvider):
         model: str = "dall-e-3",  # Updated default model
         timeout: int = 60,
         proxies: dict = {},
-        logging: bool = True
     ):
         """Initialize your FreeAIPlayground provider with custom settings! ⚙️
 

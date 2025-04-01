@@ -17,52 +17,52 @@ class FreeAIChat(Provider):
 
     AVAILABLE_MODELS = [
         # OpenAI Models
-        "GPT-4o",
-        "o1-mini",
-        # "o1", >>>> NOT WORKING
-        "GPT-4o-mini",
-        "o3-mini",
-        "o3-mini-low",
-        # "o3-mini-medium", >>>> NOT WORKING
-        "o3-mini-high",
-        # "gpt-4.5-preview", >>>> NOT WORKING
+        "GPT 4o",
+        "GPT 4o Latest",
+        "GPT 4o mini",
+        "GPT 4o Search Preview",
+        "O1",
+        "O1 Mini",
+        "O3 Mini",
+        "O3 Mini High",
+        "O3 Mini Low",
 
         # Anthropic Models
-        # "claude 3.5 haiku", >>>> NOT WORKING
-        # "claude 3.5 sonnet", >>>> NOT WORKING
-        # "claude-3-7-sonnet", >>>> NOT WORKING
-        # "claude-3-7-sonnet-thinking", >>>> NOT WORKING
+        "claude 3.5 sonnet",
+        "Claude 3.7 Sonnet",
+        "Claude 3.7 Sonnet (Thinking)",
 
         # Deepseek Models
-        "deepseek-v3",
-        "deepseek-r1",
-        "deepseek-v3-0324",
+        "Deepseek R1",
+        "Deepseek R1 Fast",
+        "Deepseek V3",
+        "Deepseek v3 0324",
 
         # Google Models
-        "gemini-2.0-pro-exp-02-05",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-2.0-flash",
-        "gemini-2.5-pro-exp-03-25",
+        "Gemini 1.5 Flash",
+        "Gemini 1.5 Pro",
+        "Gemini 2.0 Pro",
+        "Gemini 2.0 Flash",
+        "Gemini 2.5 Pro",
 
         # Llama Models
-        # "Llama 3.3 70B", >>>> NOT WORKING
-        # "llama3.1-70b-fast", >>>> NOT WORKING
         "Llama 3.1 405B",
+        "Llama 3.1 70B Fast",
+        "Llama 3.3 70B",
 
         # Mistral Models
-        "mistral-large",
-        "mistral-nemo",
+        "Mistral Large",
+        "Mistral Nemo",
 
         # Qwen Models
-        "qwq-32b",
-        "qwq-plus",
-        "qwen-max",
-        "qwen-plus",
-        "qwen-turbo",
+        "Qwen Max",
+        "Qwen Plus",
+        "Qwen Turbo",
+        "QwQ 32B",
+        "QwQ Plus",
 
         # XAI Models
-        # "grok 2" >>>> NOT WORKING
+        "Grok 2"
     ]
 
     def __init__(
@@ -141,12 +141,16 @@ class FreeAIChat(Provider):
 
         messages = [
             {
-                "role": "system",
-                "content": self.system_prompt
-            },
-            {
+                "id": str(int(time.time() * 1000)),
                 "role": "user",
-                "content": conversation_prompt
+                "content": conversation_prompt,
+                "model": {
+                    # "id": "14",
+                    "name": self.model,
+                    # "icon": "https://cdn-avatars.huggingface.co/v1/production/uploads/1620805164087-5ec0135ded25d76864d553f1.png",
+                    # "provider": "openAI",
+                    # "contextWindow": 63920
+                }
             }
         ]
 

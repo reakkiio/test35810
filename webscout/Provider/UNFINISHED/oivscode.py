@@ -1,3 +1,7 @@
+############################################################
+#                       NOT WORKING
+############################################################
+
 import requests
 import json
 from typing import Union, Any, Dict, Optional, Generator
@@ -215,7 +219,7 @@ class oivscode(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]][Dict[str, Any], None, None]:
+    ) -> Union[Dict[str, Any], Generator[Any, None, None]]:
         """Chat with AI
 
         Args:
@@ -257,7 +261,8 @@ class oivscode(Provider):
                 raise exceptions.FailedToGenerateResponseError(
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
-
+            from rich import print
+            print(response.text)
             message_load = ""
             for value in response.iter_lines(
                 decode_unicode=True,

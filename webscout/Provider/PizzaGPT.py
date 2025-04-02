@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union, Generator
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent as Lit
+from webscout.litagent import LitAgent as Lit
 
 class PIZZAGPT(Provider):
     """

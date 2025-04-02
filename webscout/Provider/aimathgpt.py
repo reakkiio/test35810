@@ -8,7 +8,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
-
+from webscout.litagent import LitAgent
 
 class AIMathGPT(Provider):
     """
@@ -58,11 +58,7 @@ class AIMathGPT(Provider):
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "same-origin",
-            "user-agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0"
-            ),
+            "user-agent": LitAgent().random(),
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)

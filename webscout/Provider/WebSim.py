@@ -9,6 +9,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
+from webscout.litagent import LitAgent
 
 class WebSim(Provider):
     """
@@ -58,13 +59,13 @@ class WebSim(Provider):
         """Initializes the WebSim API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-            
+        self.agent = LitAgent()
         self.headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
             'content-type': 'text/plain;charset=UTF-8',
             'origin': 'https://websim.ai',
-            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'user-agent': self.agent.random(),
             'websim-flags;': ''
         }
         

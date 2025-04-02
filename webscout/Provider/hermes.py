@@ -7,7 +7,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-
+from webscout.litagent import LitAgent
 class NousHermes(Provider):
     """
     A class to interact with the Hermes API.
@@ -56,7 +56,7 @@ class NousHermes(Provider):
             'content-type': 'application/json',
             'origin': 'https://hermes.nousresearch.com',
             'referer': 'https://hermes.nousresearch.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'user-agent': LitAgent().random(),
             'cookie': self.cookies
         }
 

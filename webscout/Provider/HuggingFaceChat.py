@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union, Generator
 from webscout.AIutel import Conversation
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class HuggingFaceChat(Provider):
     """

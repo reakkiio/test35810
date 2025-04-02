@@ -9,7 +9,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class AllenAI(Provider):
     """

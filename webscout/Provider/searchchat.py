@@ -8,7 +8,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class SearchChatAI(Provider):
     """

@@ -23,7 +23,7 @@ from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.Litlogger import Logger, LogFormat
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 
 class Free2GPT(Provider):

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Generator, List, Union
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent as UserAgent
+from webscout.litagent import LitAgent as UserAgent
 
 class Cerebras(Provider):
     """

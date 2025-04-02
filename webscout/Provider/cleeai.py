@@ -7,6 +7,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 import webscout
+
 class Cleeai(Provider):
     """
     A class to interact with the Cleeai.com API.

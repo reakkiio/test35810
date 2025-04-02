@@ -8,7 +8,7 @@ from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
 from typing import Union, Any, AsyncGenerator, Dict
 import cloudscraper
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class Cloudflare(Provider):
     """

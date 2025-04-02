@@ -6,7 +6,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-
+from webscout.litagent import LitAgent
 class SonusAI(Provider):
     """
     A class to interact with the Sonus AI chat API.
@@ -43,7 +43,7 @@ class SonusAI(Provider):
             'Accept-Language': 'en-US,en;q=0.9',
             'Origin': 'https://chat.sonus.ai',
             'Referer': 'https://chat.sonus.ai/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+            'User-Agent': LitAgent().random()
         }
         
         self.session = requests.Session()

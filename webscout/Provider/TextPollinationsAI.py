@@ -4,7 +4,7 @@ from typing import Union, Any, Dict, Generator
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent as Lit
+from webscout.litagent import LitAgent as Lit
 
 class TextPollinationsAI(Provider):
     """

@@ -3,7 +3,7 @@ from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class AskSteve(Provider):
     """

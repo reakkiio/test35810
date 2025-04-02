@@ -7,7 +7,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent as Lit
+from webscout.litagent import LitAgent as Lit
 
 class Llama3Mitril(Provider):
     """

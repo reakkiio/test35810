@@ -8,7 +8,7 @@ from webscout.AIbase import  Provider, AsyncProvider
 from webscout import exceptions
 from typing import Union, Any, AsyncGenerator, Dict
 from webscout import WEBS
-from rich import print
+from webscout.litagent import LitAgent
 
 class AndiSearch(Provider):
     def __init__(
@@ -60,7 +60,7 @@ class AndiSearch(Provider):
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "same-site",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
+            "user-agent": LitAgent().random(),
             "x-amz-date": "20240730T031106Z",
             "x-amz-security-token": str(uuid4()),
         }

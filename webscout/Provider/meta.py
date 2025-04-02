@@ -14,7 +14,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout import LitAgent as Lit
+from webscout.litagent import LitAgent as Lit
 MAX_RETRIES = 3
 
 def generate_offline_threading_id() -> str:

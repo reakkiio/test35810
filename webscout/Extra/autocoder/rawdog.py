@@ -390,9 +390,17 @@ class AutoCoder:
             except Exception as e:
                 last_error = e
                 if retries < self.max_retries - 1 and ai_instance:
-                    error_context = self._get_error_context(e, code)
                     try:
-                        # First try to fix the specific error
+                        # First try to handle import errors
+                        if isinstance(e, ImportError):
+                            fixed_code = self._handle_import_error(e, code)
+                            if fixed_code:
+                                code = fixed_code
+                                retries += 1
+                                continue
+                        
+                        # Get error context and try to fix the specific error
+                        error_context = self._get_error_context(e, code)
                         fixed_response = ai_instance.chat(error_context)
                         fixed_code = self._extract_code_from_response(fixed_response)
                         
@@ -411,6 +419,7 @@ Please provide a complete, corrected version of the code that handles this error
 2. Include proper error handling
 3. Use appropriate libraries and imports
 4. Be compatible with the current Python environment
+5. Fix the specific error: {str(e)}
 
 Provide only the corrected code without any explanation.
 """
@@ -435,6 +444,7 @@ Please provide a significantly different approach to solve this problem. Conside
 2. Implementing a different algorithm
 3. Adding more robust error handling
 4. Using a different encoding or data handling approach
+5. Specifically address the error: {str(e)}
 
 Provide only the corrected code without any explanation.
 """
@@ -444,10 +454,12 @@ Provide only the corrected code without any explanation.
                             if self._is_similar_solution(fixed_code):
                                 break
                         
+                        # Update code and continue with retry
                         code = fixed_code
                         self.tried_solutions.add(code)
                         retries += 1
                         continue
+                        
                     except Exception as ai_error:
                         console.print(f"Error during AI correction: {str(ai_error)}", style="error")
                         break
@@ -496,12 +508,37 @@ Provide only the corrected code without any explanation.
         Returns:
             str: Extracted code from the first code block
         """
-        code_blocks = self._extract_code_blocks(response)
-        if not code_blocks:
+        if not response:
             return ""
-        
-        # Return the content of the first code block, regardless of type
-        return code_blocks[0][1]
+            
+        # First try to find code blocks with explicit language tags
+        code_blocks = self._extract_code_blocks(response)
+        if code_blocks:
+            # Return the content of the first code block
+            return code_blocks[0][1]
+            
+        # If no code blocks found, try to find raw Python code
+        lines = []
+        in_code = False
+        for line in response.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Skip markdown headers and other non-code lines
+            if line.startswith(('#', '```', '---', '===', '>>>')):
+                continue
+                
+            # Skip common non-code lines
+            if any(line.startswith(prefix) for prefix in ['Please', 'Here', 'The', 'This', 'You']):
+                continue
+                
+            lines.append(line)
+            
+        if lines:
+            return '\n'.join(lines)
+            
+        return ""
 
     def _get_error_context(self, error: Exception, code: str) -> str:
         """Create context about the error for AI correction.
@@ -516,17 +553,39 @@ Provide only the corrected code without any explanation.
         error_type = type(error).__name__
         error_msg = str(error)
         
+        # Get Python version and environment info
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        platform = sys.platform
+        
+        # Get the line number where the error occurred if available
+        import traceback
+        tb = traceback.extract_tb(error.__traceback__)
+        line_info = ""
+        if tb:
+            line_info = f"\nError occurred at line {tb[-1].lineno}"
+        
         return f"""
 The code failed with error:
 Error Type: {error_type}
-Error Message: {error_msg}
+Error Message: {error_msg}{line_info}
+
+Environment:
+Python Version: {python_version}
+Platform: {platform}
 
 Original Code:
 ```python
 {code}
 ```
 
-Please fix the code to handle this error. Provide only the corrected code without any explanation.
+Please fix the code to handle this error. The solution should:
+1. Address the specific error: {error_msg}
+2. Be compatible with Python {python_version}
+3. Work on {platform}
+4. Include proper error handling
+5. Use appropriate libraries and imports
+
+Provide only the corrected code without any explanation.
 """
 
     def _handle_import_error(self, error: ImportError, code: str) -> Optional[str]:

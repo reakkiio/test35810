@@ -149,15 +149,53 @@ suggestions = yep.suggestions("hist")
 print(suggestions)
 ```
 
-## 🔍 GoogleS (formerly DWEBS)
+## 🔍 GoogleSearch (formerly DWEBS)
 
 ```python
-from webscout import GoogleS
-from rich import print
-searcher = GoogleS()
-results = searcher.search("HelpingAI-9B", max_results=20, extract_text=False, max_text_length=200)
-for result in results:
-    print(result)
+from webscout import GoogleSearch
+
+# Initialize GoogleSearch
+google = GoogleSearch(
+    timeout=10,  # Optional: Set custom timeout
+    proxies=None,  # Optional: Use proxies
+    verify=True   # Optional: SSL verification
+)
+
+# Text Search
+text_results = google.text(
+    keywords="artificial intelligence",
+    region="us",           # Optional: Region for results
+    safesearch="moderate",  # Optional: "on", "moderate", "off"
+    max_results=10          # Optional: Limit number of results
+)
+for result in text_results:
+    print(f"Title: {result.title}")
+    print(f"URL: {result.url}")
+    print(f"Description: {result.description}")
+    print("---")
+
+# News Search
+news_results = google.news(
+    keywords="technology trends",
+    region="us",
+    safesearch="moderate",
+    max_results=5
+)
+for result in news_results:
+    print(f"Title: {result.title}")
+    print(f"URL: {result.url}")
+    print(f"Description: {result.description}")
+    print("---")
+
+# Get search suggestions
+suggestions = google.suggestions("how to")
+print(suggestions)
+
+# Legacy usage is still supported
+from webscout import search
+results = search("Python programming", num_results=5)
+for url in results:
+    print(url)
 ```
 
 ## 🦆 WEBS and AsyncWEBS

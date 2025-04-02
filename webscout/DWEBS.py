@@ -1,461 +1,477 @@
-import requests
-from typing import Dict, List, Optional, Union, Any
-from concurrent.futures import ThreadPoolExecutor, as_completed
+"""
+DWEBS - A Google search library with advanced features
+"""
+import random
+from time import sleep
 from webscout.scout import Scout
-from urllib.parse import urljoin
-from webscout.litagent import LitAgent
+from requests import get
+from urllib.parse import unquote, urlencode
+from typing import List, Dict, Optional, Union, Iterator, Any
+from concurrent.futures import ThreadPoolExecutor
 
-import time
-import json
-import os
-from datetime import datetime, timedelta
-from functools import lru_cache
-from webscout.Litlogger import Logger, LogFormat
-class GoogleS:
-    """A Python interface for Google search with advanced features
 
-    The GoogleS class provides a powerful interface to perform web searches, image searches,
-    and advanced filtering on Google. Built with love by HAI to keep it
+class SearchResult:
+    """Class to represent a search result with metadata."""
+    
+    def __init__(self, url: str, title: str, description: str):
+        """
+        Initialize a search result.
+        
+        Args:
+            url: The URL of the search result
+            title: The title of the search result
+            description: The description/snippet of the search result
+        """
+        self.url = url
+        self.title = title
+        self.description = description
+        # Additional metadata that can be populated
+        self.metadata: Dict[str, Any] = {}
 
-    Basic Usage:
-        >>> from webscout.DWEBS import GoogleS
-        >>> searcher = GoogleS()
-        >>> # Simple web search
-        >>> results = searcher.search("Python programming")
-        >>> for result in results:
-        ...     print(f"Title: {result['title']}")
-        ...     print(f"URL: {result['href']}")
-        ...     print(f"Description: {result['abstract']}")
+    def __repr__(self) -> str:
+        """Return string representation of search result."""
+        return f"SearchResult(url={self.url}, title={self.title}, description={self.description})"
 
-    Advanced Web Search:
-        >>> # Search with filters
-        >>> results = searcher.search(
-        ...     query="Python tutorials",
-        ...     site="github.com",
-        ...     file_type="pdf",
-        ...     time_period="month",
-        ...     max_results=5
-        ... )
-        >>> # Example response format:
-        >>> {
-        ...     'title': 'Python Tutorial',
-        ...     'href': 'https://example.com/python-tutorial',
-        ...     'abstract': 'Comprehensive Python tutorial covering basics to advanced topics',
-        ...     'index': 0,
-        ...     'type': 'web',
-        ...     'visible_text': ''  # Optional: Contains webpage text if extract_text=True
-        ... }
 
-    Image Search:
-        >>> # Search for images
-        >>> images = searcher.search_images(
-        ...     query="cute puppies",
-        ...     size="large",
-        ...     color="color",
-        ...     type_filter="photo",
-        ...     max_results=5
-        ... )
-        >>> # Example response format:
-        >>> {
-        ...     'title': 'Cute Puppy Image',
-        ...     'thumbnail': 'https://example.com/puppy-thumb.jpg',
-        ...     'full_url': 'https://example.com/puppy-full.jpg',
-        ...     'type': 'image'
-        ... }
-
-    Features:
-        - Web Search: Get detailed web results with title, URL, and description
-        - Image Search: Find images with thumbnails and full-resolution URLs
-        - Advanced Filters: Site-specific search, file types, time periods
-        - Rate Limiting: Smart request handling to avoid blocks
-        - Caching: Save results for faster repeat searches
-        - Retry Logic: Automatic retry on temporary failures
-        - Logging: Optional LitLogger integration for beautiful console output
-        - Proxy Support: Use custom proxies for requests
-        - Concurrent Processing: Multi-threaded requests for better performance
-
-    Response Format:
-        Web Search Results:
-            {
-                'title': str,       # Title of the webpage
-                'href': str,        # URL of the webpage
-                'abstract': str,    # Brief description or snippet
-                'index': int,       # Result position
-                'type': 'web',      # Result type identifier
-                'visible_text': str # Full page text (if extract_text=True)
-            }
-
-        Image Search Results:
-            {
-                'title': str,       # Image title or description
-                'thumbnail': str,   # Thumbnail image URL
-                'full_url': str,    # Full resolution image URL
-                'type': 'image'     # Result type identifier
-            }
-    """
-
-    SEARCH_TYPES = {
-        "web": "https://www.google.com/search",
-        "image": "https://www.google.com/images",
-        "news": "https://www.google.com/news",
-    }
-
+class GoogleSearch:
+    """Google search implementation with configurable parameters and advanced features."""
+    
+    _executor: ThreadPoolExecutor = ThreadPoolExecutor()
+    
     def __init__(
         self,
-        headers: Optional[Dict[str, str]] = None,
-        proxy: Optional[str] = None,
-        timeout: Optional[int] = 10,
-        max_workers: int = 20,
-        cache_dir: Optional[str] = None,
-        rate_limit: float = 2.0,
+        timeout: int = 10,
+        proxies: Optional[Dict[str, str]] = None,
+        verify: bool = True,
+        lang: str = "en",
+        sleep_interval: float = 0.0
     ):
         """
-        Initialize the GoogleS object with enhanced features.
+        Initialize GoogleSearch with custom settings.
         
         Args:
-            cache_dir: Directory to store search result cache
-            rate_limit: Minimum time between requests in seconds
+            timeout: Request timeout in seconds
+            proxies: Proxy configuration for requests
+            verify: Whether to verify SSL certificates
+            lang: Search language
+            sleep_interval: Sleep time between pagination requests
         """
-        self.proxy = proxy
-        self.headers = headers if headers else {
-            "User-Agent": LitAgent().random()  # Use LitAgent to generate user agent
-        }
-        self.headers["Referer"] = "https://www.google.com/"
-        self.client = requests.Session()
-        self.client.headers.update(self.headers)
-        if proxy:
-            self.client.proxies.update({"http": proxy, "https": proxy})
         self.timeout = timeout
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.cache_dir = cache_dir
-        if cache_dir and not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
-        self.last_request_time = 0
-        self.rate_limit = rate_limit
-
-    def _respect_rate_limit(self):
-        """Ensure minimum time between requests"""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        if time_since_last < self.rate_limit:
-            sleep_time = self.rate_limit - time_since_last
-            time.sleep(sleep_time)
-        self.last_request_time = time.time()
-
-    def _get_url(self, method: str, url: str, params: Optional[Dict[str, str]] = None,
-                  data: Optional[Union[Dict[str, str], bytes]] = None, max_retries: int = 3) -> bytes:
+        self.proxies = proxies if proxies else {}
+        self.verify = verify
+        self.lang = lang
+        self.sleep_interval = sleep_interval
+        self.base_url = "https://www.google.com/search"
+    
+    def _get_useragent(self) -> str:
         """
-        Makes an HTTP request with manual retry logic and rate limiting.
-        
-        Args:
-            method (str): HTTP method (GET, POST, etc.)
-            url (str): Target URL
-            params (Optional[Dict[str, str]]): Query parameters
-            data (Optional[Union[Dict[str, str], bytes]]): Request payload
-            max_retries (int): Maximum number of retry attempts
+        Generate a random user agent string.
         
         Returns:
-            bytes: Response content
+            Random user agent string
         """
-        retry_count = 0
-        base_delay = 5  # Base delay in seconds
+        lynx_version = f"Lynx/{random.randint(2, 3)}.{random.randint(8, 9)}.{random.randint(0, 2)}"
+        libwww_version = f"libwww-FM/{random.randint(2, 3)}.{random.randint(13, 15)}"
+        ssl_mm_version = f"SSL-MM/{random.randint(1, 2)}.{random.randint(3, 5)}"
+        openssl_version = f"OpenSSL/{random.randint(1, 3)}.{random.randint(0, 4)}.{random.randint(0, 9)}"
+        return f"{lynx_version} {libwww_version} {ssl_mm_version} {openssl_version}"
+    
+    def _make_request(self, term: str, results: int, start: int = 0, search_type: str = None) -> str:
+        """
+        Make a request to Google search.
         
-        while retry_count < max_retries:
-            try:
-                self._respect_rate_limit()
-                response = self.client.request(
-                    method=method,
-                    url=url,
-                    params=params,
-                    data=data,
-                    timeout=self.timeout
-                )
-                
-                if response.status_code == 429:
-                    retry_delay = base_delay * (2 ** retry_count)  # Exponential backoff
-                    time.sleep(retry_delay)
-                    retry_count += 1
-                    continue
-                    
-                response.raise_for_status()
-                return response.content
-                
-            except requests.exceptions.RequestException as e:
-                if retry_count == max_retries - 1:
-                    raise
-                
-                retry_delay = base_delay * (2 ** retry_count)
-                time.sleep(retry_delay)
-                retry_count += 1
-                
-        raise Exception("Max retries reached")
-
-    @lru_cache(maxsize=100)
-    def _cache_key(self, query: str, **kwargs) -> str:
-        """Generate a cache key from search parameters"""
-        cache_data = {'query': query, **kwargs}
-        return json.dumps(cache_data, sort_keys=True)
-
-    def _get_cached_results(self, cache_key: str) -> Optional[List[Dict[str, Any]]]:
-        """Retrieve cached results if they exist and are not expired"""
-        if not self.cache_dir:
-            return None
-        cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
-                cached_data = json.load(f)
-                if datetime.fromisoformat(cached_data['timestamp']) + timedelta(hours=24) > datetime.now():
-                    return cached_data['results']
-        return None
-
-    def _cache_results(self, cache_key: str, results: List[Dict[str, Any]]):
-        """Cache search results"""
-        if not self.cache_dir:
-            return
-        cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
-        with open(cache_file, 'w') as f:
-            json.dump({
-                'timestamp': datetime.now().isoformat(),
-                'results': results
-            }, f)
-
-    def search_images(
-        self,
-        query: str,
-        max_results: int = 10,
-        size: Optional[str] = None,
-        color: Optional[str] = None,
-        type_filter: Optional[str] = None,
-        **kwargs
-    ) -> List[Dict[str, str]]:
-        """Search for images on Google with style! 
-
         Args:
-            query (str): What you're looking for fam
-            max_results (int): How many results you want (default: 10)
-            size (Optional[str]): Image size filter
-                - 'large': Big pics
-                - 'medium': Medium sized
-                - 'icon': Small icons
-            color (Optional[str]): Color filter
-                - 'color': Full color
-                - 'gray': Black and white
-                - 'transparent': Transparent background
-            type_filter (Optional[str]): Type of image
-                - 'face': Just faces
-                - 'photo': Real photos
-                - 'clipart': Vector art
-                - 'lineart': Line drawings
-
+            term: Search query
+            results: Number of results to request
+            start: Start position for pagination
+            search_type: Type of search ('', 'nws', 'isch')
+            
         Returns:
-            List[Dict[str, str]]: List of image results with these keys:
-                - 'thumbnail': Small preview URL
-                - 'full_url': Full resolution image URL
-                - 'title': Image title/description
-                - 'type': Always 'image'
-
-        Example:
-            >>> searcher = GoogleS()
-            >>> # Find some cool nature pics
-            >>> images = searcher.search_images(
-            ...     query="beautiful landscapes",
-            ...     size="large",
-            ...     color="color",
-            ...     max_results=5
-            ... )
-            >>> for img in images:
-            ...     print(f"Found: {img['title']}")
-            ...     print(f"URL: {img['full_url']}")
+            HTML response content
         """
         params = {
-            "q": query,
-            "tbm": "isch",
-            "num": max_results
+            "q": term,
+            "num": results + 2,  # Request slightly more than needed
+            "hl": self.lang,
+            "start": start,
         }
         
-        if size:
-            params["tbs"] = f"isz:{size}"
-        if color:
-            params["tbs"] = f"ic:{color}"
-        if type_filter:
-            params["tbs"] = f"itp:{type_filter}"
-
-        content = self._get_url("GET", self.SEARCH_TYPES["image"], params=params)
-        soup = Scout(content)  # Use Scout parser
+        # Add search type if specified
+        if search_type:
+            params["tbm"] = search_type
+            
+        try:
+            resp = get(
+                url=self.base_url,
+                headers={
+                    "User-Agent": self._get_useragent(),
+                    "Accept-Language": self.lang,
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                },
+                params=params,
+                proxies=self.proxies if any(self.proxies) else None,
+                timeout=self.timeout,
+                verify=self.verify,
+                cookies={
+                    'CONSENT': 'PENDING+987',
+                    'SOCS': 'CAESHAgBEhIaAB',
+                }
+            )
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:
+            raise RuntimeError(f"Search request failed: {str(e)}")
+    
+    def _extract_url(self, raw_link: str) -> Optional[str]:
+        """
+        Extract actual URL from Google redirect URL.
         
+        Args:
+            raw_link: Raw link from Google search
+            
+        Returns:
+            Actual URL or None if invalid
+        """
+        if not raw_link:
+            return None
+            
+        if raw_link.startswith("/url?"):
+            try:
+                link = unquote(raw_link.split("&")[0].replace("/url?q=", ""))
+                return link
+            except Exception:
+                return None
+        elif raw_link.startswith("http"):
+            return unquote(raw_link)
+        
+        return None
+    
+    def _is_valid_result(self, link: str, fetched_links: set, unique: bool) -> bool:
+        """
+        Check if search result is valid.
+        
+        Args:
+            link: URL to check
+            fetched_links: Set of already fetched links
+            unique: Whether to filter duplicate links
+            
+        Returns:
+            Boolean indicating if result is valid
+        """
+        if any(x in link for x in ["google.", "/search?", "webcache."]):
+            return False
+            
+        if link in fetched_links and unique:
+            return False
+            
+        return True
+    
+    def _parse_search_results(
+        self,
+        html: str,
+        num_results: int,
+        fetched_links: set,
+        unique: bool
+    ) -> List[SearchResult]:
+        """
+        Parse search results from HTML.
+        
+        Args:
+            html: HTML content to parse
+            num_results: Maximum number of results to return
+            fetched_links: Set of already fetched links
+            unique: Filter duplicate links
+            
+        Returns:
+            List of SearchResult objects
+        """
         results = []
-        for img in soup.find_all("img", class_="rg_i"):
-            if len(results) >= max_results:
+        soup = Scout(html, features="html.parser")
+        result_blocks = soup.find_all("div", class_="ezO2md")
+        
+        if not result_blocks:
+            # Try alternative class patterns if the main one doesn't match
+            result_blocks = soup.find_all("div", attrs={"class": lambda c: c and "g" in c.split()})
+        
+        for result in result_blocks:
+            # Find the link - looking for various potential Google result classes
+            link_tag = result.find("a", class_=["fuLhoc", "ZWRArf"])
+            if not link_tag:
+                link_tag = result.find("a")
+                if not link_tag:
+                    continue
+            
+            raw_link = link_tag.get("href", "")
+            link = self._extract_url(raw_link)
+            
+            if not link:
+                continue
+
+            if not self._is_valid_result(link, fetched_links, unique):
+                continue
+
+            # Get title - it's the text content of the link tag for these results
+            title = link_tag.get_text(strip=True)
+            if not title:
+                continue
+
+            # Get description - it's in a span with class FrIlee or potentially other classes
+            description_tag = result.find("span", class_="FrIlee")
+            if not description_tag:
+                description_tag = result.find(["div", "span"], class_=lambda c: c and any(x in c for x in ["snippet", "description", "VwiC3b"]))
+            
+            description = description_tag.get_text(strip=True) if description_tag else ""
+
+            # Create result object
+            search_result = SearchResult(link, title, description)
+            
+            # Add extra metadata if available
+            citation = result.find("cite")
+            if citation:
+                search_result.metadata["source"] = citation.get_text(strip=True)
+            
+            timestamp = result.find("span", class_=lambda c: c and "ZE5qJf" in c)
+            if timestamp:
+                search_result.metadata["date"] = timestamp.get_text(strip=True)
+
+            fetched_links.add(link)
+            results.append(search_result)
+            
+            if len(results) >= num_results:
+                break
+                
+        return results
+    
+    def text(
+        self, 
+        keywords: str, 
+        region: str = None,
+        safesearch: str = "moderate",
+        max_results: int = 10,
+        start_num: int = 0,
+        unique: bool = True
+    ) -> List[SearchResult]:
+        """
+        Search Google for web results.
+        
+        Args:
+            keywords: Search query
+            region: Region for search results (ISO country code)
+            safesearch: SafeSearch setting ("on", "moderate", "off")
+            max_results: Maximum number of results to return
+            start_num: Starting position for pagination
+            unique: Filter duplicate results
+            
+        Returns:
+            List of SearchResult objects with search results
+        """
+        if not keywords:
+            raise ValueError("Search keywords cannot be empty")
+            
+        # Map safesearch values to Google's safe parameter
+        safe_map = {
+            "on": "active",
+            "moderate": "moderate",
+            "off": "off"
+        }
+        safe = safe_map.get(safesearch.lower(), "moderate")
+        
+        # Keep track of unique results
+        fetched_results = []
+        fetched_links = set()
+        start = start_num
+        
+        while len(fetched_results) < max_results:
+            response_html = self._make_request(
+                term=keywords, 
+                results=max_results - len(fetched_results), 
+                start=start
+            )
+            
+            results = self._parse_search_results(
+                html=response_html,
+                num_results=max_results - len(fetched_results),
+                fetched_links=fetched_links,
+                unique=unique
+            )
+            
+            if not results:
+                break
+                
+            fetched_results.extend(results)
+            
+            if len(fetched_results) >= max_results:
                 break
             
-            img_data = {
-                "thumbnail": img.get("src", ""),
-                "title": img.get("alt", ""),
-                "type": "image"
-            }
-            
-            # Extract full resolution image URL if available
-            parent = img.parent
-            if parent and parent.get("href"):
-                img_data["full_url"] = urljoin("https://www.google.com", parent["href"])
-            
-            results.append(img_data)
-            
-        return results
-
-    def search(
-        self,
-        query: str,
-        region: str = "us-en",
-        language: str = "en",
-        safe: str = "off",
-        time_period: Optional[str] = None,
-        max_results: int = 10,
-        extract_text: bool = False,
-        max_text_length: Optional[int] = 100,
-        site: Optional[str] = None,  # Search within specific site
-        file_type: Optional[str] = None,  # Filter by file type
-        sort_by: str = "relevance",  # relevance, date
-        exclude_terms: Optional[List[str]] = None,  # Terms to exclude
-        exact_phrase: Optional[str] = None,  # Exact phrase match
-    ) -> List[Dict[str, Union[str, int]]]:
+            start += 10
+            sleep(self.sleep_interval)
+        
+        return fetched_results[:max_results]
+    
+    def news(
+        self, 
+        keywords: str, 
+        region: str = None,
+        safesearch: str = "moderate",
+        max_results: int = 10
+    ) -> List[SearchResult]:
         """
-        Enhanced search with additional filters and options.
+        Search Google News for news results.
         
         Args:
-            site: Limit search to specific website
-            file_type: Filter by file type (pdf, doc, etc.)
-            sort_by: Sort results by relevance or date
-            exclude_terms: List of terms to exclude from search
-            exact_phrase: Exact phrase to match
+            keywords: Search query
+            region: Region for search results (ISO country code)
+            safesearch: SafeSearch setting ("on", "moderate", "off")
+            max_results: Maximum number of results to return
+            
+        Returns:
+            List of SearchResult objects with news results
         """
-        # Build advanced query
-        advanced_query = query
-        if site:
-            advanced_query += f" site:{site}"
-        if file_type:
-            advanced_query += f" filetype:{file_type}"
-        if exclude_terms:
-            advanced_query += " " + " ".join(f"-{term}" for term in exclude_terms)
-        if exact_phrase:
-            advanced_query = f'"{exact_phrase}"' + advanced_query
-        
-        # Check cache first
-        cache_key = self._cache_key(advanced_query, region=region, language=language,
-                                  safe=safe, time_period=time_period, sort_by=sort_by)
-        cached_results = self._get_cached_results(cache_key)
-        if cached_results:
-            return cached_results[:max_results]
-
-        # Continue with regular search implementation...
-        results = []
-        futures = []
-        start = 0
-
-        while len(results) < max_results:
-            params = {
-                "q": advanced_query,
-                "num": 10,
-                "hl": language,
-                "start": start,
-                "safe": safe,
-                "gl": region,
-            }
-            if time_period:
-                params["tbs"] = f"qdr:{time_period}"
-
-            futures.append(self._executor.submit(self._get_url, "GET", self.SEARCH_TYPES["web"], params=params))
-            start += 10
-
-            for future in as_completed(futures):
-                try:
-                    resp_content = future.result()
-                    soup = Scout(resp_content)  # Use Scout parser
-                    
-                    result_blocks = soup.find_all("div", class_="g")
-
-                    if not result_blocks:
-                        break
-
-                    # Extract links and titles first
-                    for result_block in result_blocks:
-                        link = result_block.find("a", href=True)
-                        title = result_block.find("h3")
-                        description_box = result_block.find(
-                            "div", {"style": "-webkit-line-clamp:2"}
-                        )
-
-                        if link and title and description_box:
-                            url = link["href"]
-                            results.append({
-                                "title": title.text,
-                                "href": url,
-                                "abstract": description_box.text,
-                                "index": len(results),
-                                "type": "web",
-                                "visible_text": ""  # Initialize visible_text as empty string
-                            })
-
-                            if len(results) >= max_results:
-                                break  # Stop if we have enough results
-
-                    # Parallelize text extraction if needed
-                    if extract_text:
-                        with ThreadPoolExecutor(max_workers=self._executor._max_workers) as text_extractor:
-                            extraction_futures = [
-                                text_extractor.submit(self._extract_text_from_webpage, 
-                                                    self._get_url("GET", result['href']),
-                                                    max_characters=max_text_length)
-                                for result in results 
-                                if 'href' in result
-                            ]
-                            for i, future in enumerate(as_completed(extraction_futures)):
-                                try:
-                                    results[i]['visible_text'] = future.result()
-                                except Exception as e:
-                                    print(f"Error extracting text: {e}")
-
-                except Exception as e:
-                    print(f"Error: {e}")  
-
-        # Cache results before returning
-        self._cache_results(cache_key, results)
-        return results
-
-    def get_search_suggestions(self, query: str) -> List[str]:
-        """Get search suggestions for a query"""
-        params = {
-            "client": "chrome",
-            "q": query
+        if not keywords:
+            raise ValueError("Search keywords cannot be empty")
+            
+        # Map safesearch values to Google's safe parameter
+        safe_map = {
+            "on": "active",
+            "moderate": "moderate",
+            "off": "off"
         }
-        content = self._get_url("GET", "https://suggestqueries.google.com/complete/search",
-                               params=params)
-        suggestions = json.loads(content.decode('utf-8'))[1]
-        return suggestions
-
-    def _extract_text_from_webpage(self, html_content: bytes, max_characters: Optional[int] = None) -> str:
+        safe = safe_map.get(safesearch.lower(), "moderate")
+        
+        # Keep track of unique results
+        fetched_results = []
+        fetched_links = set()
+        
+        response_html = self._make_request(
+            term=keywords, 
+            results=max_results,
+            search_type="nws"
+        )
+        
+        results = self._parse_search_results(
+            html=response_html,
+            num_results=max_results,
+            fetched_links=fetched_links,
+            unique=True
+        )
+        
+        return results[:max_results]
+    
+    def suggestions(self, query: str, region: str = None) -> List[str]:
         """
-        Extracts visible text from HTML content using Scout parser.
+        Get search suggestions for a query term.
+        
+        Args:
+            query: Search query
+            region: Region for suggestions (ISO country code)
+        
+        Returns:
+            List of search suggestions
         """
-        soup = Scout(html_content)  # Use Scout parser
-        for tag in soup(["script", "style", "header", "footer", "nav"]):
-            tag.extract()
-        visible_text = soup.get_text(strip=True)
-        if max_characters:
-            visible_text = visible_text[:max_characters]
-        return visible_text
+        if not query:
+            raise ValueError("Search query cannot be empty")
+            
+        try:
+            params = {
+                "client": "firefox",
+                "q": query,
+            }
+            
+            # Add region if specified
+            if region and region.lower() != "all":
+                params["gl"] = region
+            
+            url = f"https://www.google.com/complete/search?{urlencode(params)}"
+            
+            headers = {
+                "User-Agent": self._get_useragent(),
+                "Accept": "application/json, text/javascript, */*",
+                "Accept-Language": self.lang,
+            }
+            
+            response = get(
+                url=url,
+                headers=headers,
+                timeout=self.timeout,
+                verify=self.verify
+            )
+            response.raise_for_status()
+            
+            # Response format is typically: ["original query", ["suggestion1", "suggestion2", ...]]
+            data = response.json()
+            if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list):
+                return data[1]
+            return []
+            
+        except Exception as e:
+            # Return empty list on error instead of raising exception
+            return []
 
-    def __enter__(self):
-        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.client.close()
-        self._executor.shutdown()
+# Legacy function support for backward compatibility
+def search(term, num_results=10, lang="en", proxy=None, advanced=False, sleep_interval=0, timeout=5, safe="active", ssl_verify=True, region=None, start_num=0, unique=False):
+    """Legacy function for backward compatibility."""
+    google_search = GoogleSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=ssl_verify,
+        lang=lang,
+        sleep_interval=sleep_interval
+    )
+    
+    results = google_search.text(
+        keywords=term,
+        region=region,
+        safesearch="on" if safe == "active" else "moderate" if safe == "moderate" else "off",
+        max_results=num_results,
+        start_num=start_num,
+        unique=unique
+    )
+    
+    # Convert to simple URLs if not advanced mode
+    if not advanced:
+        return [result.url for result in results]
+    return results
 
 
 if __name__ == "__main__":
     from rich import print
-    searcher = GoogleS(rate_limit=3.0)
-    results = searcher.search("HelpingAI-9B", max_results=5, extract_text=False, max_text_length=200)
-    for result in results:
-        print(result)
+    google = GoogleSearch(
+        timeout=10,  # Optional: Set custom timeout
+        proxies=None,  # Optional: Use proxies
+        verify=True    # Optional: SSL verification
+    )
+    
+    # Text Search
+    print("TEXT SEARCH RESULTS:")
+    text_results = google.text(
+        keywords="Python programming",
+        region="us",           # Optional: Region for results
+        safesearch="moderate",  # Optional: "on", "moderate", "off"
+        max_results=3          # Optional: Limit number of results
+    )
+    for result in text_results:
+        print(f"Title: {result.title}")
+        print(f"URL: {result.url}")
+        print(f"Description: {result.description}")
+        print("---")
+        
+    # News Search
+    print("\nNEWS SEARCH RESULTS:")
+    news_results = google.news(
+        keywords="artificial intelligence",
+        region="us",
+        safesearch="moderate",
+        max_results=2
+    )
+    for result in news_results:
+        print(f"Title: {result.title}")
+        print(f"URL: {result.url}")
+        print(f"Description: {result.description}")
+        print("---")
+        
+    # Search Suggestions
+    print("\nSEARCH SUGGESTIONS:")
+    suggestions = google.suggestions("how to")
+    print(suggestions)

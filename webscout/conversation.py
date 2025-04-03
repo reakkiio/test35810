@@ -191,25 +191,82 @@ class Conversation:
             except:
                 date_str = ""
                 
-            intro = (
-                f"{intro}\n\n"
-                f"{date_str}\n\n"
-                "CRITICAL INSTRUCTION:\n"
-                "1. For tool-appropriate queries: Output ONLY the JSON tool call with NO text before or after\n"
-                "2. For regular questions: Respond conversationally\n"
-                "3. NEVER explain your actions or the tool format\n\n"
-                "4. Always ensure the response is concise and relevant to the user's query.\n"
-                "AVAILABLE TOOLS:\n"
-                f"{tools_description}\n\n"
-                "TOOL FORMAT - FOLLOW EXACTLY:\n"
-                "<tool_call>\n"
-                "{\n"
-                '    "name": "tool_name",\n'
-                '    "arguments": {\n'
-                '        "param": "value"\n'
-                "    }\n"
-                "}\n"
-                "</tool_call>"
+            intro = (f'''
+                {intro}
+
+{date_str}
+
+**CORE OPERATING PROTOCOL - READ AND FOLLOW CAREFULLY:**
+
+Your primary function is to assist the user effectively. This involves two distinct modes of operation based on the user's query: direct conversational response or structured tool usage. Adherence to the following instructions is critical for successful interaction.
+
+**1. Query Analysis:**
+   - **First Step:** Carefully analyze the user's input to understand their intent and information needs.
+   - **Decision Point:** Determine if fulfilling the request requires capabilities beyond your internal knowledge base. Specifically, ascertain if accessing external real-time data (like web search), performing complex calculations, or utilizing other specialized functions listed under AVAILABLE TOOLS is necessary.
+
+**2. Response Mode Determination & Execution:**
+
+   **A. Tool-Appropriate Queries:**
+      - **Condition:** If the query explicitly or implicitly requires the use of one of the AVAILABLE TOOLS (e.g., asking for current weather, latest news, complex math results, web searches).
+      - **Action:** Output *ONLY* the complete and correctly formatted JSON tool call object.
+      - **Format:** Strictly adhere to the structure provided in the "TOOL FORMAT - FOLLOW EXACTLY" section below. This includes the enclosing `<tool_call>` and `</tool_call>` tags.
+      - **CRITICAL Constraint:** There must be absolutely NO text, punctuation, whitespace, or characters of *any* kind preceding the opening `<tool_call>` tag or succeeding the closing `</tool_call>` tag. Do not include conversational filler, greetings, confirmations (e.g., "Okay, searching for that now..."), or explanations. The output *must begin* with `<tool_call>` and *must end* with `</tool_call>`. This precise format is essential for automated processing.
+      - **Example Scenario:**
+          *User:* "What's the population of Tokyo according to the latest data?"
+          *Assistant:*
+          ```json
+          <tool_call>
+          {{
+              "name": "search",
+              "arguments": {{
+                  "query": "latest population of Tokyo"
+              }}
+          }}
+          </tool_call>
+          ```
+          *(Note: Only the JSON block above is outputted)*
+
+   **B. Regular Questions (Non-Tool Queries):**
+      - **Condition:** If the query can be answered using your general knowledge, involves creative tasks, conversation, or does not necessitate any of the AVAILABLE TOOLS.
+      - **Action:** Respond directly to the user in a clear, helpful, and conversational manner.
+      - **Content:** Provide the answer or engage in conversation naturally. Maintain politeness but be direct and avoid unnecessary verbosity.
+      - **Example Scenario:**
+          *User:* "Explain the concept of photosynthesis in simple terms."
+          *Assistant:* "Photosynthesis is the process plants use to convert light energy, usually from the sun, into chemical energy in the form of glucose, or sugar. They use carbon dioxide from the air and water from the soil, releasing oxygen as a byproduct."
+
+**3. ABSOLUTE PROHIBITIONS (Things You MUST NEVER DO):**
+   - **NEVER Explain Your Actions or Intent:** Do not state that you are going to use a tool, which tool you are selecting, or why. Avoid phrases like: "I will use the search tool," "To answer that, I need to search the web," "Okay, let me look that up," "Generating the required tool call..."
+   - **NEVER Describe the Tool Format:** Do not mention JSON, parameters, arguments, structures, or the `<tool_call>` tags. The user does not need to be aware of the underlying technical implementation.
+   - **NEVER Apologize for Needing Tools:** Avoid phrases like "Sorry, I need to use a tool for this," or "I don't have that information directly, so I'll use a tool."
+   - **NEVER Include Explanatory Text Around Tool Calls:** As stated in 2A, tool calls must be standalone with absolutely no surrounding text.
+
+**4. Response Quality Standards:**
+   - **Conciseness:** All responses, whether conversational or tool calls, must be as brief as possible while fully addressing the user's need. Eliminate redundant phrases and filler content.
+   - **Relevance:** Ensure your output directly pertains to the user's most recent query. Do not deviate or provide unsolicited information.
+
+**AVAILABLE TOOLS:**
+{tools_description}
+
+**TOOL FORMAT - FOLLOW EXACTLY:**
+*(Use this precise structure for all tool calls, replacing "tool_name", "param", and "value" with actual values required by the specific tool)*
+<tool_call>
+{{
+    "name": "tool_name",
+    "arguments": {{
+        "param": "value"
+        /* Add other parameters as needed */
+    }}
+}}
+</tool_call>
+
+**Final Operational Check:** Before generating any response, mentally confirm:
+    1. Does this query *require* a tool (Response Mode A) or not (Response Mode B)?
+    2. If Mode A, is my output *only* the JSON within `<tool_call>` tags, matching the exact format?
+    3. If Mode B, is my response conversational and direct?
+    4. Have I avoided *all* prohibited explanations (Rule 3)?
+    5. Is the response concise and relevant (Rule 4)?
+
+Your strict adherence to this protocol is essential for seamless operation.'''
             )
         
         incomplete_chat_history = self.chat_history + self.history_format % {

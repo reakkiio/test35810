@@ -1,5 +1,43 @@
 import os
-from typing import Optional
+import json
+import logging
+from typing import Optional, Dict, List, Any, TypedDict, Callable, TypeVar, Union
+
+T = TypeVar('T')
+
+
+class FunctionCall(TypedDict):
+    """Type for a function call."""
+    name: str
+    arguments: Dict[str, Any]
+
+
+class ToolDefinition(TypedDict):
+    """Type for a tool definition."""
+    type: str
+    function: Dict[str, Any]
+
+
+class FunctionCallData(TypedDict, total=False):
+    """Type for function call data"""
+    tool_calls: List[FunctionCall]
+    error: str
+
+
+class Fn:
+    """
+    Represents a function (tool) that the agent can call.
+    """
+    def __init__(self, name: str, description: str, parameters: Dict[str, str]) -> None:
+        self.name: str = name
+        self.description: str = description
+        self.parameters: Dict[str, str] = parameters
+
+
+def tools(func: Callable[..., T]) -> Callable[..., T]:
+    """Decorator to mark a function as a tool and automatically convert it."""
+    func._is_tool = True  # type: ignore
+    return func
 
 
 class Conversation:
@@ -10,6 +48,7 @@ class Conversation:
     - Loading/saving conversations from/to files
     - Generating prompts based on context
     - Managing token limits and history pruning
+    - Supporting tool calling functionality
     
     Examples:
         >>> chat = Conversation(max_tokens=500)
@@ -19,8 +58,8 @@ class Conversation:
     """
 
     intro = (
-        "You're a Large Language Model for chatting with people. "
-        "Assume role of the LLM and give your response."
+        "You're a helpful Large Language Model assistant. "
+        "Respond directly to the user's questions or use tools when appropriate."
     )
 
     def __init__(
@@ -29,6 +68,7 @@ class Conversation:
         max_tokens: int = 600,
         filepath: Optional[str] = None,
         update_file: bool = True,
+        tools: Optional[List[Fn]] = None,
     ):
         """Initialize a new Conversation manager.
 
@@ -37,6 +77,7 @@ class Conversation:
             max_tokens (int): Maximum tokens for completion response. Defaults to 600.
             filepath (str, optional): Path to save/load conversation history. Defaults to None.
             update_file (bool): Whether to append new messages to file. Defaults to True.
+            tools (List[Fn], optional): List of tools available for the conversation. Defaults to None.
 
         Examples:
             >>> chat = Conversation(max_tokens=500)
@@ -46,10 +87,12 @@ class Conversation:
         self.max_tokens_to_sample = max_tokens
         self.chat_history = ""  # Initialize as empty string
         self.history_format = "\nUser : %(user)s\nLLM :%(llm)s"
+        self.tool_history_format = "\nUser : %(user)s\nLLM : [Tool Call: %(tool)s]\nTool : %(result)s"
         self.file = filepath
         self.update_file = update_file
         self.history_offset = 10250
         self.prompt_allowance = 10
+        self.tools = tools or []
         
         if filepath:
             self.load_conversation(filepath, False)
@@ -115,6 +158,7 @@ class Conversation:
 
         This method:
         - Combines the intro, history, and new prompt
+        - Adds tools information if available
         - Trims history if needed
         - Keeps everything organized and flowing
 
@@ -133,16 +177,46 @@ class Conversation:
             return prompt
 
         intro = intro or self.intro or (
-            "You're a Large Language Model for chatting with people. "
-            "Assume role of the LLM and give your response."
+            "You are a helpful and versatile AI assistant designed to assist users with a wide range of tasks. "
+            "Respond directly to the user's questions with concise and informative answers. "
+            "When appropriate, utilize available tools to gather additional information or perform specific actions to better address the user's needs."
         )
+        
+        # Add tool information if tools are available
+        tools_description = self.get_tools_description()
+        if tools_description:
+            try:
+                from datetime import datetime
+                date_str = f"Current date: {datetime.now().strftime('%d %b %Y')}"
+            except:
+                date_str = ""
+                
+            intro = (
+                f"{intro}\n\n"
+                f"{date_str}\n\n"
+                "CRITICAL INSTRUCTION:\n"
+                "1. For tool-appropriate queries: Output ONLY the JSON tool call with NO text before or after\n"
+                "2. For regular questions: Respond conversationally\n"
+                "3. NEVER explain your actions or the tool format\n\n"
+                "4. Always ensure the response is concise and relevant to the user's query.\n"
+                "AVAILABLE TOOLS:\n"
+                f"{tools_description}\n\n"
+                "TOOL FORMAT - FOLLOW EXACTLY:\n"
+                "<tool_call>\n"
+                "{\n"
+                '    "name": "tool_name",\n'
+                '    "arguments": {\n'
+                '        "param": "value"\n'
+                "    }\n"
+                "}\n"
+                "</tool_call>"
+            )
         
         incomplete_chat_history = self.chat_history + self.history_format % {
             "user": prompt,
             "llm": ""
         }
         complete_prompt = intro + self.__trim_chat_history(incomplete_chat_history, intro)
-        # logger.info(f"Generated prompt: {complete_prompt}")
         return complete_prompt
 
     def update_chat_history(
@@ -182,6 +256,47 @@ class Conversation:
         self.chat_history += new_history
         # logger.info(f"Chat history updated with prompt: {prompt}")
 
+    def update_chat_history_with_tool(
+        self, prompt: str, tool_name: str, tool_result: str, force: bool = False
+    ) -> None:
+        """Update chat history with a tool call and its result.
+
+        This method:
+        - Adds tool call interaction to the history
+        - Updates the file if needed
+        - Maintains the conversation flow with tools
+
+        Args:
+            prompt (str): The user's message that triggered the tool call
+            tool_name (str): Name of the tool that was called
+            tool_result (str): Result returned by the tool
+            force (bool): Force update even if history is off. Default: False
+
+        Examples:
+            >>> chat = Conversation()
+            >>> chat.update_chat_history_with_tool("What's the weather?", "weather_tool", "It's sunny, 75°F")
+        """
+        if not self.status and not force:
+            return
+
+        new_history = self.tool_history_format % {
+            "user": prompt,
+            "tool": tool_name,
+            "result": tool_result
+        }
+        
+        if self.file and self.update_file:
+            # Create file if it doesn't exist
+            if not os.path.exists(self.file):
+                with open(self.file, "w", encoding="utf-8") as fh:
+                    fh.write(self.intro + "\n")
+            
+            # Append new history
+            with open(self.file, "a", encoding="utf-8") as fh:
+                fh.write(new_history)
+        
+        self.chat_history += new_history
+
     def add_message(self, role: str, content: str) -> None:
         """Add a new message to the chat - simple and clean! 
 
@@ -218,15 +333,200 @@ class Conversation:
     #     logger.info(f"Added message from {role}: {content}")
     #     logging.info(f"Message added: {role}: {content}")
 
-    # def validate_message(self, role: str, content: str) -> bool:
-    #     """Validate the message role and content."""
-    #     valid_roles = {'user', 'llm', 'tool', 'reasoning'}
-    #     if role not in valid_roles:
-    #         logger.error(f"Invalid role: {role}")
-    #         return False
-    #     if not content:
-    #         logger.error("Content cannot be empty.")
-    #         return False
-    #     return True
+    def validate_message(self, role: str, content: str) -> bool:
+        """Validate the message role and content."""
+        valid_roles = {            'user', 'llm', 'tool', 'reasoning', 'function_call'        }
+        if role not in valid_roles:
+            logging.error(f"Invalid role: {role}")
+            return False
+        if not content:
+            logging.error("Content cannot be empty.")
+            return False
+        return True
+
+    def _parse_function_call(self, response: str) -> FunctionCallData:
+        """Parse a function call from the LLM's response.
+        
+        Args:
+            response (str): The LLM's response containing a function call
+            
+        Returns:
+            FunctionCallData: Parsed function call data or error
+        """
+        try:
+            # First try the standard format with square brackets: <tool_call>[...]</tool_call>
+            start_tag: str = "<tool_call>["
+            end_tag: str = "]</tool_call>"
+            start_idx: int = response.find(start_tag)
+            end_idx: int = response.rfind(end_tag)
+
+            # If not found, try the alternate format: <tool_call>\n{...}\n</tool_call>
+            if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+                start_tag = "<tool_call>"
+                end_tag = "</tool_call>"
+                start_idx = response.find(start_tag)
+                end_idx = response.rfind(end_tag)
+                
+                if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+                    raise ValueError("No valid <tool_call> JSON structure found in the response.")
+                
+                # Extract JSON content - for the format without brackets
+                json_str: str = response[start_idx + len(start_tag):end_idx].strip()
+                
+                # Try to parse the JSON directly
+                try:
+                    parsed_response: Any = json.loads(json_str)
+                    if isinstance(parsed_response, dict):
+                        return {"tool_calls": [parsed_response]}
+                    else:
+                        raise ValueError("Invalid JSON structure in tool call.")
+                except json.JSONDecodeError:
+                    # If direct parsing failed, try to extract just the JSON object
+                    import re
+                    json_pattern = re.search(r'\{[\s\S]*\}', json_str)
+                    if json_pattern:
+                        parsed_response = json.loads(json_pattern.group(0))
+                        return {"tool_calls": [parsed_response]}
+                    raise
+            else:
+                # Extract JSON content - for the format with brackets
+                json_str: str = response[start_idx + len(start_tag):end_idx].strip()
+                parsed_response: Any = json.loads(json_str)
+                
+                if isinstance(parsed_response, list):
+                    return {"tool_calls": parsed_response}
+                elif isinstance(parsed_response, dict):
+                    return {"tool_calls": [parsed_response]}
+                else:
+                    raise ValueError("<tool_call> should contain a list or a dictionary of tool calls.")
+
+        except (ValueError, json.JSONDecodeError) as e:
+            logging.error(f"Error parsing function call: %s", e)
+            return {"error": str(e)}
+
+    def execute_function(self, function_call_data: FunctionCallData) -> str:
+        """Execute a function call and return the result.
+        
+        Args:
+            function_call_data (FunctionCallData): The function call data
+            
+        Returns:
+            str: Result of the function execution
+        """
+        tool_calls: Optional[List[FunctionCall]] = function_call_data.get("tool_calls")
+
+        if not tool_calls or not isinstance(tool_calls, list):
+            return "Invalid tool_calls format."
+        
+        results: List[str] = []
+        for tool_call in tool_calls:
+            function_name: str = tool_call.get("name")
+            arguments: Dict[str, Any] = tool_call.get("arguments", {})
+
+            if not function_name or not isinstance(arguments, dict):
+                results.append(f"Invalid tool call: {tool_call}")
+                continue
+
+            # Here you would implement the actual execution logic for each tool
+            # For demonstration, we'll return a placeholder response
+            results.append(f"Executed {function_name} with arguments {arguments}")
+
+        return "; ".join(results)
+        
+    def _convert_fns_to_tools(self, fns: Optional[List[Fn]]) -> List[ToolDefinition]:
+        """Convert functions to tool definitions for the LLM.
+        
+        Args:
+            fns (Optional[List[Fn]]): List of function definitions
+            
+        Returns:
+            List[ToolDefinition]: List of tool definitions
+        """
+        if not fns:
+            return []
+        
+        tools: List[ToolDefinition] = []
+        for fn in fns:
+            tool: ToolDefinition = {
+                "type": "function",
+                "function": {
+                    "name": fn.name,
+                    "description": fn.description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            param_name: {
+                                "type": param_type,
+                                "description": f"The {param_name} parameter"
+                            } for param_name, param_type in fn.parameters.items()
+                        },
+                        "required": list(fn.parameters.keys())
+                    }
+                }
+            }
+            tools.append(tool)
+        return tools
+        
+    def get_tools_description(self) -> str:
+        """Get a formatted string of available tools for the intro prompt.
+        
+        Returns:
+            str: Formatted tools description
+        """
+        if not self.tools:
+            return ""
+            
+        tools_desc = []
+        for fn in self.tools:
+            params_desc = ", ".join([f"{name}: {typ}" for name, typ in fn.parameters.items()])
+            tools_desc.append(f"- {fn.name}: {fn.description} (Parameters: {params_desc})")
+            
+        return "\n".join(tools_desc)
+
+    def handle_tool_response(self, response: str) -> Dict[str, Any]:
+        """Process a response that might contain a tool call.
+        
+        This method:
+        - Checks if the response contains a tool call
+        - Parses and executes the tool call if present
+        - Returns the appropriate result
+        
+        Args:
+            response (str): The LLM's response
+            
+        Returns:
+            Dict[str, Any]: Result containing 'is_tool_call', 'result', and 'original_response'
+        """
+        # Check if response contains a tool call
+        if "<tool_call>" in response:
+            function_call_data = self._parse_function_call(response)
+            
+            if "error" in function_call_data:
+                return {
+                    "is_tool_call": True, 
+                    "success": False,
+                    "result": function_call_data["error"],
+                    "original_response": response
+                }
+                
+            # Execute the function call
+            result = self.execute_function(function_call_data)
+            
+            # Add the result to chat history as a tool message
+            self.add_message("tool", result)
+            
+            return {
+                "is_tool_call": True,
+                "success": True,
+                "result": result,
+                "tool_calls": function_call_data.get("tool_calls", []),
+                "original_response": response
+            }
+        
+        return {
+            "is_tool_call": False,
+            "result": response,
+            "original_response": response
+        }
 
 

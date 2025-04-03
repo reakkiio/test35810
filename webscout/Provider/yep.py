@@ -1,18 +1,17 @@
-import time
 import uuid
 import cloudscraper
 import json
 
-from typing import Any, Dict, Optional, Generator, Union
-from dataclasses import dataclass, asdict
-from datetime import date
+from typing import Any, Dict, Optional, Generator, Union, List, TypeVar
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
-from webscout import WEBS, exceptions
+from webscout import exceptions
 from webscout.litagent import LitAgent
+from webscout.conversation import Conversation, Fn
+
+T = TypeVar('T')
 
 
 class YEPCHAT(Provider):
@@ -39,7 +38,8 @@ class YEPCHAT(Provider):
         model: str = "DeepSeek-R1-Distill-Qwen-32B",
         temperature: float = 0.6,
         top_p: float = 0.7,
-        browser: str = "chrome"
+        browser: str = "chrome",
+        tools: Optional[List[Fn]] = None
     ):
         """
         Initializes the YEPCHAT provider with the specified parameters.
@@ -51,6 +51,11 @@ class YEPCHAT(Provider):
 
             >>> ai.chat("Tell me a joke", stream=True)
             Initiates a chat with the Yep API using the provided prompt.
+            
+            >>> weather_tool = Fn(name="get_weather", description="Get the current weather", parameters={"location": "string"})
+            >>> ai = YEPCHAT(tools=[weather_tool])
+            >>> ai.chat("What's the weather in New York?")
+            Uses the weather tool to provide weather information.
         """
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(
@@ -103,7 +108,7 @@ class YEPCHAT(Provider):
             else intro or Conversation.intro
         )
         self.conversation = Conversation(
-            is_conversation, self.max_tokens_to_sample, filepath, update_file
+            is_conversation, self.max_tokens_to_sample, filepath, update_file, tools=tools
         )
         self.conversation.history_offset = history_offset
         self.session.proxies = proxies
@@ -150,6 +155,7 @@ class YEPCHAT(Provider):
     ) -> Union[Dict[str, Any], Generator]:
         """
         Sends a prompt to the Yep API and returns the response.
+        Now supports tool calling functionality.
 
         Examples:
             >>> ai = YEPCHAT()
@@ -158,6 +164,11 @@ class YEPCHAT(Provider):
 
             >>> ai.ask("Tell me a joke", stream=True)
             Streams the response from the Yep API.
+            
+            >>> weather_tool = Fn(name="get_weather", description="Get the current weather", parameters={"location": "string"})
+            >>> ai = YEPCHAT(tools=[weather_tool])
+            >>> ai.ask("What's the weather in New York?")
+            Will use the weather tool to provide response.
         """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -219,7 +230,25 @@ class YEPCHAT(Provider):
                                             yield resp if raw else resp
                                 except json.JSONDecodeError:
                                     pass
-                    self.conversation.update_chat_history(prompt, streaming_text)
+                    
+                    # Check if the response contains a tool call
+                    response_data = self.conversation.handle_tool_response(streaming_text)
+                    
+                    if response_data["is_tool_call"]:
+                        # Handle tool call results
+                        if response_data["success"]:
+                            for tool_call in response_data.get("tool_calls", []):
+                                tool_name = tool_call.get("name", "unknown_tool")
+                                result = response_data["result"]
+                                self.conversation.update_chat_history_with_tool(prompt, tool_name, result)
+                        else:
+                            # If tool call failed, update history with error
+                            self.conversation.update_chat_history(prompt, 
+                                f"Error executing tool call: {response_data['result']}")
+                    else:
+                        # Normal response handling
+                        self.conversation.update_chat_history(prompt, streaming_text)
+                        
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
@@ -242,12 +271,35 @@ class YEPCHAT(Provider):
                 response_data = response.json()
                 if 'choices' in response_data and len(response_data['choices']) > 0:
                     content = response_data['choices'][0].get('message', {}).get('content', '')
-                    self.conversation.update_chat_history(prompt, content)
-                    return {"text": content}
+                    
+                    # Check if the response contains a tool call
+                    tool_response = self.conversation.handle_tool_response(content)
+                    
+                    if tool_response["is_tool_call"]:
+                        # Process tool call
+                        if tool_response["success"]:
+                            # Get the first tool call for simplicity
+                            if "tool_calls" in tool_response and len(tool_response["tool_calls"]) > 0:
+                                tool_call = tool_response["tool_calls"][0]
+                                tool_name = tool_call.get("name", "unknown_tool")
+                                tool_result = tool_response["result"]
+                                
+                                # Update chat history with tool call
+                                self.conversation.update_chat_history_with_tool(prompt, tool_name, tool_result)
+                                
+                                # Return tool result
+                                return {"text": tool_result, "is_tool_call": True, "tool_name": tool_name}
+                        
+                        # If tool call processing failed
+                        return {"text": tool_response["result"], "is_tool_call": True, "error": True}
+                    else:
+                        # Normal response handling
+                        self.conversation.update_chat_history(prompt, content)
+                        return {"text": content}
                 else:
                     raise exceptions.FailedToGenerateResponseError("No response content found")
             except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                raise exceptions.FailedToGenerateResponseError(f"Request failed: e")
 
         return for_stream() if stream else for_non_stream()
 

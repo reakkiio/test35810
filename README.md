@@ -1,32 +1,37 @@
-<div align="center">
-  <!-- Replace `#` with your actual links -->
-  <a href="https://t.me/PyscoutAI"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
-  <a href="https://www.instagram.com/oevortex/"><img alt="Instagram" src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white"></a>
-  <a href="https://www.linkedin.com/in/oe-vortex-29a407265/"><img alt="LinkedIn" src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"></a>
-  <a href="https://buymeacoffee.com/oevortex"><img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
-</div>
 
 <div align="center">
-  <!-- Replace `#` with your actual links -->
-  <a href="https://youtube.com/@OEvortex">▶️ Vortex's YouTube Channel</a>
-</div>
-<div align="center">
-  <a href="https://t.me/ANONYMOUS_56788">📢 Anonymous Coder's Telegram</a>
+  <a href="https://github.com/OEvortex/Webscout">
+    <!-- Consider adding a dedicated Webscout logo here if you have one -->
+    <img src="https://img.shields.io/badge/WebScout-Ultimate%20Toolkit-blue?style=for-the-badge&logo=python&logoColor=white" alt="WebScout Logo">
+  </a>
+  <br/>
+  <h1>Webscout</h1>
+  <p><strong>Your All-in-One Python Toolkit for Web Search, AI Interaction, Digital Utilities, and More.</strong></p>
+  <p>
+    Access diverse search engines, cutting-edge AI models, temporary communication tools, media utilities, developer helpers, and powerful CLI interfaces – all through one unified library.
+  </p>
+
+  <!-- Badges -->
+  <p>
+    <a href="https://pypi.org/project/webscout/"><img src="https://img.shields.io/pypi/v/webscout.svg?style=flat-square&logo=pypi&label=PyPI" alt="PyPI Version"></a>
+    <a href="https://pepy.tech/project/webscout"><img src="https://static.pepy.tech/badge/webscout/month?style=flat-square" alt="Monthly Downloads"></a>
+    <a href="https://pepy.tech/project/webscout"><img src="https://static.pepy.tech/badge/webscout?style=flat-square" alt="Total Downloads"></a>
+    <a href="#"><img src="https://img.shields.io/pypi/pyversions/webscout?style=flat-square&logo=python" alt="Python Version"></a>
+    <!-- Add License Badge if applicable: <a href="LICENSE"><img src="https://img.shields.io/pypi/l/webscout?style=flat-square" alt="License"></a> -->
+    <!-- Add Build Status Badge if applicable -->
+  </p>
+
+  <!-- Social/Support Links -->
+  <div>
+    <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
+    <a href="https://t.me/ANONYMOUS_56788"><img alt="Developer Telegram" src="https://img.shields.io/badge/Developer%20Contact-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
+    <a href="https://youtube.com/@OEvortex"><img alt="YouTube" src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
+    <a href="https://www.linkedin.com/in/oe-vortex-29a407265/"><img alt="LinkedIn" src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"></a>
+    <a href="https://www.instagram.com/oevortex/"><img alt="Instagram" src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white"></a>
+    <a href="https://buymeacoffee.com/oevortex"><img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
+  </div>
 </div>
 
-<p align="center">
-  <strong>Webscout</strong> is the all-in-one search and AI toolkit you need.
-  <br>
-  Discover insights with Yep.com, DuckDuckGo, and Phind; access cutting-edge AI models; transcribe YouTube videos; generate temporary emails and phone numbers; perform text-to-speech conversions; and much more!
-</p>
-
-<div align="center">
-  <img src="https://img.shields.io/badge/WebScout-API-blue?style=for-the-badge&logo=WebScout" alt="WebScout API Badge">
-  <a href="#"><img src="https://img.shields.io/pypi/pyversions/webscout" alt="Python Version"></a>
-  <a href="https://pepy.tech/project/webscout"><img src="https://static.pepy.tech/badge/webscout" alt="Downloads"></a>
-</div>
-
----
 
 ## 🚀 Features
 

@@ -47,7 +47,7 @@ try:
     # Assume 'coloring.py' exists in the same directory or PYTHONPATH
     try:
         # Make sure these names match the classes in your coloring.py
-        from litprinter.coloring import *
+        from .coloring import *
         # Mapping for custom style names to the imported classes
         CUSTOM_STYLES = {
             "jarvis": JARVIS,
@@ -60,8 +60,6 @@ try:
         }
         # print("Successfully imported custom styles from coloring.py") # Optional confirmation
     except ImportError as import_err:
-        print(f"WARNING: Could not import custom styles from coloring.py: {import_err}", file=sys.stderr)
-        print("         Only standard Pygments themes will be available.", file=sys.stderr)
         CUSTOM_STYLES = {} # No custom styles available
 
 except ImportError:
@@ -79,8 +77,6 @@ except ImportError:
     def guess_lexer_for_filename(filename, code): return TextLexer()
     class ClassNotFound(Exception): pass
     CUSTOM_STYLES = {} # No pygments, no custom styles
-    print("WARNING: 'pygments' library not found. Syntax highlighting will be disabled.", file=sys.stderr)
-    print("Install it with: pip install pygments", file=sys.stderr)
 
 
 # --- Configuration ---
@@ -212,7 +208,6 @@ class PrettyTraceback:
                 if not self.style_cls:
                     try: self.style_cls = get_style_by_name(theme)
                     except ClassNotFound:
-                        print(f"WARNING: Pygments style '{theme}' not found. Using '{DEFAULT_THEME}'.", file=sys.stderr)
                         self.theme_name = DEFAULT_THEME
                         self.style_cls = CUSTOM_STYLES.get(DEFAULT_THEME.lower()) or get_style_by_name('default')
 
@@ -220,7 +215,6 @@ class PrettyTraceback:
             if self.style_cls and Terminal256Formatter:
                 try: self.formatter = Terminal256Formatter(style=self.style_cls)
                 except Exception as e:
-                     print(f"WARNING: Failed to initialize Pygments formatter: {e}", file=sys.stderr)
                      self.formatter = None
 
         self.trace = self._extract_trace()

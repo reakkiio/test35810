@@ -1,170 +1,304 @@
-# 🖨️ LitPrinter - The Most Lit Console Printer Ever! 
+<div align="center">
+  <a href="https://github.com/OEvortex/Webscout">
+    <img src="https://img.shields.io/badge/LitPrinter-Beautiful%20Debug%20Printing-blue?style=for-the-badge&logo=python&logoColor=white" alt="LitPrinter Logo">
+  </a>
+  <br/>
+  <h1>🔥 LitPrinter</h1>
+  <p><strong>The most sophisticated debug printing library for Python with rich formatting, syntax highlighting, and beautiful tracebacks.</strong></p>
+  <p>
+    Turn your debugging experience from mundane to magnificent with color themes, context-aware output, smart formatting, and powerful traceback handling.
+  </p>
 
-Yo fam! Meet LitPrinter - your new bestie for making your console output look absolutely fire! 🔥 Built different with all the drip you need to make your terminal pop!
+  <!-- Badges -->
+  <p>
+    <img src="https://img.shields.io/pypi/v/webscout.svg?style=flat-square&logo=pypi&label=PyPI" alt="Version">
+    <img src="https://img.shields.io/badge/python-3.6+-brightgreen.svg?style=flat-square&logo=python" alt="Python">
+    <img src="https://img.shields.io/badge/license-MIT-orange.svg?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/pygments-required-purple.svg?style=flat-square" alt="Dependencies">
+  </p>
+</div>
 
-## 🚀 Quick Start
+## 🚀 Introduction
+
+LitPrinter is an enhanced debugging tool for Python that provides beautiful, informative output in your terminal. Inspired by the `icecream` package, LitPrinter takes debugging to the next level with context-aware output, syntax highlighting, and powerful formatting options.
 
 ```python
-from webscout import printer
+from webscout.litprinter import lit
 
-# Basic printing with style
-printer.print("Wassup World!", color="blue", bold=True)
-printer.success("We got a W! 🏆")
-printer.warning("Heads up fam! ⚠️")
-printer.error("Oof, that ain't it chief! ❌")
+# Print variables with their names and values
+x, y = 10, 20
+lit(x, y)  # Prints: LIT| [script.py:6] in () >>> x: 10, y: 20
 ```
 
-## 💫 Features That Hit Different
+## ✨ Features
 
-### 🎨 Styled Text
+### 🎨 Rich Syntax Highlighting
 
 ```python
-# Colors & styles
-printer.print("Glow up!", color="cyan", bold=True)
-printer.print("Subtle flex", italic=True, dim=True)
-printer.print("Important stuff", bg_color="red", underline=True)
+# Choose from multiple color themes
+from webscout.litprinter import lit
+lit.color_style = "CYBERPUNK"  # Options: JARVIS, RICH, MODERN, NEON, CYBERPUNK, DRACULA, MONOKAI
+
+# Or use as a parameter
+lit(my_complex_object, color_style="NEON")
 ```
 
-### 📦 Fancy Boxes
+### 📊 Smart Object Formatting
 
 ```python
-# Box it up with style
-printer.print("VIP Message", border=True, rounded_corners=True)
-printer.print("ALERT!", border=True, border_color="red", double_border=True)
-```
-
-### 🎬 Animations
-
-```python
-# Make it move!
-printer.print("Loading...", animate=True, animation_type="typing")
-printer.print("Processing", animate=True, animation_speed=0.1)
-```
-
-### 📊 Data Visualization
-
-```python
-# Show data with drip
+# Automatically pretty-formats different data types
 data = {
-    "status": "vibing",
-    "energy": "100%",
-    "mood": "lit"
+    "users": ["alice", "bob", "charlie"],
+    "active": True,
+    "settings": {
+        "theme": "dark",
+        "notifications": True
+    }
 }
-
-# Pretty JSON
-printer.print(data, as_json=True)
-
-# Tree view
-printer.print(data, as_tree=True)
-
-# Table format
-headers = ["Metric", "Value"]
-rows = [["Hype Level", "Maximum"]]
-printer.print([headers, rows], as_table=True)
+lit(data)  # Formatted with proper indentation and syntax highlighting
 ```
 
-### 💻 Code Blocks
+### 🔍 Context-Aware Output
 
 ```python
-code = '''
-def stay_lit():
-    return "Always keeping it 💯"
-'''
-printer.print(code, as_code=True, language="python")
+# Shows file, line number, and function name
+def calculate_total(a, b):
+    lit(a, b)  # Shows: LIT| [script.py:3] in calculate_total() >>> a: 10, b: 20
+    return a + b
 ```
 
-### 📝 Markdown Support
+### 🧵 Inline Usage
 
 ```python
-markdown = """
-# Big Moves
-- Level 1: Start the grind
-- Level 2: Keep pushing
-- Level 3: **Achieve greatness**
-"""
-printer.print(markdown, markdown=True)
+# Use in-line without disrupting your code flow
+def get_user(user_id):
+    user = database.find(user_id)
+    return lit(user)  # Both prints and returns the value
 ```
 
-## 🎯 Real Examples
-
-### Progress Tracking
+### 📝 Logging Support
 
 ```python
-from webscout import printer
+from webscout.litprinter import log
 
-def download_files():
-    with printer.progress_bar(total=100) as progress:
-        for i in range(100):
-            # Do work here
-            progress.update(i + 1)
-            
-def process_data():
-    with printer.spinner("Processing your data... "):
-        # Do work here
-        pass
+# Different log levels
+log("System starting...", level="info")
+log("Debug information", level="debug")
+log("Warning: disk space low", level="warning")
+log("Critical error occurred", level="error")
 ```
 
-### Status Updates
+### 💥 Beautiful Traceback Handling
 
 ```python
-# Keep the squad updated
-printer.status("Connecting to server...")
-printer.success("We're in! 🎯")
+from webscout.litprinter.traceback import install as install_traceback
 
-# Show warnings with style
-printer.warning("CPU getting spicy! 🌶️")
+# Replace Python's default traceback with beautiful, colorful tracebacks
+install_traceback(
+    theme="cyberpunk",  # Use any theme: JARVIS, RICH, MODERN, NEON, CYBERPUNK, DRACULA, MONOKAI
+    show_locals=True,   # Show local variables in each frame
+    extra_lines=3       # Show extra context lines around error
+)
 
-# Error handling with flair
+# Now any exceptions will be displayed with beautiful formatting
+def example():
+    x = {"test": [1, 2, 3]}
+    y = x["not_found"]  # This will raise a KeyError with beautiful traceback
+```
+
+### 🛠️ Advanced Traceback Options
+
+```python
+from webscout.litprinter.traceback import install, PrettyTraceback
+
+# Basic installation with defaults
+install()
+
+# Advanced configuration 
+install(
+    extra_lines=5,            # Show 5 lines of context around errors
+    theme="dracula",          # Use Dracula theme
+    show_locals=True,         # Show local variables
+    locals_max_length=150,    # Limit local variable display length
+    locals_max_depth=3,       # How deep to format nested structures
+    locals_hide_dunder=True,  # Hide __dunder__ variables
+    width=120                 # Terminal width for formatting
+)
+
+# Or use PrettyTraceback directly for one-time use
 try:
-    raise Exception("Connection lost")
+    risky_operation()
 except Exception as e:
-    printer.error(f"We hit a snag: {e} 😤")
+    tb = PrettyTraceback(type(e), e, e.__traceback__, theme="neon", show_locals=True)
+    tb.print()
 ```
 
-### Data Reports
+### ⚙️ Highly Customizable
 
 ```python
-# Print structured data
-stats = {
-    "users_online": 1000,
-    "server_status": "vibing",
-    "uptime": "99.9%"
-}
+from webscout.litprinter import lit, argumentToString
 
-printer.print("Server Stats 📊", style="bold")
-printer.json(stats)  # Pretty JSON output
+# Register custom formatters for your types
+@argumentToString.register(MyCustomClass)
+def format_my_class(obj):
+    return f"MyClass(id={obj.id}, name='{obj.name}')"
 
-# Or as a table
-headers = ["Metric", "Value"]
-rows = [[k, v] for k, v in stats.items()]
-printer.table(headers, rows)
+# Customize output format
+lit(my_object, 
+    prefix="DEBUG >>> ", 
+    includeContext=True,
+    contextAbsPath=True,
+    disable_colors=False)
 ```
 
-## 🌟 Why LitPrinter?
+## 🛠️ Installation
 
-- 🎨 Makes your console look absolutely fire
-- 💪 Easy to use, hard to mess up
-- 🚀 Packed with features but light on resources
-- 🔥 Perfect for CLI apps that need that extra drip
-- 💯 Built by devs who know what's good
+```bash
+pip install -U webscout  # LitPrinter is part of the webscout package
+```
 
-## 🎮 Pro Tips
+Or for direct access to LitPrinter's functions:
 
-1. **Style Combos**: Mix and match styles for maximum impact
-   ```python
-   printer.print("IMPORTANT", color="red", bold=True, blink=True)
-   ```
+```python
+# Install as builtins for convenience
+from webscout.litprinter import install
+install()  # Now 'litprint' and 'ic' are available globally
+```
 
-2. **Smart Layouts**: Use center and width for clean alignment
-   ```python
-   printer.print("Centered Text", center=True, width=50)
-   ```
+## 📖 API Overview
 
-3. **Interactive Updates**: Keep your users in the loop
-   ```python
-   with printer.spinner("Working on it..."):
-       # Your code here
-       pass
-   ```
+### Main Functions
 
-Made with 💖 by the HelpingAI team
+| Function | Description |
+|----------|-------------|
+| `lit(*args, **kwargs)` | Primary debugging function with variable inspection |
+| `litprint(*args, **kwargs)` | Alias for `lit` with similar behavior |
+| `log(*args, level="debug", **kwargs)` | Logging with level support |
+| `install(name='litprint', ic='ic')` | Install functions as builtins |
+| `uninstall(name='litprint', ic='ic')` | Remove from builtins |
+
+### Traceback Module Functions
+
+| Function | Description |
+|----------|-------------|
+| `traceback.install(**kwargs)` | Replace default Python traceback with pretty version |
+| `traceback.uninstall()` | Restore original Python traceback handler |
+| `PrettyTraceback(exc_type, exc_value, tb, **kwargs)` | Create traceback formatter instance |
+
+### Key Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prefix` | str | Custom prefix for output lines |
+| `color_style` | str/dict | Color theme or custom colors |
+| `includeContext` | bool | Show file/line/function context |
+| `contextAbsPath` | bool | Use absolute paths in context |
+| `disable_colors` | bool | Turn off syntax highlighting |
+| `log_file` | str | File to write output to |
+| `log_timestamp` | bool | Include timestamps in output |
+
+## 📚 Examples
+
+### Debug Print with Context
+
+```python
+from webscout.litprinter import lit
+
+def process_user_data(user):
+    name = user.get('name', 'Unknown')
+    age = user.get('age', 0)
+    
+    # Debug print shows variable names, values, and source location
+    lit(name, age)  # Shows: LIT| [users.py:6] in process_user_data() >>> name: 'John', age: 30
+    
+    # Process the data...
+```
+
+### Custom Traceback Theme
+
+```python
+from webscout.litprinter.traceback import install
+from webscout.litprinter.coloring import create_custom_style
+from pygments.token import Text, String, Number
+
+# Create a cyberpunk-inspired output for tracebacks
+install(theme="CYBERPUNK", show_locals=True)
+
+# Or define a completely custom style for tracebacks
+custom_colors = {
+    Text: "#00ff00",      # Matrix-green text
+    String: "#ff00ff",    # Magenta strings
+    Number: "#ffff00"     # Yellow numbers
+}
+custom_style = create_custom_style("MatrixStyle", custom_colors)
+install(theme="custom", _selected_pygments_style_cls=custom_style)
+
+# Now any exceptions will use your custom coloring
+```
+
+### Integration with Error Handling
+
+```python
+try:
+    result = complex_operation()
+except Exception as e:
+    lit(e)  # Pretty-prints the exception with traceback highlighting
+    raise
+```
+
+### Log to File
+
+```python
+from webscout.litprinter import lit
+
+# Log to both console and file
+lit("Initializing system...", log_file="app.log", log_timestamp=True)
+```
+
+## 🧩 Integration with VS Code and Other Editors
+
+LitPrinter creates clickable links in supported terminals and editors. In VS Code, clicking on the file path in the output will open the file at the exact line.
+
+```python
+lit(data, contextAbsPath=True)  # Creates clickable link to source line
+```
+
+For tracebacks, the file paths are also clickable, making it easy to jump to the error location:
+
+```python
+from webscout.litprinter.traceback import install
+install(show_locals=True)
+
+# When an exception occurs, you can click the file paths in the traceback
+```
+
+## 🧠 Why Choose LitPrinter?
+
+- 🚀 **All-in-one solution**: Combines debugging, logging, formatting and traceback enhancement
+- 🎨 **Beautiful output**: Makes debugging more pleasant with syntax highlighting  
+- 🔍 **Context-aware**: Automatically shows where the call was made from
+- 🧠 **Smart handling**: Special formatters for complex data types
+- 🔄 **Flow-friendly**: Use inline without disrupting your code
+- 🛠️ **Extensible**: Register custom formatters for your types
+- 💥 **Enhanced tracebacks**: Transform boring Python tracebacks into beautiful, informative displays
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to submit pull requests or open issues on the [Webscout GitHub repository](https://github.com/OEvortex/Webscout).
+
+<div align="center">
+
+---
+
+<p>
+Made with ❤️ by the Webscout Team
+</p>
+
+<div align="center">
+  <a href="https://t.me/PyscoutAI"><img alt="Telegram" src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
+  <a href="https://www.instagram.com/oevortex/"><img alt="Instagram" src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white"></a>
+  <a href="https://www.linkedin.com/in/oe-vortex-29a407265/"><img alt="LinkedIn" src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"></a>
+  <a href="https://buymeacoffee.com/oevortex"><img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
+</div>
+
+</div>

@@ -39,7 +39,7 @@ with additional features:
 """
 
 # Try to import from the standalone litprinter package first
-# If it's not installed, fall back to the bundled version
+# If it's not installed
 try:
     import litprinter
     # If standalone package is found, re-export all its components

@@ -39,7 +39,7 @@
 * **AI Powerhouse:** Access and interact with various AI models, including OpenAI, Cohere, and more.
 * **[YouTube Toolkit](webscout/Extra/YTToolkit):** Advanced YouTube video and transcript management with multi-language support, versatile downloading, and intelligent data extraction
 * **[GitAPI](webscout/Extra/GitToolkit/gitapi):** Powerful GitHub data extraction toolkit for seamless repository and user information retrieval, featuring commit tracking, issue management, and comprehensive user analytics - all without authentication requirements for public data
-* **Tempmail & Temp Number:** Generate temporary email addresses and phone numbers for enhanced privacy.
+* **[Tempmail](webscout/Extra/tempmail/README.md) & Temp Number:** Generate temporary email addresses and phone numbers for enhanced privacy.
 * **[Text-to-Speech (TTS)](webscout/Provider/TTS/README.md):** Convert text into natural-sounding speech using multiple AI-powered providers like ElevenLabs, StreamElements, and Voicepods.
 * **GGUF Conversion & Quantization:** Convert and quantize Hugging Face models to GGUF format.
 * **[SwiftCLI](webscout/swiftcli/Readme.md):** A powerful and elegant CLI framework that makes it easy to create beautiful command-line interfaces.
@@ -95,13 +95,13 @@ async def main():
         if numbers:
             number = numbers[0]['full_number']
             inbox = vn.get_number_inbox(country, number)
-            
+
             # Serialize inbox data to JSON string
             json_data = json.dumps(inbox, ensure_ascii=False, indent=4)
-            
+
             # Print with UTF-8 encoding
             print(json_data)
-    
+
     async with TempMail() as client:
         domains = await client.get_domains()
         print("Available Domains:", domains)
@@ -277,7 +277,7 @@ await main()
 ```python
 from webscout import WEBS
 
-# Text search for 'live free or die' using DuckDuckGo.com 
+# Text search for 'live free or die' using DuckDuckGo.com
 with WEBS() as WEBS:
     for r in WEBS.text('live free or die', region='wt-wt', safesearch='off', timelimit='y', max_results=10):
         print(r)
@@ -291,7 +291,7 @@ with WEBS() as WEBS:
 ```python
 from webscout import WEBS
 
-# Instant answers for the query "sun" using DuckDuckGo.com 
+# Instant answers for the query "sun" using DuckDuckGo.com
 with WEBS() as WEBS:
     for r in WEBS.answers("sun"):
         print(r)
@@ -302,7 +302,7 @@ with WEBS() as WEBS:
 ```python
 from webscout import WEBS
 
-# Image search for the keyword 'butterfly' using DuckDuckGo.com 
+# Image search for the keyword 'butterfly' using DuckDuckGo.com
 with WEBS() as WEBS:
     keywords = 'butterfly'
     WEBS_images_gen = WEBS.images(
@@ -324,7 +324,7 @@ with WEBS() as WEBS:
 ```python
 from webscout import WEBS
 
-# Video search for the keyword 'tesla' using DuckDuckGo.com 
+# Video search for the keyword 'tesla' using DuckDuckGo.com
 with WEBS() as WEBS:
     keywords = 'tesla'
     WEBS_videos_gen = WEBS.videos(
@@ -655,7 +655,7 @@ print(response["message"]) # Access the text message
 print("Sources:", response["sources"]) # Access sources (if any)
 
 # Image generation
-response = meta_ai.ask("Create an image of a cat wearing a hat.") 
+response = meta_ai.ask("Create an image of a cat wearing a hat.")
 print(response["message"]) # Print the text message from the response
 for media in response["media"]:
     print(media["url"])  # Access image URLs
@@ -874,9 +874,9 @@ Webscout provides tools to convert and quantize Hugging Face models into the GGU
 from webscout.Extra.gguf import ModelConverter
 """
 Valid quantization methods:
-"q2_k", "q3_k_l", "q3_k_m", "q3_k_s", 
-"q4_0", "q4_1", "q4_k_m", "q4_k_s", 
-"q5_0", "q5_1", "q5_k_m", "q5_k_s", 
+"q2_k", "q3_k_l", "q3_k_m", "q3_k_s",
+"q4_0", "q4_1", "q4_k_m", "q4_k_s",
+"q5_0", "q5_1", "q5_k_m", "q5_k_s",
 "q6_k", "q8_0"
 """
 # Create a converter instance

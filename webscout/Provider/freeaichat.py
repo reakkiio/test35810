@@ -18,6 +18,7 @@ class FreeAIChat(Provider):
     AVAILABLE_MODELS = [
         # OpenAI Models
         "GPT 4o",
+        "GPT 4.5 Preview",
         "GPT 4o Latest",
         "GPT 4o mini",
         "GPT 4o Search Preview",
@@ -28,6 +29,7 @@ class FreeAIChat(Provider):
         "O3 Mini Low",
 
         # Anthropic Models
+        "Claude 3.5 haiku",
         "claude 3.5 sonnet",
         "Claude 3.7 Sonnet",
         "Claude 3.7 Sonnet (Thinking)",
@@ -49,10 +51,12 @@ class FreeAIChat(Provider):
         "Llama 3.1 405B",
         "Llama 3.1 70B Fast",
         "Llama 3.3 70B",
+        "Llama 3.2 90B Vision",
 
         # Mistral Models
         "Mistral Large",
         "Mistral Nemo",
+        "Mixtral 8x22B",
 
         # Qwen Models
         "Qwen Max",
@@ -62,7 +66,8 @@ class FreeAIChat(Provider):
         "QwQ Plus",
 
         # XAI Models
-        "Grok 2"
+        "Grok 2",
+        "Grok 3",
     ]
 
     def __init__(

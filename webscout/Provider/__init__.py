@@ -20,7 +20,6 @@ from .OLLAMA import OLLAMA
 from .Andi import AndiSearch
 from .PizzaGPT import *
 from .Llama3 import *
-from .DARKAI import *
 from .koala import *
 from .meta import *
 from .julius import *
@@ -128,7 +127,6 @@ __all__ = [
     'AndiSearch',
     'PIZZAGPT',
     'Sambanova',
-    'DARKAI',
     'KOALA',
     'Meta',
     'AskMyAI',

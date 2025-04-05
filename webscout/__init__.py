@@ -18,6 +18,8 @@ from .litagent import LitAgent
 from .scout import *
 from .zeroart import *
 from .yep_search import *
+# Import litprinter components for direct access from webscout
+from .litprinter import lit, litprint, ic, install, uninstall
 agent = LitAgent()
 
 __repo__ = "https://github.com/OE-LUCIFER/Webscout"

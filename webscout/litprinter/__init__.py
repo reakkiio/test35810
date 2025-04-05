@@ -37,15 +37,22 @@ with additional features:
 - Smart object introspection for custom classes
 - Logging capabilities with timestamp and log levels
 """
-from .litprint import litprint, log
-from .lit import lit, log, ic
-from .core import LITPrintDebugger, argumentToString
-from .builtins import install, uninstall
-from .coloring import JARVIS, RICH, MODERN, NEON, CYBERPUNK, create_custom_style
-from . import traceback
 
-__version__ = '0.2.0'
+# Try to import from the standalone litprinter package first
+# If it's not installed, fall back to the bundled version
+try:
+    import litprinter
+    # If standalone package is found, re-export all its components
+    from litprinter import litprint, lit, log, ic, install, uninstall
+    from litprinter import LITPrintDebugger, argumentToString
+    from litprinter import JARVIS, RICH, MODERN, NEON, CYBERPUNK, create_custom_style
+    from litprinter import traceback
 
-# For compatibility with icecream
-enable = LITPrintDebugger.enable_globally
-disable = LITPrintDebugger.disable_globally
+    __version__ = litprinter.__version__
+    
+    # For compatibility with icecream
+    enable = litprinter.enable
+    disable = litprinter.disable
+    
+except ImportError:
+    pass

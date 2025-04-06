@@ -18,6 +18,8 @@ class DeepInfra(Provider):
     AVAILABLE_MODELS = [
         # "anthropic/claude-3-7-sonnet-latest",  # >>>> NOT WORKING
         "deepseek-ai/DeepSeek-R1",
+        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
         "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "deepseek-ai/DeepSeek-R1-Turbo",

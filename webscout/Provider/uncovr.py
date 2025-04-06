@@ -19,15 +19,17 @@ class UncovrAI(Provider):
         "default",
         "gpt-4o-mini",
         "gemini-2-flash",
-        "o3-mini",
-        "claude-3-7-sonnet",
-        "gpt-4o",
-        "claude-3-5-sonnet-v2",
-        "groq-llama-3-1-8b",
-        "deepseek-r1-distill-llama-70b",
-        "deepseek-r1-distill-qwen-32b",
-        "gemini-2-flash-lite-preview",
-        "qwen-qwq-32b"
+        "gemini-2-flash-lite",
+        "groq-llama-3-1-8b"
+        # The following models are not available in the free plan:
+        # "o3-mini",
+        # "claude-3-7-sonnet",
+        # "gpt-4o",
+        # "claude-3-5-sonnet-v2",
+        # "deepseek-r1-distill-llama-70b",
+        # "deepseek-r1-distill-qwen-32b",
+        # "gemini-2-flash-lite-preview",
+        # "qwen-qwq-32b"
     ]
 
     def __init__(
@@ -189,12 +191,18 @@ class UncovrAI(Provider):
                         if line:
                             try:
                                 line = line.decode('utf-8')
-                                # Handle different message types
-                                if line.startswith('0:'):  # Content message
-                                    content = line[2:].strip('"')
+                                # Use regex to match content messages
+                                content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
+                                if content_match:  # Content message
+                                    content = content_match.group(1)
                                     streaming_text += content
                                     resp = dict(text=content)
                                     yield resp if raw else resp
+                                # Check for error messages
+                                error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
+                                if error_match:
+                                    error_msg = error_match.group(1)
+                                    raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
                             except (json.JSONDecodeError, UnicodeDecodeError):
                                 continue
                     
@@ -225,10 +233,15 @@ class UncovrAI(Provider):
                     if line:
                         try:
                             line = line.decode('utf-8')
-                            match = re.search(r'0:"(.*?)"', line)
-                            if match:
-                                content = match.group(1)
+                            content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
+                            if content_match:
+                                content = content_match.group(1)
                                 full_response += content
+                            # Check for error messages
+                            error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
+                            if error_match:
+                                error_msg = error_match.group(1)
+                                raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             continue
 

@@ -18,6 +18,7 @@ MODEL_CONFIGS = {
         "endpoint": "https://exa-chat.vercel.app/api/gemini",
         "models": [
             "gemini-2.0-flash",
+            "gemini-2.0-flash-exp-image-generation",
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.0-pro-exp-02-05",
@@ -49,6 +50,13 @@ MODEL_CONFIGS = {
             "qwen-2.5-32b",
             "qwen-2.5-coder-32b",
             "qwen-qwq-32b"
+        ],
+    },
+    "cerebras": {
+        "endpoint": "https://exa-chat.vercel.app/api/cerebras",
+        "models": [
+            "llama3.1-8b",
+            "llama-3.3-70b"
         ],
     },
 }
@@ -87,7 +95,11 @@ class ExaChat(Provider):
         "llama3-8b-8192",
         "qwen-2.5-32b",
         "qwen-2.5-coder-32b",
-        "qwen-qwq-32b"
+        "qwen-qwq-32b",
+        
+        # Cerebras Models
+        "llama3.1-8b",
+        "llama-3.3-70b"
     ]
 
     def __init__(
@@ -206,6 +218,12 @@ class ExaChat(Provider):
                 "model": self.model,
                 "messages": []
             }
+        elif self.provider == "cerebras":
+            return {
+                "query": conversation_prompt,
+                "model": self.model,
+                "messages": []
+            }
         else:  # openrouter or groq
             return {
                 "query": conversation_prompt + "\n",  # Add newline for openrouter and groq models
@@ -246,10 +264,7 @@ class ExaChat(Provider):
                                 full_response += content
                     except json.JSONDecodeError:
                         continue
-            
-            if not raw:
-                print()  # New line after response
-                
+                            
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
             return self.last_response

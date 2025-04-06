@@ -12,32 +12,34 @@ class TextPollinationsAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "openai",              # OpenAI GPT-4o-mini
-        "openai-large",        # OpenAI GPT-4o
-        "openai-reasoning",    # OpenAI o1-mini
-        "qwen-coder",          # Qwen 2.5 Coder 32B
-        "llama",               # Llama 3.3 70B
-        "mistral",             # Mistral Nemo
-        "unity",               # Unity with Mistral Large
-        "midijourney",         # Midijourney musical transformer
-        "rtist",               # Rtist image generator
-        "searchgpt",           # SearchGPT with realtime search
-        "evil",                # Evil Mode - Experimental
-        # "deepseek",            # DeepSeek-V3 >>>> NOT WORKING
-        "claude-hybridspace",  # Claude Hybridspace
-        "deepseek-r1",         # DeepSeek-R1 Distill Qwen 32B
-        # "deepseek-reasoner",   # DeepSeek R1 - Full >>>> NOT WORKING
-        # "llamalight",          # Llama 3.1 8B Instruct >>>> NOT WORKING
-        # "llamaguard",          # Llamaguard 7B AWQ >>>> NOT WORKING
-        "gemini",              # Gemini 2.0 Flash
-        "gemini-thinking",     # Gemini 2.0 Flash Thinking
-        "hormoz",              # Hormoz 8b
-        "hypnosis-tracy",      # Hypnosis Tracy
-        "sur",                 # Sur AI Assistant
-        "sur-mistral",         # Sur AI Assistant (Mistral)
-        # "llama-scaleway",      # Llama (Scaleway) >>>> NOT WORKING
-        "phi",                 # Phi model
-        # "openai-audio"         # OpenAI Audio model >>>> NOT WORKING
+        "openai",                  # OpenAI GPT-4o-mini
+        "openai-large",            # OpenAI GPT-4o
+        "openai-reasoning",        # OpenAI o3-mini
+        "qwen-coder",              # Qwen 2.5 Coder 32B
+        "llama",                   # Llama 3.3 70B
+        "mistral",                 # Mistral Small 3
+        "unity",                   # Unity Mistral Large
+        "midijourney",             # Midijourney
+        "rtist",                   # Rtist
+        "searchgpt",               # SearchGPT
+        "evil",                    # Evil
+        "deepseek-reasoning",      # DeepSeek-R1 Distill Qwen 32B
+        "deepseek-reasoning-large",# DeepSeek R1 - Llama 70B
+        # "llamalight",            # Llama 3.1 8B Instruct # >>> NOT WORKING
+        "phi",                     # Phi-4 Instruct
+        "llama-vision",            # Llama 3.2 11B Vision
+        "pixtral",                 # Pixtral 12B
+        "gemini",                  # Gemini 2.0 Flash
+        "gemini-reasoning",        # Gemini 2.0 Flash Thinking
+        "hormoz",                  # Hormoz 8b
+        "hypnosis-tracy",          # Hypnosis Tracy 7B
+        "mistral-roblox",          # Mistral Roblox on Scaleway
+        "roblox-rp",               # Roblox Roleplay Assistant
+        "deepseek",                # DeepSeek-V3
+        "qwen-reasoning",          # Qwen QWQ 32B - Advanced Reasoning
+        "sur",                     # Sur AI Assistant (Mistral)
+        "llama-scaleway",          # Llama (Scaleway)
+        "openai-audio",            # OpenAI GPT-4o-audio-preview
     ]
 
     def __init__(

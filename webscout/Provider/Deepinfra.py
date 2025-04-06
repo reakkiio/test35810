@@ -24,8 +24,8 @@ class DeepInfra(Provider):
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "deepseek-ai/DeepSeek-R1-Turbo",
         "deepseek-ai/DeepSeek-V3",
-        # "google/gemma-2-27b-it",  # >>>> NOT WORKING
-        # "google/gemma-2-9b-it",  # >>>> NOT WORKING
+        "google/gemma-2-27b-it",
+        "google/gemma-2-9b-it",
         "google/gemma-3-27b-it",
         # "google/gemini-1.5-flash",  # >>>> NOT WORKING
         # "google/gemini-1.5-flash-8b",  # >>>> NOT WORKING

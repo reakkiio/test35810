@@ -24,7 +24,8 @@ class LambdaChat(Provider):
         "hermes-3-llama-3.1-405b-fp8",
         "llama3.1-nemotron-70b-instruct",
         "lfm-40b",
-        "llama3.3-70b-instruct-fp8"
+        "llama3.3-70b-instruct-fp8",
+        "qwen25-coder-32b-instruct"
     ]
     
     def __init__(

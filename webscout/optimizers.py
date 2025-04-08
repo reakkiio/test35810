@@ -98,13 +98,13 @@ class Optimizers:
     Format: Plain text, no markdown.
     If details are missing, focus on the most relevant aspects.
   </instructions>
- <request>
+  <request>
     Request: {prompt}
- </request>
- <output>
+  </request>
+  <output>
     Search Query:
- </output>
- </system_context>
+  </output>
+</system_context>
         """
 
     @staticmethod
@@ -113,7 +113,7 @@ class Optimizers:
         return f"""
 <system_context>
   <role>
-     Your role: Solve mathematical problems step by step.
+    Your role: Solve mathematical problems step by step.
   </role>
   <instructions>
     Format: Plain text, show calculations clearly.
@@ -121,13 +121,13 @@ class Optimizers:
     Include units where applicable.
     Provide final answer in a clear format.
   </instructions>
- <request>
-     Problem: {prompt}
+  <request>
+    Problem: {prompt}
   </request>
- <output>
-     Solution:
+  <output>
+    Solution:
   </output>
- </system_context>
+</system_context>
         """
 
     @staticmethod
@@ -136,19 +136,19 @@ class Optimizers:
         return f"""
 <system_context>
   <role>
-     Your role: Explain concepts clearly and concisely.
+    Your role: Explain concepts clearly and concisely.
   </role>
   <instructions>
     Format: Break down complex ideas into simple terms.
     Use analogies where helpful.
     Focus on key points and practical understanding.
   </instructions>
-   <topic>
-     Topic: {prompt}
-    </topic>
+  <request>
+    Topic: {prompt}
+  </request>
   <output>
     Explanation:
- </output>
+  </output>
 </system_context>
         """
 
@@ -158,7 +158,7 @@ class Optimizers:
          return f"""
 <system_context>
   <role>
-     Your role: Debug code and identify issues.
+    Your role: Debug code and identify issues.
   </role>
   <instructions>
     Steps:
@@ -167,12 +167,12 @@ class Optimizers:
      - Look for common pitfalls
      - Suggest fixes
   </instructions>
-  <input>
-     Code to debug: {prompt}
-  </input>
- <output>
-   Analysis:
- </output>
+  <request>
+    Code to debug: {prompt}
+  </request>
+  <output>
+    Analysis:
+  </output>
 </system_context>
         """
 
@@ -182,21 +182,21 @@ class Optimizers:
         return f"""
 <system_context>
   <role>
-   Your role: Design RESTful API endpoints.
+    Your role: Design RESTful API endpoints.
   </role>
   <instructions>
-     Include:
-      - HTTP methods
-      - URL structure
-      - Request/Response format
-      - Status codes
-   </instructions>
-    <input>
-        API requirement: {prompt}
-    </input>
-    <output>
-        Design:
-    </output>
+    Include:
+     - HTTP methods
+     - URL structure
+     - Request/Response format
+     - Status codes
+  </instructions>
+  <request>
+    API requirement: {prompt}
+  </request>
+  <output>
+    Design:
+  </output>
 </system_context>
         """
 
@@ -205,22 +205,22 @@ class Optimizers:
          """Optimize prompt for SQL query generation."""
          return f"""
 <system_context>
-   <role>
-      Your role: Generate optimized SQL queries.
-   </role>
-   <instructions>
-        Requirements:
-        - Standard SQL syntax
-        - Efficient query structure
-        - Proper joins and indexing
-        - Consider performance
-    </instructions>
-    <input>
-        Query need: {prompt}
-    </input>
+  <role>
+    Your role: Generate optimized SQL queries.
+  </role>
+  <instructions>
+    Requirements:
+    - Standard SQL syntax
+    - Efficient query structure
+    - Proper joins and indexing
+    - Consider performance
+  </instructions>
+  <request>
+    Query need: {prompt}
+  </request>
   <output>
-        SQL:
-   </output>
+    SQL:
+  </output>
 </system_context>
         """
 
@@ -229,22 +229,22 @@ class Optimizers:
         """Optimize prompt for regex pattern generation."""
         return f"""
 <system_context>
-    <role>
-     Your role: Generate precise regex patterns.
-    </role>
-   <instructions>
-        Requirements:
-        - Standard regex syntax
-        - Pattern explanation
-        - Test cases
-        - Consider edge cases
-    </instructions>
-    <input>
-        Pattern need: {prompt}
-    </input>
-   <output>
-         Regex:
-     </output>
+  <role>
+    Your role: Generate precise regex patterns.
+  </role>
+  <instructions>
+    Requirements:
+    - Standard regex syntax
+    - Pattern explanation
+    - Test cases
+    - Consider edge cases
+  </instructions>
+  <request>
+    Pattern need: {prompt}
+  </request>
+  <output>
+    Regex:
+  </output>
 </system_context>
         """
 
@@ -254,22 +254,22 @@ class Optimizers:
         return f"""
 <system_context>
   <role>
-     Your role: Generate comprehensive test cases.
+    Your role: Generate comprehensive test cases.
   </role>
-   <instructions>
-        Include:
-        - Edge cases
-        - Corner cases
-        - Error scenarios
-        - Happy path
-        Format: Test name and expected result
-   </instructions>
-   <input>
-      Test requirement: {prompt}
-    </input>
-    <output>
-      Test Cases:
-   </output>
+  <instructions>
+    Include:
+    - Edge cases
+    - Corner cases
+    - Error scenarios
+    - Happy path
+    Format: Test name and expected result
+  </instructions>
+  <request>
+    Test requirement: {prompt}
+  </request>
+  <output>
+    Test Cases:
+  </output>
 </system_context>
         """
 
@@ -279,21 +279,21 @@ class Optimizers:
         return f"""
 <system_context>
   <role>
-     Your role: Create efficient Dockerfile.
+    Your role: Create efficient Dockerfile.
   </role>
-    <instructions>
-        Consider:
-        - Base image selection
-        - Layer optimization
-        - Security best practices
-        - Multi-stage builds if needed
-    </instructions>
-    <input>
-      Container requirement: {prompt}
-    </input>
-   <output>
-      Dockerfile:
-   </output>
+  <instructions>
+    Consider:
+    - Base image selection
+    - Layer optimization
+    - Security best practices
+    - Multi-stage builds if needed
+  </instructions>
+  <request>
+    Container requirement: {prompt}
+  </request>
+  <output>
+    Dockerfile:
+  </output>
 </system_context>
         """
 
@@ -302,22 +302,22 @@ class Optimizers:
         """Optimize prompt for git commands."""
         return f"""
 <system_context>
-   <role>
+  <role>
     Your role: Generate git commands.
   </role>
-   <instructions>
-        Requirements:
-        - Clear and safe commands
-        - Consider current state
-        - Include safety checks
-        - Best practices
-    </instructions>
-    <input>
-     Git task: {prompt}
-    </input>
-   <output>
+  <instructions>
+    Requirements:
+    - Clear and safe commands
+    - Consider current state
+    - Include safety checks
+    - Best practices
+  </instructions>
+  <request>
+    Git task: {prompt}
+  </request>
+  <output>
     Command:
-   </output>
+  </output>
 </system_context>
         """
 
@@ -326,19 +326,19 @@ class Optimizers:
         """Optimize prompt for YAML configuration."""
         return f"""
 <system_context>
-    <role>
-     Your role: Generate YAML configuration.
-    </role>
-   <instructions>
-        Requirements:
-        - Valid YAML syntax
-        - Clear structure
-        - Comments for complex parts
-        - Best practices
-   </instructions>
-   <input>
-     Config need: {prompt}
-    </input>
+  <role>
+    Your role: Generate YAML configuration.
+  </role>
+  <instructions>
+    Requirements:
+    - Valid YAML syntax
+    - Clear structure
+    - Comments for complex parts
+    - Best practices
+  </instructions>
+  <request>
+    Config need: {prompt}
+  </request>
   <output>
     YAML:
   </output>
@@ -350,22 +350,22 @@ class Optimizers:
         """Optimize prompt for CLI command design."""
         return f"""
 <system_context>
-    <role>
-         Your role: Design CLI commands.
-    </role>
-   <instructions>
-        Include:
-          - Command structure
-          - Arguments/options
-          - Help messages
-          - Examples
-    </instructions>
-  <input>
-     CLI requirement: {prompt}
-    </input>
+  <role>
+    Your role: Design CLI commands.
+  </role>
+  <instructions>
+    Include:
+    - Command structure
+    - Arguments/options
+    - Help messages
+    - Examples
+  </instructions>
+  <request>
+    CLI requirement: {prompt}
+  </request>
   <output>
-      Design:
-   </output>
+    Design:
+  </output>
 </system_context>
         """
 
@@ -374,23 +374,23 @@ class Optimizers:
         """Optimize prompt for code refactoring suggestions."""
         return f"""
 <system_context>
-    <role>
-         Your role: Suggest code improvements.
-   </role>
-    <instructions>
-        Focus on:
-        - Code quality
-        - Performance
-        - Readability
-        - Best practices
-        - Design patterns
-    </instructions>
-    <input>
-        Code to refactor: {prompt}
-     </input>
-   <output>
-        Suggestions:
-    </output>
+  <role>
+    Your role: Suggest code improvements.
+  </role>
+  <instructions>
+    Focus on:
+    - Code quality
+    - Performance
+    - Readability
+    - Best practices
+    - Design patterns
+  </instructions>
+  <request>
+    Code to refactor: {prompt}
+  </request>
+  <output>
+    Suggestions:
+  </output>
 </system_context>
         """
 
@@ -399,22 +399,22 @@ class Optimizers:
         """Optimize prompt for security analysis."""
         return f"""
 <system_context>
-   <role>
-        Your role: Security analysis and fixes.
-   </role>
-   <instructions>
-        Check for:
-        - Common vulnerabilities
-        - Security best practices
-        - Input validation
-        - Authentication/Authorization
-        - Data protection
-    </instructions>
-     <input>
-       Code to analyze: {prompt}
-    </input>
+  <role>
+    Your role: Security analysis and fixes.
+  </role>
+  <instructions>
+    Check for:
+    - Common vulnerabilities
+    - Security best practices
+    - Input validation
+    - Authentication/Authorization
+    - Data protection
+  </instructions>
+  <request>
+    Code to analyze: {prompt}
+  </request>
   <output>
-        Analysis:
+    Analysis:
   </output>
 </system_context>
         """

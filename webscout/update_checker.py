@@ -1,3 +1,6 @@
+from pkg_resources import get_distribution, DistributionNotFound as PackageNotFoundError
+def get_package_version(package_name: str) -> str:
+    return get_distribution(package_name).version
 """
 Webscout Update Checker
 >>> from webscout import check_for_updates
@@ -10,8 +13,12 @@ from typing import Optional, Dict, Any, Literal
 
 import requests
 from packaging import version
-from importlib.metadata import version as get_package_version
-from importlib.metadata import PackageNotFoundError
+
+# Constants
+PYPI_URL = "https://pypi.org/pypi/webscout/json"
+
+# Create a session for HTTP requests
+session = requests.Session()
 
 # Version comparison result type
 VersionCompareResult = Literal[-1, 0, 1]
@@ -31,8 +38,6 @@ def get_installed_version() -> Optional[str]:
         return get_package_version('webscout')
     except PackageNotFoundError:
         return None
-    except Exception:
-        return None
 
 def get_pypi_version() -> Optional[str]:
     """Get the latest version available on PyPI.
@@ -46,14 +51,11 @@ def get_pypi_version() -> Optional[str]:
         '2.0.0'
     """
     try:
-        response = requests.get(
-            "https://pypi.org/pypi/webscout/json",
-            timeout=10
-        )
+        response = session.get(PYPI_URL, timeout=10)
         response.raise_for_status()
         data: Dict[str, Any] = response.json()
         return data['info']['version']
-    except (requests.RequestException, KeyError, ValueError, Exception):
+    except (requests.RequestException, KeyError, ValueError):
         return None
 
 def version_compare(v1: str, v2: str) -> VersionCompareResult:
@@ -78,7 +80,7 @@ def version_compare(v1: str, v2: str) -> VersionCompareResult:
         if version1 > version2:
             return 1
         return 0
-    except (version.InvalidVersion, Exception):
+    except version.InvalidVersion:
         return 0
 
 def get_update_message(installed: str, latest: str) -> Optional[str]:
@@ -116,11 +118,11 @@ def check_for_updates() -> Optional[str]:
     installed_version = get_installed_version()
     if not installed_version:
         return None
-        
+
     latest_version = get_pypi_version()
     if not latest_version:
         return None
-    
+
     return get_update_message(installed_version, latest_version)
 
 if __name__ == "__main__":

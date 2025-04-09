@@ -52,6 +52,8 @@ class FreeAIChat(Provider):
         "Llama 3.1 70B Fast",
         "Llama 3.3 70B",
         "Llama 3.2 90B Vision",
+        "Llama 4 Scout",
+        "Llama 4 Maverick",
 
         # Mistral Models
         "Mistral Large",

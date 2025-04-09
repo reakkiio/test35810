@@ -28,7 +28,6 @@ from .yep import *
 from .Cloudflare import *
 from .turboseek import *
 from .Free2GPT import *
-from .EDITEE import *
 from .TeachAnything import *
 from .AI21 import *
 from .Chatify import *
@@ -136,7 +135,6 @@ __all__ = [
     'YEPCHAT',
     'Cloudflare',
     'TurboSeek',
-    'Editee',
     'TeachAnything',
     'AI21',
     'Chatify',

@@ -91,7 +91,7 @@ class WEBS:
         if not proxy and proxies:
             warnings.warn("'proxies' is deprecated, use 'proxy' instead.", stacklevel=1)
             self.proxy = proxies.get("http") or proxies.get("https") if isinstance(proxies, dict) else proxies
-        
+
         default_headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
@@ -105,10 +105,10 @@ class WEBS:
             "Sec-Fetch-User": "?1",
             "Referer": "https://duckduckgo.com/",
         }
-        
+
         self.headers = headers if headers else {}
         self.headers.update(default_headers)
-        
+
         self.client = primp.Client(
             headers=self.headers,
             proxy=self.proxy,
@@ -192,18 +192,36 @@ class WEBS:
         resp_content = self._get_url("GET", "https://duckduckgo.com", params={"q": keywords}).content
         return _extract_vqd(resp_content, keywords)
 
-    def chat_yield(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> Iterator[str]:
+    def chat_yield(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30, max_retries: int = 3) -> Iterator[str]:
         """Initiates a chat session with webscout AI.
 
         Args:
             keywords (str): The initial message or question to send to the AI.
             model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
                 "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
-            timeout (int): Timeout value for the HTTP client. Defaults to 20.
+            timeout (int): Timeout value for the HTTP client. Defaults to 30.
+            max_retries (int): Maximum number of retry attempts for rate limited requests. Defaults to 3.
 
         Yields:
             str: Chunks of the response from the AI.
         """
+        # Get Cloudflare Turnstile token
+        def get_turnstile_token():
+            try:
+                # Visit the DuckDuckGo chat page to get the Turnstile token
+                resp_content = self._get_url(
+                    method="GET",
+                    url="https://duckduckgo.com/?q=DuckDuckGo+AI+Chat&ia=chat&duckai=1",
+                ).content
+
+                # Extract the Turnstile token if available
+                if b'cf-turnstile-response' in resp_content:
+                    token = resp_content.split(b'cf-turnstile-response="', maxsplit=1)[1].split(b'"', maxsplit=1)[0].decode()
+                    return token
+                return ""
+            except Exception:
+                return ""
+
         # x-fe-version
         if not self._chat_xfe:
             resp_content = self._get_url(
@@ -231,55 +249,100 @@ class WEBS:
         if model not in self._chat_models:
             warnings.warn(f"{model=} is unavailable. Using 'gpt-4o-mini'", stacklevel=1)
             model = "gpt-4o-mini"
+
+        # Get Cloudflare Turnstile token
+        turnstile_token = get_turnstile_token()
+
         json_data = {
             "model": self._chat_models[model],
             "messages": self._chat_messages,
         }
-        resp = self._get_url(
-            method="POST",
-            url="https://duckduckgo.com/duckchat/v1/chat",
-            headers={
-                "x-fe-version": self._chat_xfe,
-                "x-vqd-4": self._chat_vqd,
-                "x-vqd-hash-1": "",
-            },
-            json=json_data,
-            timeout=timeout,
-        )
-        self._chat_vqd = resp.headers.get("x-vqd-4", "")
-        self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
-        chunks = []
-        try:
-            for chunk in resp.stream():
-                lines = chunk.split(b"data:")
-                for line in lines:
-                    if line := line.strip():
-                        if line == b"[DONE]":
-                            break
-                        if line == b"[DONE][LIMIT_CONVERSATION]":
-                            raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
-                        x = json_loads(line)
-                        if isinstance(x, dict):
-                            if x.get("action") == "error":
-                                err_message = x.get("type", "")
-                                if x.get("status") == 429:
-                                    raise (
-                                        ConversationLimitException(err_message)
-                                        if err_message == "ERR_CONVERSATION_LIMIT"
-                                        else RatelimitE(err_message)
-                                    )
-                                raise WebscoutE(err_message)
-                            elif message := x.get("message"):
-                                chunks.append(message)
-                                yield message
-        except Exception as ex:
-            raise WebscoutE(f"chat_yield() {type(ex).__name__}: {ex}") from ex
 
-        result = "".join(chunks)
-        self._chat_messages.append({"role": "assistant", "content": result})
-        self._chat_tokens_count += len(result)
+        # Add Turnstile token if available
+        if turnstile_token:
+            json_data["cf-turnstile-response"] = turnstile_token
 
-    def chat(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> str:
+        # Enhanced headers to better mimic a real browser
+        chat_headers = {
+            "x-fe-version": self._chat_xfe,
+            "x-vqd-4": self._chat_vqd,
+            "x-vqd-hash-1": "",
+            "Accept": "text/event-stream",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            "Content-Type": "application/json",
+            "DNT": "1",
+            "Origin": "https://duckduckgo.com",
+            "Referer": "https://duckduckgo.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": self.client.headers.get("User-Agent", "")
+        }
+
+        # Retry logic for rate limited requests
+        retry_count = 0
+        while retry_count <= max_retries:
+            try:
+                resp = self._get_url(
+                    method="POST",
+                    url="https://duckduckgo.com/duckchat/v1/chat",
+                    headers=chat_headers,
+                    json=json_data,
+                    timeout=timeout,
+                )
+
+                self._chat_vqd = resp.headers.get("x-vqd-4", "")
+                self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
+                chunks = []
+
+                for chunk in resp.stream():
+                    lines = chunk.split(b"data:")
+                    for line in lines:
+                        if line := line.strip():
+                            if line == b"[DONE]":
+                                break
+                            if line == b"[DONE][LIMIT_CONVERSATION]":
+                                raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
+                            x = json_loads(line)
+                            if isinstance(x, dict):
+                                if x.get("action") == "error":
+                                    err_message = x.get("type", "")
+                                    if x.get("status") == 429:
+                                        raise (
+                                            ConversationLimitException(err_message)
+                                            if err_message == "ERR_CONVERSATION_LIMIT"
+                                            else RatelimitE(err_message)
+                                        )
+                                    raise WebscoutE(err_message)
+                                elif message := x.get("message"):
+                                    chunks.append(message)
+                                    yield message
+
+                # If we get here, the request was successful
+                result = "".join(chunks)
+                self._chat_messages.append({"role": "assistant", "content": result})
+                self._chat_tokens_count += len(result)
+                return
+
+            except RatelimitE as ex:
+                retry_count += 1
+                if retry_count > max_retries:
+                    raise WebscoutE(f"chat_yield() Rate limit exceeded after {max_retries} retries: {ex}") from ex
+
+                # Get a fresh Turnstile token for the retry
+                turnstile_token = get_turnstile_token()
+                if turnstile_token:
+                    json_data["cf-turnstile-response"] = turnstile_token
+
+                # Exponential backoff
+                sleep_time = 2 ** retry_count
+                sleep(sleep_time)
+
+            except Exception as ex:
+                raise WebscoutE(f"chat_yield() {type(ex).__name__}: {ex}") from ex
+
+    def chat(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30, max_retries: int = 3) -> str:
         """Initiates a chat session with webscout AI.
 
         Args:
@@ -287,11 +350,12 @@ class WEBS:
             model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
                 "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
             timeout (int): Timeout value for the HTTP client. Defaults to 30.
+            max_retries (int): Maximum number of retry attempts for rate limited requests. Defaults to 3.
 
         Returns:
             str: The response from the AI.
         """
-        answer_generator = self.chat_yield(keywords, model, timeout)
+        answer_generator = self.chat_yield(keywords, model, timeout, max_retries)
         return "".join(answer_generator)
 
     def text(
@@ -1225,22 +1289,22 @@ class WEBS:
         assert location, "location is mandatory"
         lang = language.split('-')[0]
         url = f"https://duckduckgo.com/js/spice/forecast/{quote(location)}/{lang}"
-        
+
         resp = self._get_url("GET", url).content
         resp_text = resp.decode('utf-8')
-        
+
         if "ddg_spice_forecast(" not in resp_text:
             raise WebscoutE(f"No weather data found for {location}")
-        
+
         json_text = resp_text[resp_text.find('(') + 1:resp_text.rfind(')')]
         try:
             result = json.loads(json_text)
         except Exception as e:
             raise WebscoutE(f"Error parsing weather JSON: {e}")
-        
+
         if not result or 'currentWeather' not in result or 'forecastDaily' not in result:
             raise WebscoutE(f"Invalid weather data format for {location}")
-        
+
         formatted_data = {
             "location": result["currentWeather"]["metadata"].get("ddg-location", "Unknown"),
             "current": {

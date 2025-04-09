@@ -174,7 +174,7 @@ class AsyncWEBS:
         resp_content = (await self._get_url("GET", "https://duckduckgo.com", params={"q": keywords})).content
         return _extract_vqd(resp_content, keywords)
 
-    async def achat_yield(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> AsyncIterator[str]:
+    async def achat_yield(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30, max_retries: int = 3) -> AsyncIterator[str]:
         """Initiates an async chat session with webscout AI.
 
         Args:
@@ -182,10 +182,28 @@ class AsyncWEBS:
             model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
                 "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
             timeout (int): Timeout value for the HTTP client. Defaults to 30.
+            max_retries (int): Maximum number of retry attempts for rate limited requests. Defaults to 3.
 
         Yields:
             str: Chunks of the response from the AI.
         """
+        # Get Cloudflare Turnstile token
+        async def get_turnstile_token():
+            try:
+                # Visit the DuckDuckGo chat page to get the Turnstile token
+                resp_content = (await self._get_url(
+                    method="GET",
+                    url="https://duckduckgo.com/?q=DuckDuckGo+AI+Chat&ia=chat&duckai=1",
+                )).content
+
+                # Extract the Turnstile token if available
+                if b'cf-turnstile-response' in resp_content:
+                    token = resp_content.split(b'cf-turnstile-response="', maxsplit=1)[1].split(b'"', maxsplit=1)[0].decode()
+                    return token
+                return ""
+            except Exception:
+                return ""
+
         # x-fe-version
         if not self._chat_xfe:
             resp_content = (await self._get_url(
@@ -213,55 +231,100 @@ class AsyncWEBS:
         if model not in self._chat_models:
             warnings.warn(f"{model=} is unavailable. Using 'gpt-4o-mini'", stacklevel=1)
             model = "gpt-4o-mini"
+
+        # Get Cloudflare Turnstile token
+        turnstile_token = await get_turnstile_token()
+
         json_data = {
             "model": self._chat_models[model],
             "messages": self._chat_messages,
         }
-        resp = await self._get_url(
-            method="POST",
-            url="https://duckduckgo.com/duckchat/v1/chat",
-            headers={
-                "x-fe-version": self._chat_xfe,
-                "x-vqd-4": self._chat_vqd,
-                "x-vqd-hash-1": "",
-            },
-            json=json_data,
-            timeout=timeout,
-        )
-        self._chat_vqd = resp.headers.get("x-vqd-4", "")
-        self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
-        chunks = []
-        try:
-            async for chunk in resp.aiter_bytes():
-                lines = chunk.split(b"data:")
-                for line in lines:
-                    if line := line.strip():
-                        if line == b"[DONE]":
-                            break
-                        if line == b"[DONE][LIMIT_CONVERSATION]":
-                            raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
-                        x = json_loads(line)
-                        if isinstance(x, dict):
-                            if x.get("action") == "error":
-                                err_message = x.get("type", "")
-                                if x.get("status") == 429:
-                                    raise (
-                                        ConversationLimitException(err_message)
-                                        if err_message == "ERR_CONVERSATION_LIMIT"
-                                        else RatelimitE(err_message)
-                                    )
-                                raise WebscoutE(err_message)
-                            elif message := x.get("message"):
-                                chunks.append(message)
-                                yield message
-        except Exception as ex:
-            raise WebscoutE(f"achat_yield() {type(ex).__name__}: {ex}") from ex
 
-        result = "".join(chunks)
-        self._chat_messages.append({"role": "assistant", "content": result})
-        self._chat_tokens_count += len(result)
+        # Add Turnstile token if available
+        if turnstile_token:
+            json_data["cf-turnstile-response"] = turnstile_token
 
-    async def achat(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30) -> str:
+        # Enhanced headers to better mimic a real browser
+        chat_headers = {
+            "x-fe-version": self._chat_xfe,
+            "x-vqd-4": self._chat_vqd,
+            "x-vqd-hash-1": "",
+            "Accept": "text/event-stream",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            "Content-Type": "application/json",
+            "DNT": "1",
+            "Origin": "https://duckduckgo.com",
+            "Referer": "https://duckduckgo.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": self.client.headers.get("User-Agent", "")
+        }
+
+        # Retry logic for rate limited requests
+        retry_count = 0
+        while retry_count <= max_retries:
+            try:
+                resp = await self._get_url(
+                    method="POST",
+                    url="https://duckduckgo.com/duckchat/v1/chat",
+                    headers=chat_headers,
+                    json=json_data,
+                    timeout=timeout,
+                )
+
+                self._chat_vqd = resp.headers.get("x-vqd-4", "")
+                self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
+                chunks = []
+
+                async for chunk in resp.aiter_bytes():
+                    lines = chunk.split(b"data:")
+                    for line in lines:
+                        if line := line.strip():
+                            if line == b"[DONE]":
+                                break
+                            if line == b"[DONE][LIMIT_CONVERSATION]":
+                                raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
+                            x = json_loads(line)
+                            if isinstance(x, dict):
+                                if x.get("action") == "error":
+                                    err_message = x.get("type", "")
+                                    if x.get("status") == 429:
+                                        raise (
+                                            ConversationLimitException(err_message)
+                                            if err_message == "ERR_CONVERSATION_LIMIT"
+                                            else RatelimitE(err_message)
+                                        )
+                                    raise WebscoutE(err_message)
+                                elif message := x.get("message"):
+                                    chunks.append(message)
+                                    yield message
+
+                # If we get here, the request was successful
+                result = "".join(chunks)
+                self._chat_messages.append({"role": "assistant", "content": result})
+                self._chat_tokens_count += len(result)
+                return
+
+            except RatelimitE as ex:
+                retry_count += 1
+                if retry_count > max_retries:
+                    raise WebscoutE(f"achat_yield() Rate limit exceeded after {max_retries} retries: {ex}") from ex
+
+                # Get a fresh Turnstile token for the retry
+                turnstile_token = await get_turnstile_token()
+                if turnstile_token:
+                    json_data["cf-turnstile-response"] = turnstile_token
+
+                # Exponential backoff
+                sleep_time = 2 ** retry_count
+                await asyncio.sleep(sleep_time)
+
+            except Exception as ex:
+                raise WebscoutE(f"achat_yield() {type(ex).__name__}: {ex}") from ex
+
+    async def achat(self, keywords: str, model: str = "gpt-4o-mini", timeout: int = 30, max_retries: int = 3) -> str:
         """Initiates an async chat session with webscout AI.
 
         Args:
@@ -269,12 +332,13 @@ class AsyncWEBS:
             model (str): The model to use: "gpt-4o-mini", "llama-3.3-70b", "claude-3-haiku",
                 "o3-mini", "mistral-small-3". Defaults to "gpt-4o-mini".
             timeout (int): Timeout value for the HTTP client. Defaults to 30.
+            max_retries (int): Maximum number of retry attempts for rate limited requests. Defaults to 3.
 
         Returns:
             str: The response from the AI.
         """
         chunks = []
-        async for chunk in self.achat_yield(keywords, model, timeout):
+        async for chunk in self.achat_yield(keywords, model, timeout, max_retries):
             chunks.append(chunk)
         return "".join(chunks)
 

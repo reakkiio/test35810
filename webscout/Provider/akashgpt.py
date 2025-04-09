@@ -1,6 +1,6 @@
 from typing import Union, Any, Dict, Generator
 from uuid import uuid4
-import requests
+import cloudscraper
 import re
 import json
 import time
@@ -29,16 +29,18 @@ class AkashGPT(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "Meta-Llama-3-3-70B-Instruct",
-        "DeepSeek-R1",
-        "Meta-Llama-3-1-405B-Instruct-FP8",
-        # "Meta-Llama-3-2-3B-Instruct",
-        # "Meta-Llama-3-1-8B-Instruct-FP8",
-        # "mistral",
-        # "nous-hermes2-mixtral",
-        # "dolphin-mixtral",
-        "Qwen-QwQ-32B"
+        "meta-llama-3-3-70b-instruct",
+        "deepseek-r1",
+        "meta-llama-3-1-405b-instruct-fp8",
+        "meta-llama-llama-4-maverick-17b-128e-instruct-fp8",
+        "nvidia-llama-3-3-nemotron-super-49b-v1",
 
+        # "meta-llama-3-2-3b-instruct",
+        # "meta-llama-3-1-8b-instruct-fp8",
+        # "mistral",
+        # "nous-hermes2-mixtral", 
+        # "dolphin-mixtral",
+        "qwen-qwq-32b"
     ]
 
     def __init__(
@@ -53,7 +55,7 @@ class AkashGPT(Provider):
         history_offset: int = 10250,
         act: str = None,
         system_prompt: str = "You are a helpful assistant.",
-        model: str = "Meta-Llama-3-3-70B-Instruct",
+        model: str = "meta-llama-3-3-70b-instruct",
         temperature: float = 0.6,
         top_p: float = 0.9,
         session_token: str = None
@@ -81,7 +83,7 @@ class AkashGPT(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
-        self.session = requests.Session()
+        self.session = cloudscraper.create_scraper()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://chat.akash.network/api/chat"
@@ -107,17 +109,20 @@ class AkashGPT(Provider):
             "scheme": "https",
             "accept": "*/*",
             "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "en-US,en;q=0.9",
+            "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
             "content-type": "application/json",
             "dnt": "1",
             "origin": "https://chat.akash.network",
             "priority": "u=1, i",
             "referer": "https://chat.akash.network/",
-            "sec-ch-ua": '"Not(A:Brand";v="99", "Microsoft Edge";v="133", "Chromium";v="133"',
+            "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "sec-gpc": "1",
             "user-agent": self.agent.random()  
-            
         }
 
         # Set cookies with the session token
@@ -181,15 +186,15 @@ class AkashGPT(Provider):
                 )
 
         payload = {
-            "id": str(uuid4()),  # Generate a unique request ID
+            "id": str(uuid4()).replace("-", ""),  # Generate a unique request ID in the correct format
             "messages": [
-                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": conversation_prompt}
             ],
             "model": self.model,
-            "temperature": self.temperature,
             "system": self.system_prompt,
-            "topP": self.top_p
+            "temperature": self.temperature,
+            "topP": self.top_p,
+            "context": []
         }
 
         def for_stream():
@@ -218,17 +223,24 @@ class AkashGPT(Provider):
                 # Parse content chunks
                 if line.startswith('0:'):
                     try:
-                        # Extract content between quotes
-                        content = line[2:].strip('"')
+                        content = line[2:]
+                        # Remove surrounding quotes if they exist
                         if content.startswith('"') and content.endswith('"'):
                             content = content[1:-1]
                         streaming_response += content
                         yield content if raw else dict(text=content)
-                    except Exception:
+                    except Exception as e:
                         continue
                 
-                # End of stream
+                # End of stream markers
                 if line.startswith('e:') or line.startswith('d:'):
+                    try:
+                        finish_data = json.loads(line[2:])
+                        finish_reason = finish_data.get("finishReason", "stop")
+                        # Could store usage data if needed:
+                        # usage = finish_data.get("usage", {})
+                    except json.JSONDecodeError:
+                        pass
                     break
             
             self.last_response.update(dict(text=streaming_response, message_id=message_id))

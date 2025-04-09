@@ -2,7 +2,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 import json
 from typing import Dict, Any
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 class GitError(Exception):
     """Base exception for GitHub API errors"""

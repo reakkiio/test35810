@@ -13,15 +13,17 @@ warnings.simplefilter("ignore", category=UserWarning)
 # Define model aliases for easy usage
 MODEL_ALIASES: Dict[str, Model] = {
     "unspecified": Model.UNSPECIFIED,
+    "gemini-2.0-flash": Model.G_2_0_FLASH,
+    "gemini-2.0-flash-thinking": Model.G_2_0_FLASH_THINKING,
+    "gemini-2.5-pro": Model.G_2_5_PRO,
+    "gemini-2.0-exp-advanced": Model.G_2_0_EXP_ADVANCED,
+    "gemini-2.5-exp-advanced": Model.G_2_5_EXP_ADVANCED,
+    # Add shorter aliases for convenience
     "flash": Model.G_2_0_FLASH,
-    "flash-exp": Model.G_2_0_FLASH_EXP,
     "thinking": Model.G_2_0_FLASH_THINKING,
-    "thinking-with-apps": Model.G_2_0_FLASH_THINKING_WITH_APPS,
-    "exp-advanced": Model.G_2_0_EXP_ADVANCED,
-    "2.5-exp-advanced": Model.G_2_5_EXP_ADVANCED,
-    "1.5-flash": Model.G_1_5_FLASH,
-    "1.5-pro": Model.G_1_5_PRO,
-    "1.5-pro-research": Model.G_1_5_PRO_RESEARCH,
+    "pro": Model.G_2_5_PRO,
+    "advanced": Model.G_2_0_EXP_ADVANCED,
+    "advanced-2.5": Model.G_2_5_EXP_ADVANCED,
 }
 
 # List of available models (friendly names)

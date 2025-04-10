@@ -35,6 +35,12 @@ Webscout's AI Search Providers offer powerful and flexible AI-powered search cap
    - Clean markdown link removal
    - Streamlined response parsing
 
+5. **Monica**
+   - Specialized for specific queries
+   - Advanced search capabilities
+   - Contextual understanding of queries
+   - Supports streaming and non-streaming responses
+
 ## 🚀 Installation
 
 ```bash

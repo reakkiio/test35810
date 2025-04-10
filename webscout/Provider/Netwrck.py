@@ -25,8 +25,9 @@ class Netwrck(Provider):
         "gryphe/mythomax-l2-13b",
         "google/gemini-pro-1.5",
         "nvidia/llama-3.1-nemotron-70b-instruct",
-        "deepseek-r1",
-        "deepseek",
+        "deepseek/deepseek-r1",
+        "deepseek/deepseek-chat"
+
     ]
 
     def __init__(

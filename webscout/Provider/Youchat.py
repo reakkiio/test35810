@@ -1,15 +1,11 @@
 from uuid import uuid4
-from re import findall
 import json
-
-
+import datetime
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
-from webscout.AIbase import Provider, AsyncProvider
+from webscout.AIutel import AwesomePrompts
+from webscout.AIbase import Provider
 from webscout import exceptions
-from typing import Union, Any, AsyncGenerator, Dict
-
 import cloudscraper
 
 
@@ -18,41 +14,50 @@ class YouChat(Provider):
     This class provides methods for interacting with the You.com chat API in a consistent provider structure.
     """
 
-    # Updated available models based on provided "aiModels" list
+    # Updated available models based on latest aiModels list
+    # All models with isProOnly: false are included
     AVAILABLE_MODELS = [
-        # "gpt_4_5_preview", #isProOnly": true,
-        # "openai_o3_mini_high", #isProOnly": true,
-        # "openai_o3_mini_medium", #isProOnly": true,
-        # "openai_o1", #isProOnly": true,
-        # "openai_o1_preview", #isProOnly": true,
-        # "openai_o1_mini", #isProOnly": true,
+        # ProOnly models (not available without subscription)
+        # "gpt_4_5_preview",  # isProOnly: true
+        # "openai_o3_mini_high",  # isProOnly: true
+        # "openai_o3_mini_medium",  # isProOnly: true
+        # "openai_o1",  # isProOnly: true
+        # "openai_o1_preview",  # isProOnly: true
+        # "openai_o1_mini",  # isProOnly: true
+        # "gpt_4",  # isProOnly: true
+        # "claude_3_7_sonnet_thinking",  # isProOnly: true
+        # "claude_3_7_sonnet",  # isProOnly: true
+        # "claude_3_5_sonnet",  # isProOnly: true
+        # "claude_3_opus",  # isProOnly: true
+        # "qwq_32b",  # isProOnly: true
+        # "deepseek_r1",  # isProOnly: true
+        # "deepseek_v3",  # isProOnly: true
+        # "gemini_2_5_pro_experimental",  # isProOnly: true
+        
+        # Free models (isProOnly: false)
         "gpt_4o_mini",
         "gpt_4o",
         "gpt_4_turbo",
-        # "gpt_4", #isProOnly": true,
-        # "claude_3_7_sonnet_thinking", #isProOnly": true,
-        # "claude_3_7_sonnet", #isProOnly": true,
-        # "claude_3_5_sonnet", #isProOnly": true,
-        # "claude_3_opus", #isProOnly": true,
         "claude_3_sonnet",
         "claude_3_5_haiku",
-        # "qwq_32b", #isProOnly": true,
         "qwen2p5_72b",
         "qwen2p5_coder_32b",
-        # "deepseek_r1", #isProOnly": true,
-        # "deepseek_v3", #isProOnly": true,
-        "grok_2",
-        # "llama3_3_70b", #isProOnly": false, "isAllowedForUserChatModes": false,
-        # "llama3_2_90b", #isProOnly": false, "isAllowedForUserChatModes": false,
-        "llama3_1_405b",
-        "mistral_large_2",
         "gemini_2_flash",
         "gemini_1_5_flash",
         "gemini_1_5_pro",
-        "databricks_dbrx_instruct",
+        "grok_2",
+        "llama4_maverick",
+        "llama4_scout",
+        "llama3_1_405b",
+        "mistral_large_2",
         "command_r_plus",
-        "solar_1_mini",
-        "dolphin_2_5"
+        
+        # Free models not enabled for user chat modes
+        # "llama3_3_70b",  # isAllowedForUserChatModes: false
+        # "llama3_2_90b",  # isAllowedForUserChatModes: false
+        # "databricks_dbrx_instruct",  # isAllowedForUserChatModes: false
+        # "solar_1_mini",  # isAllowedForUserChatModes: false
+        # "dolphin_2_5",  # isAllowedForUserChatModes: false, isUncensoredModel: true
     ]
 
     def __init__(
@@ -80,7 +85,7 @@ class YouChat(Provider):
             proxies (dict, optional): Http request proxies. Defaults to {}.
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
-            model (str, optional): Model to use. Defaults to "claude_3_5_haiku".
+            model (str, optional): Model to use. Defaults to "gemini_2_flash".
         """
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
@@ -94,20 +99,21 @@ class YouChat(Provider):
         self.last_response = {}
         self.model = model
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
             "Accept": "text/event-stream",
             "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
             "Referer": "https://you.com/search?q=hi&fromSearchBar=true&tbm=youchat",
             "Connection": "keep-alive",
             "DNT": "1",
+            "Content-Type": "text/plain;charset=UTF-8",
         }
         self.cookies = {
             "uuid_guest_backup": uuid4().hex,
             "youchat_personalization": "true",
             "youchat_smart_learn": "true",
             "youpro_subscription": "false",
-            "ydc_stytch_session": uuid4().hex,
-            "ydc_stytch_session_jwt": uuid4().hex,
+            "you_subscription": "freemium",
+            "safesearch_guest": "Moderate",
             "__cf_bm": uuid4().hex,
         }
 
@@ -167,6 +173,9 @@ class YouChat(Provider):
         trace_id = str(uuid4())
         conversation_turn_id = str(uuid4())
         
+        # Current timestamp in ISO format for traceId
+        current_time = datetime.datetime.now().isoformat()
+        
         # Updated query parameters to match the new API format
         params = {
             "page": 1,
@@ -180,10 +189,9 @@ class YouChat(Provider):
             "chatId": trace_id,
             "conversationTurnId": conversation_turn_id,
             "pastChatLength": 0,
-            "selectedChatMode": "custom",
-            "selectedAiModel": self.model,
+            "selectedChatMode": "smart_routing",  # Updated from custom to smart_routing
             "enable_agent_clarification_questions": "true",
-            "traceId": f"{trace_id}|{conversation_turn_id}|{uuid4()}",
+            "traceId": f"{trace_id}|{conversation_turn_id}|{current_time}",
             "use_nested_youchat_updates": "true"
         }
         
@@ -289,8 +297,30 @@ class YouChat(Provider):
         return response["text"]
 
 if __name__ == '__main__':
-    from rich import print
-    ai = YouChat(timeout=5000)
-    response = ai.chat("hi", stream=True)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    print("-" * 80)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 80)
+    
+    # Test all available models
+    working = 0
+    total = len(YouChat.AVAILABLE_MODELS)
+    
+    for model in YouChat.AVAILABLE_MODELS:
+        try:
+            test_ai = YouChat(model=model, timeout=60)
+            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            response_text = ""
+            for chunk in response:
+                response_text += chunk
+                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
+            
+            if response_text and len(response_text.strip()) > 0:
+                status = "✓"
+                # Truncate response if too long
+                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+            else:
+                status = "✗"
+                display_text = "Empty or invalid response"
+            print(f"\r{model:<50} {status:<10} {display_text}")
+        except Exception as e:
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")

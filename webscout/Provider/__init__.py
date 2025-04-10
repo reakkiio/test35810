@@ -15,6 +15,7 @@ from .Phind import Phindv2
 from .ai4chat import *
 from .Gemini import GEMINI
 from .Deepinfra import DeepInfra
+from .typefully import *
 from .cleeai import *
 from .OLLAMA import OLLAMA
 from .Andi import AndiSearch
@@ -147,6 +148,7 @@ __all__ = [
     'Cleeai',
     'Elmo',
     'ChatGPTClone',
+    'TypefullyAI',
     'Free2GPT',
     'GPTWeb',
     'Netwrck',

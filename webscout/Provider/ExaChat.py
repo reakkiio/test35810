@@ -71,6 +71,7 @@ class ExaChat(Provider):
         
         # Gemini Models
         "gemini-2.0-flash",
+        "gemini-2.0-flash-exp-image-generation",
         "gemini-2.0-flash-thinking-exp-01-21",
         "gemini-2.5-pro-exp-03-25",
         "gemini-2.0-pro-exp-02-05",
@@ -80,6 +81,7 @@ class ExaChat(Provider):
         "deepseek/deepseek-r1:free",
         "deepseek/deepseek-chat-v3-0324:free",
         "google/gemma-3-27b-it:free",
+        "meta-llama/llama-4-maverick:free",
         
         # Groq Models
         "deepseek-r1-distill-llama-70b",
@@ -96,6 +98,8 @@ class ExaChat(Provider):
         "qwen-2.5-32b",
         "qwen-2.5-coder-32b",
         "qwen-qwq-32b",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+
         
         # Cerebras Models
         "llama3.1-8b",

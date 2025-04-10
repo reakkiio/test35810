@@ -47,6 +47,7 @@ from .aimathgpt import *
 from .gaurish import *
 from .geminiprorealtime import *
 from .llmchat import *
+from .llmchatco import LLMChatCo  # Add new LLMChat.co provider
 from .talkai import *
 from .askmyai import *
 from .llama3mitril import *
@@ -158,6 +159,7 @@ __all__ = [
     'GaurishCerebras',
     'GeminiPro',
     'LLMChat',
+    'LLMChatCo',
     'Talkai',
     'Llama3Mitril',
     'Marcus',

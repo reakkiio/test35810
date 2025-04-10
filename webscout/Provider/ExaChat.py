@@ -22,6 +22,7 @@ MODEL_CONFIGS = {
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.0-pro-exp-02-05",
+        
         ],
     },
     "openrouter": {
@@ -31,6 +32,7 @@ MODEL_CONFIGS = {
             "deepseek/deepseek-r1:free",
             "deepseek/deepseek-chat-v3-0324:free",
             "google/gemma-3-27b-it:free",
+            "meta-llama/llama-4-maverick:free",           
         ],
     },
     "groq": {
@@ -49,7 +51,8 @@ MODEL_CONFIGS = {
             "llama3-8b-8192",
             "qwen-2.5-32b",
             "qwen-2.5-coder-32b",
-            "qwen-qwq-32b"
+            "qwen-qwq-32b",
+            "meta-llama/llama-4-scout-17b-16e-instruct"
         ],
     },
     "cerebras": {

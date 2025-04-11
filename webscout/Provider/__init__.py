@@ -90,9 +90,11 @@ from .asksteve import *
 from .Aitopia import *
 from .searchchat import *
 from .ExaAI import ExaAI
+from .OpenGPT import OpenGPT
 __all__ = [
     'LLAMA',
     'LabyrinthAI',
+    'OpenGPT',
     'Flowith',
     'C4ai',
     'Venice',

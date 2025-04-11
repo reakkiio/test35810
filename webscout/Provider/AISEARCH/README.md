@@ -16,36 +16,11 @@ Webscout's AI Search Providers offer powerful and flexible AI-powered search cap
 ## 📦 Supported Search Providers
 
 1. **DeepFind**
-   - Advanced web-based AI search
-   - Streaming response support
-   - Clean response formatting
-
 2. **Felo**
-   - Powerful search interface
-   - Real-time response streaming
-   - Context-aware responses
-
 3. **Isou**
-   - Multiple model options
-   - Scientific and general query support
-   - References and citations included
-
 4. **Genspark**
-   - Fast and efficient search responses
-   - Clean markdown link removal
-   - Streamlined response parsing
-
 5. **Monica**
-   - Specialized for specific queries
-   - Advanced search capabilities
-   - Contextual understanding of queries
-   - Supports streaming and non-streaming responses
-
-6. **XDash**
-   - Web-based comprehensive search responses
-   - Related question suggestions
-   - Answer snippets with source references
-   - Clean formatted responses
+6. **webpilotai**
 
 ## 🚀 Installation
 

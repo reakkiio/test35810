@@ -50,7 +50,7 @@ class PiAI(Provider):
     ):
         """
         Initializes PiAI with voice support.
-        
+
         Args:
             voice (bool): Enable/disable voice output
             voice_name (str): Name of the voice to use (if None, uses default)
@@ -66,7 +66,9 @@ class PiAI(Provider):
 
         # Initialize other attributes
         self.scraper = cloudscraper.create_scraper()
-        self.url = 'https://pi.ai/api/chat'
+        self.primary_url = 'https://pi.ai/api/chat'
+        self.fallback_url = 'https://pi.ai/api/v2/chat'
+        self.url = self.primary_url
         self.headers = {
             'Accept': 'text/event-stream',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -115,7 +117,7 @@ class PiAI(Provider):
         )
         self.conversation.history_offset = history_offset
         self.session.proxies = proxies
-        
+
         if self.is_conversation:
             self.start_conversation()
 
@@ -130,13 +132,13 @@ class PiAI(Provider):
             json={},
             timeout=self.timeout
         )
-        
+
         if not response.ok:
             raise Exception(f"Failed to start conversation: {response.status_code}")
-            
+
         data = response.json()
         self.conversation_id = data['conversations'][0]['sid']
-        
+
         return self.conversation_id
 
     def ask(
@@ -152,7 +154,7 @@ class PiAI(Provider):
     ) -> dict:
         """
         Interact with Pi.ai by sending a prompt and receiving a response.
-        
+
         Args:
             prompt (str): The prompt to send
             stream (bool): Whether to stream the response
@@ -186,15 +188,28 @@ class PiAI(Provider):
         }
 
         def process_stream():
+            # Try primary URL first
             response = self.scraper.post(
-                self.url, 
-                headers=self.headers, 
-                cookies=self.cookies, 
-                json=data, 
-                stream=True, 
+                self.url,
+                headers=self.headers,
+                cookies=self.cookies,
+                json=data,
+                stream=True,
                 timeout=self.timeout
             )
-            
+
+            # If primary URL fails, try fallback URL
+            if not response.ok and self.url == self.primary_url:
+                self.url = self.fallback_url
+                response = self.scraper.post(
+                    self.url,
+                    headers=self.headers,
+                    cookies=self.cookies,
+                    json=data,
+                    stream=True,
+                    timeout=self.timeout
+                )
+
             if not response.ok:
                 raise Exception(f"API request failed: {response.status_code}")
 
@@ -204,7 +219,7 @@ class PiAI(Provider):
 
             if voice and voice_name and second_sid:
                 threading.Thread(
-                    target=self.download_audio_threaded, 
+                    target=self.download_audio_threaded,
                     args=(voice_name, second_sid, output_file)
                 ).start()
 
@@ -245,7 +260,7 @@ class PiAI(Provider):
     ) -> str:
         """
         Generates a response based on the provided prompt.
-        
+
         Args:
             prompt (str): The prompt to send
             stream (bool): Whether to stream the response
@@ -300,24 +315,24 @@ class PiAI(Provider):
             'voice': f'voice{self.AVAILABLE_VOICES[voice_name]}',
             'messageSid': second_sid,
         }
-        
+
         try:
             audio_response = self.scraper.get(
-                'https://pi.ai/api/chat/voice', 
-                params=params, 
-                cookies=self.cookies, 
-                headers=self.headers, 
+                'https://pi.ai/api/chat/voice',
+                params=params,
+                cookies=self.cookies,
+                headers=self.headers,
                 timeout=self.timeout
             )
-            
+
             if not audio_response.ok:
                 return
-                
+
             audio_response.raise_for_status()
-            
+
             with open(output_file, "wb") as file:
                 file.write(audio_response.content)
-                
+
         except requests.exceptions.RequestException:
             pass
 

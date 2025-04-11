@@ -98,22 +98,8 @@ for chunk in ai.search("Explain blockchain technology", stream=True):
     print(chunk, end="", flush=True)
 ```
 
-### XDash Example
 
-```python
-from webscout import XDash
 
-# Initialize XDash
-ai = XDash()
-
-# Basic search with formatted response
-response = ai.search("What is machine learning?")
-print(response)  # Prints formatted response with main answer and related questions
-
-# Get raw response
-raw_response = ai.search("What are neural networks?", raw=True)
-print(raw_response)  # {'result': 'formatted text response'}
-```
 
 ## 🎛️ Advanced Configuration
 
@@ -180,6 +166,8 @@ response = ai.search("Hello", stream=True)
 - Answer snippets with source references
 - Clean formatted responses
 
+
+
 ## 🛡️ Error Handling
 
 ```python
@@ -230,7 +218,7 @@ print(response.text)
    - **Felo**: Fast streaming responses
    - **Isou**: Scientific or specialized queries
    - **Genspark**: Clean and efficient responses
-   - **XDash**: Comprehensive search with related questions and source references
+   - **webpilotai**: Comprehensive search
 
 ## 🤝 Contributing
 

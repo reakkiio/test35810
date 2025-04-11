@@ -239,7 +239,7 @@ class Monica(AISearch):
 
 if __name__ == "__main__":
     from rich import print
-    
+
     ai = Monica()
     response = ai.search(input(">>> "), stream=True, raw=False)
     for chunk in response:

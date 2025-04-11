@@ -89,12 +89,14 @@ from .ExaChat import *
 from .asksteve import *
 from .Aitopia import *
 from .searchchat import *
+from .ExaAI import ExaAI
 __all__ = [
     'LLAMA',
     'LabyrinthAI',
     'Flowith',
     'C4ai',
     'Venice',
+    'ExaAI',
     'Copilot',
     'HuggingFaceChat',
     'TwoAI',

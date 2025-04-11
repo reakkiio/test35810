@@ -43,8 +43,8 @@ class FreeAIChat(Provider):
         # Google Models
         "Gemini 1.5 Flash",
         "Gemini 1.5 Pro",
-        "Gemini 2.0 Pro",
         "Gemini 2.0 Flash",
+        "Gemini 2.0 Pro",
         "Gemini 2.5 Pro",
 
         # Llama Models

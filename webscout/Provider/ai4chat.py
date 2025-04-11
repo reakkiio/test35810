@@ -1,7 +1,5 @@
 import requests
-import json
-import html
-import re
+import urllib.parse
 from typing import Union, Any, Dict
 
 from webscout.AIutel import Optimizers
@@ -11,7 +9,7 @@ from webscout.AIbase import Provider
 
 class AI4Chat(Provider):
     """
-    A class to interact with the AI4Chat API.
+    A class to interact with the AI4Chat Riddle API.
     """
 
     def __init__(
@@ -26,6 +24,8 @@ class AI4Chat(Provider):
         history_offset: int = 10250,
         act: str = None,
         system_prompt: str = "You are a helpful and informative AI assistant.",
+        country: str = "Asia",
+        user_id: str = "usersmjb2oaz7y"
     ) -> None:
         """
         Initializes the AI4Chat API with given parameters.
@@ -41,34 +41,30 @@ class AI4Chat(Provider):
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
             system_prompt (str, optional): System prompt to guide the AI's behavior. Defaults to "You are a helpful and informative AI assistant.".
+            country (str, optional): Country parameter for API. Defaults to "Asia".
+            user_id (str, optional): User ID for API. Defaults to "usersmjb2oaz7y".
         """
         self.session = requests.Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
-        self.api_endpoint = "https://www.ai4chat.co/generate-response"
+        self.api_endpoint = "https://yw85opafq6.execute-api.us-east-1.amazonaws.com/default/boss_mode_15aug"
         self.timeout = timeout
         self.last_response = {}
+        self.country = country
+        self.user_id = user_id
         self.headers = {
-            "authority": "www.ai4chat.co",
-            "method": "POST",
-            "path": "/generate-response",
-            "scheme": "https",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "content-type": "application/json",
-            "cookie": "messageCount=1",
-            "dnt": "1",
-            "origin": "https://www.ai4chat.co",
-            "priority": "u=1, i",
-            "referer": "https://www.ai4chat.co/gpt/talkdirtytome",
-            "sec-ch-ua": '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0"
+            "Accept": "*/*",
+            "Accept-Language": "id-ID,id;q=0.9",
+            "Origin": "https://www.ai4chat.co",
+            "Priority": "u=1, i",
+            "Referer": "https://www.ai4chat.co/",
+            "Sec-CH-UA": '"Chromium";v="131", "Not_A Brand";v="24", "Microsoft Edge Simulate";v="131", "Lemur";v="131"',
+            "Sec-CH-UA-Mobile": "?1",
+            "Sec-CH-UA-Platform": '"Android"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
         }
 
         self.__available_optimizers = (
@@ -98,16 +94,20 @@ class AI4Chat(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        country: str = None,
+        user_id: str = None,
     ) -> Dict[str, Any]:
         """
         Sends a prompt to the AI4Chat API and returns the response.
 
         Args:
             prompt: The text prompt to generate text from.
-            stream (bool, optional): Not used (AI4Chat doesn't support streaming).
+            stream (bool, optional): Not supported. Defaults to False.
             raw (bool, optional): Whether to return the raw response. Defaults to False.
             optimizer (str, optional): The name of the optimizer to use. Defaults to None.
             conversationally (bool, optional): Whether to chat conversationally. Defaults to False.
+            country (str, optional): Country parameter for API. Defaults to None.
+            user_id (str, optional): User ID for API. Defaults to None.
 
         Returns:
             dict: A dictionary containing the AI's response.
@@ -123,51 +123,52 @@ class AI4Chat(Provider):
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
 
-        payload = {
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": conversation_prompt}
-            ]
-        }
-
-        response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, timeout=self.timeout)
+        # Use provided values or defaults
+        country_param = country or self.country
+        user_id_param = user_id or self.user_id
+        
+        # Build the URL with parameters
+        encoded_text = urllib.parse.quote(conversation_prompt)
+        encoded_country = urllib.parse.quote(country_param)
+        encoded_user_id = urllib.parse.quote(user_id_param)
+        
+        url = f"{self.api_endpoint}?text={encoded_text}&country={encoded_country}&user_id={encoded_user_id}"
+        
+        response = self.session.get(url, headers=self.headers, timeout=self.timeout)
         if not response.ok:
             raise Exception(f"Failed to generate response: {response.status_code} - {response.reason}")
         
-        response_data = response.json()
-        message_content = response_data.get('message', 'No message found')
-
-        # Decode HTML entities
-        decoded_message = html.unescape(message_content)
-
-        # Remove HTML tags while preserving newlines and list structure
-        cleaned_text = re.sub(r'<p>(.*?)</p>', r'\1\n\n', decoded_message)
-        cleaned_text = re.sub(r'<ol>|</ol>', '', cleaned_text)
-        cleaned_text = re.sub(r'<li><p>(.*?)</p></li>', r'• \1\n', cleaned_text)
-        cleaned_text = re.sub(r'</?[^>]+>', '', cleaned_text)
+        response_text = response.text
         
-        # Remove extra newlines
-        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text.strip())
-
-        self.last_response.update(dict(text=cleaned_text))
-        self.conversation.update_chat_history(prompt, cleaned_text)
+        # Remove quotes from the start and end of the response
+        if response_text.startswith('"'):
+            response_text = response_text[1:]
+        if response_text.endswith('"'):
+            response_text = response_text[:-1]
+        
+        self.last_response.update(dict(text=response_text))
+        self.conversation.update_chat_history(prompt, response_text)
         return self.last_response
 
     def chat(
         self,
         prompt: str,
-        stream: bool = False,  # Streaming is not supported by AI4Chat
+        stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        country: str = None,
+        user_id: str = None,
     ) -> str:
         """
         Generates a response from the AI4Chat API.
 
         Args:
             prompt (str): The prompt to send to the AI.
-            stream (bool, optional): Not used (AI4Chat doesn't support streaming). 
+            stream (bool, optional): Not supported. 
             optimizer (str, optional): The name of the optimizer to use. Defaults to None.
             conversationally (bool, optional): Whether to chat conversationally. Defaults to False.
+            country (str, optional): Country parameter for API. Defaults to None.
+            user_id (str, optional): User ID for API. Defaults to None.
 
         Returns:
             str: The response generated by the AI.
@@ -177,6 +178,8 @@ class AI4Chat(Provider):
                 prompt,
                 optimizer=optimizer,
                 conversationally=conversationally,
+                country=country,
+                user_id=user_id,
             )
         )
 
@@ -190,11 +193,10 @@ class AI4Chat(Provider):
             str: Message extracted
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
     from rich import print
     ai = AI4Chat() 
-    response = ai.chat("write me poem about AI", stream=True)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    response = ai.chat("Tell me something interesting")
+    print(response)

@@ -1,6 +1,7 @@
 import requests
 import json
 import uuid
+import re
 from typing import Any, Dict, Optional, Union
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -14,12 +15,14 @@ class SciraAI(Provider):
     A class to interact with the Scira AI chat API.
     """
 
-    AVAILABLE_MODELS = [
-        "scira-default",
-        "scira-sonnet",
-        "scira-llama",
-        "scira-r1"
-    ]
+    AVAILABLE_MODELS = {
+        "scira-default": "Grok3",
+        "scira-grok-3-mini": "Grok3-mini", # thinking model
+        "scira-vision" : "Grok2-Vision", # vision model
+        "scira-claude": "Sonnet-3.7",
+        "scira-optimus": "optimus",
+
+    }
 
     def __init__(
         self,
@@ -37,17 +40,34 @@ class SciraAI(Provider):
         user_id: str = None,
         browser: str = "chrome"
     ):
-        """Initializes the Scira AI API client."""
+        """Initializes the Scira AI API client.
+
+        Args:
+            is_conversation (bool): Whether to maintain conversation history.
+            max_tokens (int): Maximum number of tokens to generate.
+            timeout (int): Request timeout in seconds.
+            intro (str): Introduction text for the conversation.
+            filepath (str): Path to save conversation history.
+            update_file (bool): Whether to update the conversation history file.
+            proxies (dict): Proxy configuration for requests.
+            history_offset (int): Maximum history length in characters.
+            act (str): Persona for the AI to adopt.
+            model (str): Model to use, must be one of AVAILABLE_MODELS.
+            chat_id (str): Unique identifier for the chat session.
+            user_id (str): Unique identifier for the user.
+            browser (str): Browser to emulate in requests.
+
+        """
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-            
+
         self.url = "https://scira.ai/api/search"
-        
+
         # Initialize LitAgent for user agent generation
         self.agent = LitAgent()
         # Use fingerprinting to create a consistent browser identity
         self.fingerprint = self.agent.generate_fingerprint(browser)
-        
+
         # Use the fingerprint for headers
         self.headers = {
             "Accept": self.fingerprint["accept"],
@@ -64,7 +84,7 @@ class SciraAI(Provider):
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin"
         }
-        
+
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.session.proxies.update(proxies)
@@ -76,6 +96,9 @@ class SciraAI(Provider):
         self.model = model
         self.chat_id = chat_id or str(uuid.uuid4())
         self.user_id = user_id or f"user_{str(uuid.uuid4())[:8].upper()}"
+
+        # Always use chat mode (no web search)
+        self.search_mode = "chat"
 
         self.__available_optimizers = (
             method
@@ -98,13 +121,13 @@ class SciraAI(Provider):
     def refresh_identity(self, browser: str = None):
         """
         Refreshes the browser identity fingerprint.
-        
+
         Args:
             browser: Specific browser to use for the new fingerprint
         """
         browser = browser or self.fingerprint.get("browser_type", "chrome")
         self.fingerprint = self.agent.generate_fingerprint(browser)
-        
+
         # Update headers with new fingerprint
         self.headers.update({
             "Accept": self.fingerprint["accept"],
@@ -113,17 +136,16 @@ class SciraAI(Provider):
             "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
             "User-Agent": self.fingerprint["user_agent"],
         })
-        
+
         # Update session headers
         for header, value in self.headers.items():
             self.session.headers[header] = value
-        
+
         return self.fingerprint
 
     def ask(
         self,
         prompt: str,
-        raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Dict[str, Any]:
@@ -147,50 +169,56 @@ class SciraAI(Provider):
                 }
             ],
             "model": self.model,
-            "group": "web",
-            "user_id": self.user_id
+            "group": "chat",  # Always use chat mode (no web search)
+            "user_id": self.user_id,
+            "stream": True  # Always use streaming for consistent response handling
         }
 
         try:
             response = self.session.post(self.url, json=payload, timeout=self.timeout)
             if response.status_code != 200:
+                # Try to get response content for better error messages
+                try:
+                    error_content = response.text
+                except:
+                    error_content = "<could not read response content>"
+
                 if response.status_code in [403, 429]:
+                    print(f"Received status code {response.status_code}, refreshing identity...")
                     self.refresh_identity()
                     response = self.session.post(self.url, json=payload, timeout=self.timeout)
                     if not response.ok:
                         raise exceptions.FailedToGenerateResponseError(
-                            f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {response.text}"
+                            f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}"
                         )
+                    print("Identity refreshed successfully.")
                 else:
                     raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed with status code {response.status_code}"
+                        f"Request failed with status code {response.status_code}. Response: {error_content}"
                     )
 
             full_response = ""
-            for line in response.iter_lines():
+            debug_lines = []
+
+            # Collect the first few lines for debugging
+            for i, line in enumerate(response.iter_lines()):
                 if line:
                     try:
-                        line = line.decode('utf-8')
-                        if line.startswith('0:'):  # Content message
-                            content = line[2:].strip('"')
-                            full_response += content
-                        # elif line.startswith('f:'):  # Message ID
-                        #     try:
-                        #         data = json.loads(line[2:])
-                        #         if 'messageId' in data:
-                        #             self.last_message_id = data['messageId']
-                        #     except json.JSONDecodeError:
-                        #         pass
-                        elif line.startswith('e:'):  # Finish reason
-                            try:
-                                data = json.loads(line[2:])
-                                if data.get('finishReason') == 'stop':
-                                    break
-                            except json.JSONDecodeError:
-                                pass
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        continue
+                        line_str = line.decode('utf-8')
+                        debug_lines.append(line_str)
 
+                        # Break immediately if line starts with 'e:' (finish reason)
+                        if line_str.startswith('e:'):
+                            break
+
+                        # Format 2: 0:"content" (quoted format)
+                        match = re.search(r'0:"(.*?)"', line_str)
+                        if match:
+                            content = match.group(1)
+                            full_response += content
+                            continue
+
+                    except: pass
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
             return {"text": full_response}
@@ -214,15 +242,20 @@ class SciraAI(Provider):
         return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
-    print("-" * 80)
+    print("-" * 100)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    print("-" * 100)
 
+    test_prompt = "Say 'Hello' in one word"
+
+    # Test each model
     for model in SciraAI.AVAILABLE_MODELS:
+        print(f"\rTesting {model}...", end="")
+
         try:
-            test_ai = SciraAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            
+            test_ai = SciraAI(model=model, timeout=120)  # Increased timeout
+            response = test_ai.chat(test_prompt)
+
             if response and len(response.strip()) > 0:
                 status = "✓"
                 # Clean and truncate response
@@ -231,6 +264,11 @@ if __name__ == "__main__":
             else:
                 status = "✗"
                 display_text = "Empty or invalid response"
+
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}") 
+            error_msg = str(e)
+            # Truncate very long error messages
+            if len(error_msg) > 100:
+                error_msg = error_msg[:97] + "..."
+            print(f"\r{model:<50} {'✗':<10} Error: {error_msg}")

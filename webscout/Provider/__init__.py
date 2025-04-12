@@ -91,8 +91,10 @@ from .Aitopia import *
 from .searchchat import *
 from .ExaAI import ExaAI
 from .OpenGPT import OpenGPT
+from .scira_chat import *
 __all__ = [
     'LLAMA',
+    'SciraAI',
     'LabyrinthAI',
     'OpenGPT',
     'Flowith',

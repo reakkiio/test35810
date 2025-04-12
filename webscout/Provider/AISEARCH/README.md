@@ -21,6 +21,7 @@ Webscout's AI Search Providers offer powerful and flexible AI-powered search cap
 4. **Genspark**
 5. **Monica**
 6. **webpilotai**
+7. **Scira**
 
 ## 🚀 Installation
 
@@ -98,7 +99,30 @@ for chunk in ai.search("Explain blockchain technology", stream=True):
     print(chunk, end="", flush=True)
 ```
 
+### Scira Example
 
+```python
+from webscout import Scira
+
+# Initialize Scira with default model (Grok3)
+ai = Scira()
+
+# Basic search
+response = ai.search("What is the impact of climate change?")
+print(response)
+
+# Streaming search with Claude model
+ai = Scira(model="scira-claude")
+for chunk in ai.search("Explain quantum computing applications", stream=True):
+    print(chunk, end="", flush=True)
+
+# Available models include:
+# - scira-default (Grok3)
+# - scira-grok-3-mini (Grok3-mini)
+# - scira-vision (Grok2-Vision)
+# - scira-claude (Sonnet-3.7)
+# - scira-optimus (optimus)
+```
 
 
 ## 🎛️ Advanced Configuration
@@ -115,6 +139,9 @@ ai = Felo(proxies=proxies)
 
 # Configure max tokens (for providers that support it)
 ai = Genspark(max_tokens=800)
+
+# Configure model and group for Scira
+ai = Scira(model="scira-claude", group="web")
 ```
 
 ### Response Formats
@@ -166,6 +193,13 @@ response = ai.search("Hello", stream=True)
 - Answer snippets with source references
 - Clean formatted responses
 
+### Scira
+
+- Research-focused AI search provider
+- Real-time streaming of responses
+- Multiple model options (Grok3, Claude, Vision support)
+- Customizable model and group parameters
+- Efficient content parsing and formatting
 
 
 ## 🛡️ Error Handling
@@ -219,6 +253,7 @@ print(response.text)
    - **Isou**: Scientific or specialized queries
    - **Genspark**: Clean and efficient responses
    - **webpilotai**: Comprehensive search
+   - **Scira**: Research-focused responses with real-time streaming
 
 ## 🤝 Contributing
 

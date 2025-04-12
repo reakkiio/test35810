@@ -67,8 +67,6 @@ class DeepInfra(Provider):
         "Qwen/Qwen2.5-Coder-32B-Instruct",
         # "Sao10K/L3.1-70B-Euryale-v2.2",  # >>>> NOT WORKING
         # "Sao10K/L3.3-70B-Euryale-v2.3",  # >>>> NOT WORKING
-        "meta-llama/Llama-3.3-70B-Instruct",
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     ]
 
     def __init__(

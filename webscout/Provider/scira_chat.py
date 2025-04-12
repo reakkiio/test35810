@@ -171,7 +171,7 @@ class SciraAI(Provider):
             "model": self.model,
             "group": "chat",  # Always use chat mode (no web search)
             "user_id": self.user_id,
-            "stream": True  # Always use streaming for consistent response handling
+            "timezone": "Asia/Calcutta"
         }
 
         try:
@@ -207,16 +207,13 @@ class SciraAI(Provider):
                         line_str = line.decode('utf-8')
                         debug_lines.append(line_str)
 
-                        # Break immediately if line starts with 'e:' (finish reason)
-                        if line_str.startswith('e:'):
-                            break
-
                         # Format 2: 0:"content" (quoted format)
                         match = re.search(r'0:"(.*?)"', line_str)
                         if match:
                             content = match.group(1)
                             full_response += content
                             continue
+
 
                     except: pass
             self.last_response = {"text": full_response}

@@ -17,31 +17,40 @@ class DeepInfra(Provider):
 
     AVAILABLE_MODELS = [
         # "anthropic/claude-3-7-sonnet-latest",  # >>>> NOT WORKING
+
         "deepseek-ai/DeepSeek-R1",
-        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
         "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "deepseek-ai/DeepSeek-R1-Turbo",
         "deepseek-ai/DeepSeek-V3",
+
         "google/gemma-2-27b-it",
         "google/gemma-2-9b-it",
         "google/gemma-3-27b-it",
+        "google/gemma-3-12b-it",
+        "google/gemma-3-4b-it",
         # "google/gemini-1.5-flash",  # >>>> NOT WORKING
         # "google/gemini-1.5-flash-8b",  # >>>> NOT WORKING
         # "google/gemini-2.0-flash-001",  # >>>> NOT WORKING
+
         # "Gryphe/MythoMax-L2-13b",  # >>>> NOT WORKING
+
         # "meta-llama/Llama-3.2-1B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Llama-3.2-3B-Instruct",  # >>>> NOT WORKING
-        "meta-llama/Llama-3.2-90B-Vision-Instruct",
-        "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        # "meta-llama/Llama-3.2-90B-Vision-Instruct",  # >>>> NOT WORKING
+        # "meta-llama/Llama-3.2-11B-Vision-Instruct",  # >>>> NOT WORKING
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         # "meta-llama/Meta-Llama-3-70B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Meta-Llama-3-8B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Meta-Llama-3.1-70B-Instruct",  # >>>> NOT WORKING
-        "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        # "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",  # >>>> NOT WORKING
         "meta-llama/Meta-Llama-3.1-8B-Instruct",
         "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
         # "meta-llama/Meta-Llama-3.1-405B-Instruct",  # >>>> NOT WORKING
+
         "microsoft/phi-4",
         "microsoft/Phi-4-multimodal-instruct",
         "microsoft/WizardLM-2-8x22B",
@@ -74,6 +83,7 @@ class DeepInfra(Provider):
         history_offset: int = 10250,
         act: str = None,
         model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        system_prompt: str = "You are a helpful assistant.",
         browser: str = "chrome"
     ):
         """Initializes the DeepInfra API client."""
@@ -111,7 +121,7 @@ class DeepInfra(Provider):
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.session.proxies.update(proxies)
-
+        self.system_prompt = system_prompt
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -182,7 +192,7 @@ class DeepInfra(Provider):
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": conversation_prompt},
             ],
             "stream": stream

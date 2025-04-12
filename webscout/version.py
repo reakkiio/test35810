@@ -1,2 +1,2 @@
-__version__ = "7.9"
+__version__ = "8.0"
 __prog__ = "webscout"

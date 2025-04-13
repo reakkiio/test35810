@@ -5,7 +5,7 @@ from typing import Any, Dict, Generator, Optional, Union
 
 from webscout.AIbase import AISearch
 from webscout import exceptions
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 
 
 class Response:

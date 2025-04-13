@@ -2,7 +2,7 @@ import requests
 import json
 import re
 from typing import Dict, Optional, Generator, Any, Union
-from webscout import LitAgent
+from webscout.litagent import LitAgent
 from webscout import exceptions
 from webscout.AIbase import AISearch
 

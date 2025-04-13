@@ -9,8 +9,8 @@ from .Openai import OPENAI
 from .Openai import AsyncOPENAI
 from .Koboldai import KOBOLDAI
 from .Koboldai import AsyncKOBOLDAI
-from .Blackboxai import BLACKBOXAI 
-from .Phind import PhindSearch 
+from .Blackboxai import BLACKBOXAI
+from .Phind import PhindSearch
 from .Phind import Phindv2
 from .ai4chat import *
 from .Gemini import GEMINI
@@ -92,8 +92,10 @@ from .searchchat import *
 from .ExaAI import ExaAI
 from .OpenGPT import OpenGPT
 from .scira_chat import *
+from .AISEARCH.iask_search import IAsk
 __all__ = [
     'LLAMA',
+    'IAsk',
     'SciraAI',
     'LabyrinthAI',
     'OpenGPT',
@@ -124,8 +126,8 @@ __all__ = [
     'AsyncOPENAI',
     'KOBOLDAI',
     'AsyncKOBOLDAI',
-    'BLACKBOXAI', 
-    'PhindSearch', 
+    'BLACKBOXAI',
+    'PhindSearch',
     'GEMINI',
     'DeepInfra',
     'AI4Chat',

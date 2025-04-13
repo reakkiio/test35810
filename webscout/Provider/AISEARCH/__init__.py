@@ -6,3 +6,4 @@ from .monica_search import *
 from .webpilotai_search import *
 from .hika_search import *
 from .scira_search import *
+from .iask_search import *

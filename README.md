@@ -21,6 +21,20 @@
     <!-- Add Build Status Badge if applicable -->
   </p>
 
+</div>
+
+<div id="top"></div>
+
+> [!IMPORTANT]
+> Webscout supports two types of compatibility:
+> - **Native Compatibility:** Webscout's own native API for maximum flexibility
+> - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
+>
+> Choose the approach that best fits your needs! For OpenAI compatibility, check the [OpenAI Providers README](webscout/Provider/OPENAI/README.md).
+
+
+<div align="center">
+
   <!-- Social/Support Links -->
   <div>
     <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
@@ -36,7 +50,9 @@
 ## 🚀 Features
 
 * **Comprehensive Search:** Leverage Google, DuckDuckGo for diverse search results.
-* **AI Powerhouse:** Access and interact with various AI models, including OpenAI, Cohere, and more.
+* **AI Powerhouse:** Access and interact with various AI models through two compatibility options:
+  * **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
+  * **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces, including DeepInfra, Glider, ChatGPTClone, and more
 * **[YouTube Toolkit](webscout/Extra/YTToolkit):** Advanced YouTube video and transcript management with multi-language support, versatile downloading, and intelligent data extraction
 * **[GitAPI](webscout/Extra/GitToolkit/gitapi):** Powerful GitHub data extraction toolkit for seamless repository and user information retrieval, featuring commit tracking, issue management, and comprehensive user analytics - all without authentication requirements for public data
 * **[Tempmail](webscout/Extra/tempmail/README.md) & Temp Number:** Generate temporary email addresses and phone numbers for enhanced privacy.

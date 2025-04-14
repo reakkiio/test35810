@@ -13,3 +13,4 @@ from .llmchatco import *
 from .yep import * # Add YEPCHAT
 from .heckai import *
 from .sonus import *
+from .exachat import *

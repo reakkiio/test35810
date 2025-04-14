@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import SonusAI
+from webscout.Provider.OPENAI import ExaChat
 
 # Initialize the client
-client = SonusAI(timeout=60)
+client = ExaChat(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="air",
+    model="gemini-2.0-pro-exp-02-05",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"},

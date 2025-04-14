@@ -43,6 +43,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - YEPCHAT
 - HeckAI
 - SonusAI
+- ExaChat
 
 ---
 
@@ -251,6 +252,20 @@ Access SonusAI's models through an OpenAI-compatible interface.
 *   `pro` - SonusAI's premium model
 *   `air` - SonusAI's balanced model
 *   `mini` - SonusAI's lightweight model
+
+---
+
+### <img src="https://img.shields.io/badge/ExaChat-4B0082?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmExMCAxMCAwIDEgMCAwIDIwIDEwIDEwIDAgMCAwIDAtMjB6Ij48L3BhdGg+PHBhdGggZD0iTTggMTRzMS41IDIgNCAxLjVjMi41LS41IDQtMS41IDQtMS41Ij48L3BhdGg+PHBhdGggZD0iTTkgOWguMDEiPjwvcGF0aD48cGF0aCBkPSJNMTUgOWguMDEiPjwvcGF0aD48L3N2Zz4=" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> ExaChat
+
+Access ExaChat's multi-provider models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   ExaAnswer: `exaanswer`
+*   Gemini: `gemini-2.0-flash`, `gemini-2.5-pro-exp-03-25`, and more
+*   OpenRouter: `deepseek/deepseek-r1:free`, `meta-llama/llama-4-maverick:free`, and more
+*   Groq: `llama-3.1-8b-instant`, `qwen-2.5-32b`, and more
+*   Cerebras: `llama3.1-8b`, `llama-3.3-70b`
 
 ---
 
@@ -914,6 +929,63 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with ExaChat
+
+```python
+from webscout.Provider.OPENAI import ExaChat
+
+# Initialize the client
+client = ExaChat()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="exaanswer",  # Choose from many available models
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Using Different ExaChat Providers
+
+```python
+from webscout.Provider.OPENAI import ExaChat
+
+# Initialize the client
+client = ExaChat(timeout=60)
+
+# Use a Gemini model
+gemini_response = client.chat.completions.create(
+    model="gemini-2.0-flash",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Explain quantum computing in simple terms."}
+    ]
+)
+
+# Use a Groq model
+groq_response = client.chat.completions.create(
+    model="llama-3.1-8b-instant",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short story about AI."}
+    ]
+)
+
+# Use an OpenRouter model
+openrouter_response = client.chat.completions.create(
+    model="deepseek/deepseek-r1:free",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Explain the concept of recursion."}
+    ]
+)
+```
+
 ## 🔄 Response Format
 
 All providers return responses that mimic the OpenAI API structure, ensuring compatibility with tools built for OpenAI.
@@ -1006,6 +1078,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [Yep.com Website](https://yep.com/)
 *   [HeckAI Website](https://heck.ai/)
 *   [SonusAI Website](https://chat.sonus.ai/)
+*   [ExaChat Website](https://exa-chat.vercel.app/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

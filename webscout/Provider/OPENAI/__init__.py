@@ -6,3 +6,4 @@ from .x0gpt import *
 from .wisecat import *
 from .venice import *
 from .exaai import *
+from .typegpt import *

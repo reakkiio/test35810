@@ -77,7 +77,6 @@ from .HuggingFaceChat import *
 from .GithubChat import *
 from .copilot import *
 from .C4ai import *
-from .flowith import *
 from .sonus import *
 from .uncovr import *
 from .labyrinth import *
@@ -99,7 +98,6 @@ __all__ = [
     'SciraAI',
     'LabyrinthAI',
     'OpenGPT',
-    'Flowith',
     'C4ai',
     'Venice',
     'ExaAI',

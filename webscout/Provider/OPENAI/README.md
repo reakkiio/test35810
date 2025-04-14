@@ -93,6 +93,19 @@ Access ExaAI's O3-Mini model through an OpenAI-compatible interface.
 
 **Note:** ExaAI does not support system messages. Any system messages will be automatically removed from the conversation.
 
+### TypeGPT
+
+Access TypeGPT.net's models through an OpenAI-compatible interface.
+
+**Available Models:**
+TypeGPT supports the following models:
+- `gpt-4o-mini-2024-07-18`: OpenAI's GPT-4o mini model
+- `chatgpt-4o-latest`: Latest version of ChatGPT with GPT-4o
+- `deepseek-r1`: DeepSeek's R1 model
+- `deepseek-v3`: DeepSeek's V3 model
+- `uncensored-r1`: Uncensored version of DeepSeek R1
+- `Image-Generator`: For generating images
+
 ## 💻 Usage
 
 ### Basic Usage with DeepInfra
@@ -426,6 +439,52 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with TypeGPT
+
+```python
+from webscout.Provider.OPENAI import TypeGPT
+
+# Initialize the client
+client = TypeGPT()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="chatgpt-4o-latest",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with TypeGPT
+
+```python
+from webscout.Provider.OPENAI import TypeGPT
+
+# Initialize the client
+client = TypeGPT()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="chatgpt-4o-latest",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 The response format mimics the OpenAI API structure:
@@ -513,6 +572,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 - [WiseCat Website](https://wise-cat-groq.vercel.app/)
 - [Venice AI Website](https://venice.ai/)
 - [ExaAI Website](https://o3minichat.exa.ai/)
+- [TypeGPT Website](https://chat.typegpt.net/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

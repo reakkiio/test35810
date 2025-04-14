@@ -29,14 +29,14 @@ class Completions(BaseCompletions):
     def create(
         self,
         *,
-        model: str,
+        model: str, # Model is now mandatory per request
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = 2048, # Note: LLMChatCo doesn't seem to use max_tokens directly in payload
         stream: bool = False,
         temperature: Optional[float] = None, # Note: LLMChatCo doesn't seem to use temperature directly in payload
         top_p: Optional[float] = None, # Note: LLMChatCo doesn't seem to use top_p directly in payload
         web_search: bool = False, # LLMChatCo specific parameter
-        system_prompt: Optional[str] = None, # Allow overriding system prompt per request
+        system_prompt: Optional[str] = "You are a helpful assistant.", # Default system prompt if not provided
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -44,20 +44,17 @@ class Completions(BaseCompletions):
         Mimics openai.chat.completions.create
         """
         if model not in self._client.AVAILABLE_MODELS:
-             # Fallback or raise error if model not supported by this specific provider
-            print(f"Warning: Model '{model}' not in LLMChatCo's known list. Using '{self._client.model}' instead.")
-            actual_model = self._client.model
-        else:
-            actual_model = model
+             # Raise error as model is mandatory and must be valid for this provider
+            raise ValueError(f"Model '{model}' not supported by LLMChatCo. Available: {self._client.AVAILABLE_MODELS}")
+        actual_model = model
 
         # Determine the effective system prompt
-        effective_system_prompt = system_prompt or self._client.system_prompt
+        effective_system_prompt = system_prompt # Use the provided system_prompt or its default
         message_list_system_prompt = get_system_prompt(messages)
-        if not effective_system_prompt and message_list_system_prompt:
-             effective_system_prompt = message_list_system_prompt
+        # If a system prompt is also in messages, the explicit one takes precedence.
+        # We'll use the effective_system_prompt determined above.
 
         # Prepare final messages list, ensuring only one system message at the start
-        # This structure is still needed for the API payload's 'messages' field
         final_messages = []
         if effective_system_prompt:
             final_messages.append({"role": "system", "content": effective_system_prompt})
@@ -253,7 +250,7 @@ class LLMChatCo(OpenAICompatibleProvider):
     Usage:
         client = LLMChatCo()
         response = client.chat.completions.create(
-            model="gemini-flash-2.0",
+            model="gemini-flash-2.0", # Model must be specified here
             messages=[{"role": "user", "content": "Hello!"}]
         )
         print(response.choices[0].message.content)
@@ -267,36 +264,25 @@ class LLMChatCo(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        model: str = "gemini-flash-2.0",
         timeout: int = 60,
-        system_prompt: str = "You are a helpful assistant.",
-        proxies: Optional[Dict] = None,
         browser: str = "chrome" # For User-Agent generation
     ):
         """
         Initialize the LLMChatCo client.
 
         Args:
-            model: Default model to use if not specified in create().
             timeout: Request timeout in seconds.
-            system_prompt: Default system prompt to prepend to messages.
-            proxies: Dictionary of proxies for requests.
             browser: Browser name for LitAgent to generate User-Agent.
         """
-        if model not in self.AVAILABLE_MODELS:
-            print(f"Warning: Default model '{model}' not in known list {self.AVAILABLE_MODELS}. Using 'gemini-flash-2.0'.")
-            self.model = "gemini-flash-2.0"
-        else:
-            self.model = model
+        # Removed model, system_prompt, proxies parameters
 
         self.timeout = timeout
-        self.system_prompt = system_prompt
+        # Removed self.system_prompt assignment
         self.api_endpoint = "https://llmchat.co/api/completion"
         self.session = requests.Session()
         self.thread_id = str(uuid.uuid4()) # Unique thread ID per client instance
 
-        if proxies:
-            self.session.proxies = proxies
+        # Removed proxy handling block
 
         # Initialize LitAgent for user agent generation and fingerprinting
         try:
@@ -337,14 +323,3 @@ class LLMChatCo(OpenAICompatibleProvider):
 
         # Initialize the chat interface
         self.chat = Chat(self)
-
-    def convert_model_name(self, model: str) -> str:
-        """
-        Ensures the model name is valid for LLMChatCo.
-        Returns the validated model name or the default if invalid.
-        """
-        if model in self.AVAILABLE_MODELS:
-            return model
-        else:
-            print(f"Warning: Model '{model}' not supported by LLMChatCo. Using default '{self.model}'.")
-            return self.model

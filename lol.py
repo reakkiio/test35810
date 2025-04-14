@@ -1,14 +1,14 @@
-from webscout.Provider.OPENAI import YEPCHAT # Changed import
+from webscout.Provider.OPENAI import HeckAI
 
 # Initialize the client
-client = YEPCHAT() # Changed client
+client = HeckAI()
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="Mixtral-8x7B-Instruct-v0.1", # Changed model to one available in YEPCHAT
+    model="google/gemini-2.0-flash-001",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Write a short poem about programming."}
+        {"role": "user", "content": "hi"}
     ],
     stream=True
 )

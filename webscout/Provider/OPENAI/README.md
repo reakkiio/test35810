@@ -41,6 +41,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - LLMChatCo
 - FreeAIChat
 - YEPCHAT
+- HeckAI
 
 ---
 
@@ -224,6 +225,19 @@ Access Yep.com's models through an OpenAI-compatible interface.
 
 *   `DeepSeek-R1-Distill-Qwen-32B`
 *   `Mixtral-8x7B-Instruct-v0.1`
+
+---
+
+### <img src="https://img.shields.io/badge/HeckAI-5D3FD3?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmExMCAxMCAwIDEgMCAwIDIwIDEwIDEwIDAgMCAwIDAtMjB6Ij48L3BhdGg+PHBhdGggZD0iTTggMTRzMS41IDIgNCAxLjVjMi41LS41IDQtMS41IDQtMS41Ij48L3BhdGg+PHBhdGggZD0iTTkgOWguMDEiPjwvcGF0aD48cGF0aCBkPSJNMTUgOWguMDEiPjwvcGF0aD48L3N2Zz4=" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> HeckAI
+
+Access HeckAI's models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   `deepseek/deepseek-chat`
+*   `openai/gpt-4o-mini`
+*   `deepseek/deepseek-r1`
+*   `google/gemini-2.0-flash-001`
 
 ---
 
@@ -533,6 +547,52 @@ response = client.chat.completions.create(
 
 # Print the response
 print(response.choices[0].message.content)
+```
+
+### Basic Usage with HeckAI
+
+```python
+from webscout.Provider.OPENAI import HeckAI
+
+# Initialize the client
+client = HeckAI(language="English")
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="google/gemini-2.0-flash-001",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with HeckAI
+
+```python
+from webscout.Provider.OPENAI import HeckAI
+
+# Initialize the client
+client = HeckAI()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="google/gemini-2.0-flash-001",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
 ```
 
 ### Streaming with ExaAI
@@ -884,6 +944,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [FreeAIChat Website](https://freeaichatplayground.com/)
 *   [LLMChatCo Website](https://llmchat.co/)
 *   [Yep.com Website](https://yep.com/)
+*   [HeckAI Website](https://heck.ai/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

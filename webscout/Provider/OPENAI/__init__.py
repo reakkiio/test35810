@@ -11,3 +11,4 @@ from .scirachat import *
 from .freeaichat import *
 from .llmchatco import *
 from .yep import * # Add YEPCHAT
+from .heckai import *

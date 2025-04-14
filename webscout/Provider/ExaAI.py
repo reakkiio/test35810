@@ -155,7 +155,7 @@ class ExaAI(Provider):
         payload = {
             "id": conversation_id,
             "messages": [
-                # {"role": "system", "content": self.system_prompt},
+                # {"role": "system", "content": self.system_prompt}, # system role not supported by this provider
                 {"role": "user", "content": conversation_prompt}
             ]
         }

@@ -84,6 +84,15 @@ Access Venice AI API through an OpenAI-compatible interface.
 - `qwen2dot5-coder-32b`
 - `deepseek-coder-v2-lite`
 
+### ExaAI
+
+Access ExaAI's O3-Mini model through an OpenAI-compatible interface.
+
+**Available Models:**
+- `O3-Mini`
+
+**Note:** ExaAI does not support system messages. Any system messages will be automatically removed from the conversation.
+
 ## 💻 Usage
 
 ### Basic Usage with DeepInfra
@@ -367,6 +376,56 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with ExaAI
+
+```python
+from webscout.Provider.OPENAI import ExaAI
+
+# Initialize the client
+client = ExaAI()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="O3-Mini",
+    messages=[
+        # Note: ExaAI does not support system messages (they will be removed)
+        {"role": "user", "content": "Hello!"},
+        {"role": "assistant", "content": "Hi there! How can I help you today?"},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with ExaAI
+
+```python
+from webscout.Provider.OPENAI import ExaAI
+
+# Initialize the client
+client = ExaAI()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="O3-Mini",
+    messages=[
+        # Note: ExaAI does not support system messages (they will be removed)
+        {"role": "user", "content": "Hello!"},
+        {"role": "assistant", "content": "Hi there! How can I help you today?"},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 The response format mimics the OpenAI API structure:
@@ -453,6 +512,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 - [X0GPT Website](https://x0-gpt.devwtf.in/)
 - [WiseCat Website](https://wise-cat-groq.vercel.app/)
 - [Venice AI Website](https://venice.ai/)
+- [ExaAI Website](https://o3minichat.exa.ai/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

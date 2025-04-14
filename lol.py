@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import SciraChat
+from webscout.Provider.OPENAI import FreeAIChat
 
 # Initialize the client
-client = SciraChat()
+client = FreeAIChat()
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="scira-default",
+    model="GPT 4o Search Preview",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}

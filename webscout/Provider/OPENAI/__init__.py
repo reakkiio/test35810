@@ -8,3 +8,4 @@ from .venice import *
 from .exaai import *
 from .typegpt import *
 from .scirachat import *
+from .freeaichat import *

@@ -117,6 +117,20 @@ Access Scira.ai's models through an OpenAI-compatible interface.
 - `scira-claude`: Sonnet-3.7 model
 - `scira-optimus`: Optimus model
 
+### FreeAIChat
+
+Access FreeAIChat's wide range of models through an OpenAI-compatible interface.
+
+**Available Models:**
+- OpenAI Models: `GPT 4o`, `GPT 4.5 Preview`, `GPT 4o Latest`, `GPT 4o mini`, `O1`, `O3 Mini`
+- Anthropic Models: `Claude 3.5 haiku`, `Claude 3.5 sonnet`, `Claude 3.7 Sonnet`
+- Deepseek Models: `Deepseek R1`, `Deepseek V3`
+- Google Models: `Gemini 1.5 Flash`, `Gemini 1.5 Pro`, `Gemini 2.0 Pro`, `Gemini 2.5 Pro`
+- Llama Models: `Llama 3.1 405B`, `Llama 3.3 70B`, `Llama 4 Scout`, `Llama 4 Maverick`
+- Mistral Models: `Mistral Large`, `Mistral Nemo`, `Mixtral 8x22B`
+- Qwen Models: `Qwen Max`, `Qwen Plus`, `Qwen Turbo`, `QwQ 32B`
+- XAI Models: `Grok 2`, `Grok 3`
+
 ## 💻 Usage
 
 ### Basic Usage with DeepInfra
@@ -542,6 +556,52 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with FreeAIChat
+
+```python
+from webscout.Provider.OPENAI import FreeAIChat
+
+# Initialize the client
+client = FreeAIChat()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="GPT 4o",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with FreeAIChat
+
+```python
+from webscout.Provider.OPENAI import FreeAIChat
+
+# Initialize the client
+client = FreeAIChat()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="GPT 4o",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 The response format mimics the OpenAI API structure:
@@ -631,6 +691,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 - [ExaAI Website](https://o3minichat.exa.ai/)
 - [TypeGPT Website](https://chat.typegpt.net/)
 - [SciraChat Website](https://scira.ai/)
+- [FreeAIChat Website](https://freeaichatplayground.com/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

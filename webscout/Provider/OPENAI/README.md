@@ -40,6 +40,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - SciraChat
 - LLMChatCo
 - FreeAIChat
+- YEPCHAT
 
 ---
 
@@ -108,7 +109,7 @@ Access WiseCat API through an OpenAI-compatible interface.
 
 ---
 
-### <img src="https://img.shields.io/badge/Venice-3498DB?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMTlsNy03IDMgMyAtNyA3LTMtM3oiPjwvcGF0aD48cGF0aCBkPSJNMTggMTNsLTEuNS03LjVMMiAybDMuNSAxNC41TDEzIDE4bDUtNXoiPjwvcGF0aD48cGF0aCBkPSJNMiAybDcuNTg2IDcuNTg2Ij48L3BhdGg+PHBhdGggZD0iTTExIDExbDUgNSI+PC9wYXRoPjwvc3ZnPg==" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> Venice
+### <img src="https://img.shields.io/badge/Venice-3498DB?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMTlsNy03IDMgMyAtNyA3LTMtM3oiPjwvcGF0aD48cGF0aCBkPSJNMTggMTNsLTEuNS03LjVMMiAybDMuNSAxNC41TDEzIDE4bDUtNXoiPjwvcGF0aD48cGF0aCBkPSJNMiAybDcuNTg2IDcuNTg2Ij48L3BhdGggZD0iTTExIDExbDUgNSI+PC9wYXRoPjwvc3ZnPg==" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> Venice
 
 Access Venice AI API through an OpenAI-compatible interface.
 
@@ -208,10 +209,21 @@ Access FreeAIChat's wide range of models through an OpenAI-compatible interface.
 *   `Mistral Nemo`
 *   `Mixtral 8x22B`
 
-**<img src="https://img.shields.io/badge/Other-34D399?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmE5IDkgMCAwIDEgOS05IDkgOSAwIDAgMSA5IDkgOSA5IDAgMCAxLTkgOSA5IDkgMCAwIDEtOS05eiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAyYTkgOSAwIDAgMC05IDkgOSA5IDAgMCAwIDkgOSA5IDkgMCAwIDAgOS05IDkgOSAwIDAgMC05LTl6Ij48L3BhdGg+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDAgMTggOSA5IDAgMCAxIDAtMTh6Ij48L3BhdGg+PC9zdmc+" alt="" height="16" style="vertical-align: middle; margin-right: 5px;"> Other Models**
+**<img src="https://img.shields.io/badge/Other-34D399?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHR0cD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDktOSA5IDkgMCAwIDEgOSA5IDkgOSAwIDAgMS05IDkgOSA5IDAgMCAxLTkgOSA5IDkgMCAwIDEtOS05eiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAyYTkgOSAwIDAgMC05IDkgOSA5IDAgMCAwIDkgOSA5IDkgMCAwIDAgOS05IDkgOSAwIDAgMC05LTl6Ij48L3BhdGg+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDAgMTggOSA5IDAgMCAxIDAtMTh6Ij48L3BhdGg+PC9zdmc+" alt="" height="16" style="vertical-align: middle; margin-right: 5px;"> Other Models**
 *   `Deepseek R1`
 *   `Qwen Max`
 *   `Grok 3`
+
+---
+
+### <img src="https://img.shields.io/badge/YEPCHAT-FFD700?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmExMCAxMCAwIDEgMCAwIDIwIDEwIDEwIDAgMCAwIDAtMjB6Ij48L3BhdGg+PHBhdGggZD0iTTkgMTZhMyAzIDAgMCAwIDYgMCI+PC9wYXRoPjxwYXRoIGQ9Ik05IDloLjAxIj48L3BhdGg+PHBhdGggZD0iTTE1IDloLjAxIj48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> YEPCHAT
+
+Access Yep.com's models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   `DeepSeek-R1-Distill-Qwen-32B`
+*   `Mixtral-8x7B-Instruct-v0.1`
 
 ---
 
@@ -735,6 +747,53 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with YEPCHAT
+
+```python
+from webscout.Provider.OPENAI import YEPCHAT
+
+# Initialize the client
+client = YEPCHAT()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="DeepSeek-R1-Distill-Qwen-32B",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ],
+    temperature=0.7
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with YEPCHAT
+
+```python
+from webscout.Provider.OPENAI import YEPCHAT
+
+# Initialize the client
+client = YEPCHAT()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="Mixtral-8x7B-Instruct-v0.1",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 All providers return responses that mimic the OpenAI API structure, ensuring compatibility with tools built for OpenAI.
@@ -824,6 +883,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [SciraChat Website](https://scira.ai/)
 *   [FreeAIChat Website](https://freeaichatplayground.com/)
 *   [LLMChatCo Website](https://llmchat.co/)
+*   [Yep.com Website](https://yep.com/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

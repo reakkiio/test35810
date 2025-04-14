@@ -13,7 +13,7 @@ class JadveOpenAI(Provider):
     A class to interact with the OpenAI API through jadve.com using the streaming endpoint.
     """
 
-    AVAILABLE_MODELS = ["gpt-4o", "gpt-4o-mini", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20240620", "o1-mini", "deepseek-chat", "o1-mini", "claude-3-5-haiku-20241022"]
+    AVAILABLE_MODELS = ["gpt-4o-mini"]
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class JadveOpenAI(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "claude-3-7-sonnet-20250219",
+        model: str = "gpt-4o-mini",
         system_prompt: str = "You are a helpful AI assistant."
     ):
         """

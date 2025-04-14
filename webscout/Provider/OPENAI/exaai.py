@@ -35,6 +35,11 @@ except ImportError:
 
 # --- ExaAI Client ---
 
+# ANSI escape codes for formatting
+BOLD = "\033[1m"
+RED = "\033[91m"
+RESET = "\033[0m"
+
 class Completions(BaseCompletions):
     def __init__(self, client: 'ExaAI'):
         self._client = client
@@ -65,7 +70,8 @@ class Completions(BaseCompletions):
             filtered_messages.append(msg)
 
         if has_system_message:
-            print("Warning: ExaAI does not support system messages, it will be ignored.")
+            # Print warning in bold red
+            print(f"{BOLD}{RED}Warning: ExaAI does not support system messages, they will be ignored.{RESET}")
 
         # If no messages left after filtering, raise an error
         if not filtered_messages:

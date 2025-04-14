@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import LLMChatCo
+from webscout.Provider.OPENAI import YEPCHAT # Changed import
 
 # Initialize the client
-client = LLMChatCo()
+client = YEPCHAT() # Changed client
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="gemini-flash-2.0",
+    model="Mixtral-8x7B-Instruct-v0.1", # Changed model to one available in YEPCHAT
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}

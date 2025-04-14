@@ -1,29 +1,32 @@
 # Legal Notice
 
-> **IMPORTANT**: This repository is **not associated with or endorsed** by the providers of the APIs contained herein. This project is intended **for educational purposes only**. It is a personal project aimed at learning and exploration.
-
-Owners of any included sites or services may contact the maintainers to improve their security or request the removal of their content from this repository.
-
----
+> [!IMPORTANT]
+> This repository is **not associated with or endorsed** by the providers of the APIs contained herein. This project is intended **for educational purposes only**. It is a personal project aimed at learning and exploration.
 
 ## Affiliation Disclaimer
 
-⚠️ **DISCLAIMER**: This repository is not associated with or endorsed by any of the API providers mentioned herein, including but not limited to:
+This repository is not associated with or endorsed by any of the API providers mentioned herein, including but not limited to:
 
 - DuckDuckGo
 - Google
 - Meta
+- OpenAI
+- Anthropic
+- Cohere
+- Perplexity
 - Yep.com
 - HuggingFace
 - And others
 
 All trademarks, API services, and other intellectual property referenced are the property of their respective owners. No claim of ownership or affiliation is made by this project.
 
+Owners of any included sites or services may contact the maintainers to improve their security or request the removal of their content from this repository.
+
 ---
 
 ## License
 
-This repository is licensed under the Apache License, Version 2.0 (April 5, 2025) with additional terms specific to Webscout's API usage and third-party services.
+This repository is licensed under the Apache License, Version 2.0 with additional terms specific to Webscout's API usage and third-party services.
 
 > 📄 The full text of this license is available in the [LICENSE.md](./LICENSE.md) file.
 
@@ -31,19 +34,18 @@ This repository is licensed under the Apache License, Version 2.0 (April 5, 2025
 
 ## Liability Limitation
 
-> ⚖️ **LEGAL NOTE**: 
-
 In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, consequential, or exemplary damages of any character arising as a result of this License or out of the use or inability to use the Work.
 
 ---
 
 ## No Warranties
 
-**`⚠️ WARNING:`** The Work is provided on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of:
-- TITLE
-- NON-INFRINGEMENT
-- MERCHANTABILITY
-- FITNESS FOR A PARTICULAR PURPOSE
+> [!WARNING]
+> The Work is provided on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of:
+> - TITLE
+> - NON-INFRINGEMENT
+> - MERCHANTABILITY
+> - FITNESS FOR A PARTICULAR PURPOSE
 
 You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
 
@@ -51,9 +53,8 @@ You are solely responsible for determining the appropriateness of using or redis
 
 ## User Responsibility
 
-> 📌 **IMPORTANT**:
-
-Users assume all risks associated with the use of this repository. They are responsible for ensuring their use complies with all terms of service for the APIs accessed through this toolkit and must obtain any necessary permissions or licenses for third-party services.
+> [!IMPORTANT]
+> Users assume all risks associated with the use of this repository. They are responsible for ensuring their use complies with all terms of service for the APIs accessed through this toolkit and must obtain any necessary permissions or licenses for third-party services.
 
 ---
 
@@ -86,14 +87,13 @@ When redistributing copies of the Work or Derivative Works thereof:
 
 ## Third-Party Services
 
-> 🔗 **THIRD-PARTY INTEGRATION NOTE**:
-
-When using the APIs and services accessed through this Work, you must:
-
-1. Comply with all terms of service of the respective API providers
-2. Maintain appropriate attribution and licenses for third-party services
-3. Be responsible for obtaining any necessary permissions or licenses
-4. Not use the Work in any way that could damage or overload third-party services
+> [!NOTE]
+> When using the APIs and services accessed through this Work, you must:
+>
+> 1. Comply with all terms of service of the respective API providers
+> 2. Maintain appropriate attribution and licenses for third-party services
+> 3. Be responsible for obtaining any necessary permissions or licenses
+> 4. Not use the Work in any way that could damage or overload third-party services
 
 ---
 
@@ -105,14 +105,13 @@ This License does not grant permission to use trade names, trademarks, service m
 
 ## Privacy Notice
 
-> 🔒 **PRIVACY INFORMATION**:
-
-Webscout may collect usage data and performance metrics. By using this repository, you acknowledge that:
-
-1. Such data collection will comply with applicable privacy laws
-2. You must provide appropriate privacy notices to end users
-3. You must obtain necessary consents for data collection
-4. You must implement appropriate data security measures
+> [!NOTE]
+> Webscout may collect usage data and performance metrics. By using this repository, you acknowledge that:
+>
+> 1. Such data collection will comply with applicable privacy laws
+> 2. You must provide appropriate privacy notices to end users
+> 3. You must obtain necessary consents for data collection
+> 4. You must implement appropriate data security measures
 
 ---
 
@@ -120,7 +119,7 @@ Webscout may collect usage data and performance metrics. By using this repositor
 
 Unless explicitly stated otherwise, any Contribution intentionally submitted for inclusion in the Work shall be under the terms and conditions of this License, without any additional terms or conditions.
 
-> 👥 **FOR CONTRIBUTORS**: By submitting content to this project, you agree to the terms outlined in this document.
+**FOR CONTRIBUTORS**: By submitting content to this project, you agree to the terms outlined in this document.
 
 ---
 
@@ -138,17 +137,16 @@ If any provision of this notice is found to be unlawful, void, or unenforceable,
 
 ## Updates and Changes
 
-> 📢 **NOTICE**: 
-
-The author reserves the right to modify, update, or remove any content, information, or features in this repository at any time without prior notice. Users are responsible for regularly reviewing the content and any changes made to this repository.
+> [!NOTE]
+> The author reserves the right to modify, update, or remove any content, information, or features in this repository at any time without prior notice. Users are responsible for regularly reviewing the content and any changes made to this repository.
 
 ---
 
 <details>
 <summary><strong>Document Version Information</strong></summary>
 
-- **Last Updated**: April 5, 2025
-- **Version**: 1.1
+- **Last Updated**: April 14, 2025
+- **Version**: 1.2
 - **Document Owner**: Webscout Team
 </details>
 

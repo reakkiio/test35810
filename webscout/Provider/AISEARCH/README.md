@@ -1,12 +1,14 @@
-# 🔍 Webscout AI Search Providers
+<div align="center">
+  <h1>🔍 Webscout AI Search Providers</h1>
+  <p><strong>Powerful AI-powered search capabilities with multiple provider support</strong></p>
+</div>
 
-## Overview
+> [!NOTE]
+> AI Search Providers leverage advanced language models and search algorithms to deliver high-quality, context-aware responses with web search integration.
 
-Webscout's AI Search Providers offer powerful and flexible AI-powered search capabilities with support for multiple providers. These providers leverage advanced language models and search algorithms to deliver high-quality, context-aware responses.
+## ✨ Features
 
-## 🌟 Features
-
-- **Multiple Search Providers**: Support for various AI search services
+- **Multiple Search Providers**: Support for 7+ specialized AI search services
 - **Streaming Responses**: Real-time streaming of AI-generated responses
 - **Raw Response Format**: Access to raw response data when needed
 - **Automatic Text Handling**: Smart response formatting and cleaning
@@ -15,23 +17,47 @@ Webscout's AI Search Providers offer powerful and flexible AI-powered search cap
 
 ## 📦 Supported Search Providers
 
-1. **DeepFind**
-2. **Felo**
-3. **Isou**
-4. **Genspark**
-5. **Monica**
-6. **webpilotai**
-7. **Scira**
+| Provider | Description | Key Features |
+|----------|-------------|-------------|
+| **DeepFind** | General purpose AI search | Web-based, reference removal, clean formatting |
+| **Felo** | Fast streaming search | Advanced capabilities, real-time streaming |
+| **Isou** | Scientific search | Multiple model selection, citation handling |
+| **Genspark** | Efficient search | Fast response, markdown link removal |
+| **Monica** | Comprehensive search | Related question suggestions, source references |
+| **WebPilotAI** | Web-integrated search | Web page analysis, content extraction |
+| **Scira** | Research-focused search | Multiple models (Grok3, Claude), vision support |
 
 ## 🚀 Installation
 
 ```bash
-pip install webscout
+pip install -U webscout
 ```
 
-## 💻 Basic Usage
+## 💻 Quick Start Guide
 
-### DeepFind Example
+### Basic Usage Pattern
+
+All AI Search providers follow a consistent usage pattern:
+
+```python
+from webscout import ProviderName
+
+# Initialize the provider
+ai = ProviderName()
+
+# Basic search
+response = ai.search("Your query here")
+print(response)  # Automatically formats the response
+
+# Streaming search
+for chunk in ai.search("Your query here", stream=True):
+    print(chunk, end="", flush=True)  # Print response as it arrives
+```
+
+### Provider Examples
+
+<details>
+<summary><strong>DeepFind Example</strong></summary>
 
 ```python
 from webscout import DeepFind
@@ -41,35 +67,43 @@ ai = DeepFind()
 
 # Basic search
 response = ai.search("What is Python?")
-print(response)  # Automatically formats the response
-
-# Streaming search
-for chunk in ai.search("Tell me about AI", stream=True):
-    print(chunk, end="")  # Print response as it arrives
-
-# Raw response format
-for chunk in ai.search("Hello", stream=True, raw=True):
-    print(chunk)  # {'text': 'response chunk'}
-```
-
-### Felo Example
-
-```python
-from webscout import Felo
-
-# Initialize the search provider
-ai = Felo()
-
-# Basic search
-response = ai.search("What is machine learning?")
 print(response)
 
 # Streaming search
-for chunk in ai.search("Explain quantum computing", stream=True):
+for chunk in ai.search("Tell me about AI", stream=True):
     print(chunk, end="")
 ```
+</details>
 
-### Isou Example
+<details>
+<summary><strong>Scira Example</strong></summary>
+
+```python
+from webscout import Scira
+
+# Initialize with default model (Grok3)
+ai = Scira()
+
+# Basic search
+response = ai.search("What is the impact of climate change?")
+print(response)
+
+# Streaming search with Claude model
+ai = Scira(model="scira-claude")
+for chunk in ai.search("Explain quantum computing", stream=True):
+    print(chunk, end="", flush=True)
+
+# Available models:
+# - scira-default (Grok3)
+# - scira-grok-3-mini (Grok3-mini)
+# - scira-vision (Grok2-Vision)
+# - scira-claude (Sonnet-3.7)
+# - scira-optimus (optimus)
+```
+</details>
+
+<details>
+<summary><strong>Isou Example</strong></summary>
 
 ```python
 from webscout import Isou
@@ -81,53 +115,13 @@ ai = Isou(model="siliconflow:deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
 response = ai.search("Explain the double-slit experiment")
 print(response)
 ```
-
-### Genspark Example
-
-```python
-from webscout import Genspark
-
-# Initialize Genspark
-ai = Genspark()
-
-# Basic search
-response = ai.search("What are neural networks?")
-print(response)
-
-# Streaming search with clean output
-for chunk in ai.search("Explain blockchain technology", stream=True):
-    print(chunk, end="", flush=True)
-```
-
-### Scira Example
-
-```python
-from webscout import Scira
-
-# Initialize Scira with default model (Grok3)
-ai = Scira()
-
-# Basic search
-response = ai.search("What is the impact of climate change?")
-print(response)
-
-# Streaming search with Claude model
-ai = Scira(model="scira-claude")
-for chunk in ai.search("Explain quantum computing applications", stream=True):
-    print(chunk, end="", flush=True)
-
-# Available models include:
-# - scira-default (Grok3)
-# - scira-grok-3-mini (Grok3-mini)
-# - scira-vision (Grok2-Vision)
-# - scira-claude (Sonnet-3.7)
-# - scira-optimus (optimus)
-```
+</details>
 
 
 ## 🎛️ Advanced Configuration
 
-### Timeout and Proxy Settings
+<details>
+<summary><strong>Timeout and Proxy Settings</strong></summary>
 
 ```python
 # Configure timeout
@@ -143,8 +137,10 @@ ai = Genspark(max_tokens=800)
 # Configure model and group for Scira
 ai = Scira(model="scira-claude", group="web")
 ```
+</details>
 
-### Response Formats
+<details>
+<summary><strong>Response Formats</strong></summary>
 
 ```python
 # Get raw response format
@@ -155,54 +151,25 @@ response = ai.search("Hello", stream=True, raw=True)
 response = ai.search("Hello", stream=True)
 # Output: Hello there!
 ```
+</details>
 
-## 🔧 Provider-Specific Details
+## 🔧 Provider Capabilities
 
-### DeepFind
-
-- Web-based AI search provider
-- Automatic reference removal
-- Clean response formatting
-- Streaming support with progress tracking
-
-### Felo
-
-- Advanced search capabilities
-- Real-time response streaming
-- JSON-based response parsing
-- Automatic text cleaning
-
-### Isou
-
-- Multiple model selection
-- Scientific and general category support
-- Citation and reference handling
-- Deep and simple search modes
-
-### Genspark
-
-- Fast response generation
-- Automatic markdown link removal
-- JSON structure normalization
-- Session-based API interactions
-
-### XDash
-
-- Comprehensive search responses
-- Related question suggestions
-- Answer snippets with source references
-- Clean formatted responses
-
-### Scira
-
-- Research-focused AI search provider
-- Real-time streaming of responses
-- Multiple model options (Grok3, Claude, Vision support)
-- Customizable model and group parameters
-- Efficient content parsing and formatting
+| Provider | Key Capabilities | Technical Details |
+|----------|-----------------|-------------------|
+| **DeepFind** | • Web-based AI search<br>• Automatic reference removal<br>• Clean response formatting | • Streaming support with progress tracking<br>• JSON response parsing<br>• Error handling |
+| **Felo** | • Advanced search capabilities<br>• Real-time response streaming<br>• JSON-based response parsing | • Automatic text cleaning<br>• Session management<br>• Rate limiting support |
+| **Isou** | • Multiple model selection<br>• Scientific and general category support<br>• Citation handling | • Deep and simple search modes<br>• Specialized model options<br>• Markdown formatting |
+| **Genspark** | • Fast response generation<br>• Markdown link removal<br>• JSON structure normalization | • Session-based API interactions<br>• Efficient content parsing<br>• Streaming optimization |
+| **Monica** | • Comprehensive search responses<br>• Related question suggestions<br>• Source references | • Answer snippets<br>• Clean formatted responses<br>• Web content integration |
+| **WebPilotAI** | • Web page analysis<br>• Content extraction<br>• Structured data retrieval | • URL processing<br>• HTML parsing<br>• Metadata extraction |
+| **Scira** | • Research-focused search<br>• Multiple model options<br>• Vision support | • Grok3, Claude, Vision models<br>• Customizable group parameters<br>• Efficient content parsing |
 
 
 ## 🛡️ Error Handling
+
+<details>
+<summary><strong>Exception Handling Example</strong></summary>
 
 ```python
 from webscout import exceptions
@@ -214,10 +181,12 @@ except exceptions.APIConnectionError as e:
 except Exception as e:
     print(f"An error occurred: {e}")
 ```
+</details>
 
 ## 📝 Response Handling
 
-All providers include a `Response` class that automatically handles text formatting:
+<details>
+<summary><strong>Working with Response Objects</strong></summary>
 
 ```python
 # Response objects automatically convert to text
@@ -227,33 +196,43 @@ print(response)  # Prints formatted text
 # Access raw text if needed
 print(response.text)
 ```
+</details>
 
 ## 🔒 Best Practices
 
-1. **Use Streaming for Long Responses**
+<details>
+<summary><strong>Streaming for Long Responses</strong></summary>
 
-   ```python
-   for chunk in ai.search("Long query", stream=True):
-       print(chunk, end="", flush=True)
-   ```
+```python
+for chunk in ai.search("Long query", stream=True):
+    print(chunk, end="", flush=True)
+```
+</details>
 
-2. **Handle Errors Appropriately**
+<details>
+<summary><strong>Error Handling</strong></summary>
 
-   ```python
-   try:
-       response = ai.search("Query")
-   except exceptions.APIConnectionError:
-       # Handle connection errors
-       pass
-   ```
+```python
+try:
+    response = ai.search("Query")
+except exceptions.APIConnectionError:
+    # Handle connection errors
+    pass
+```
+</details>
 
-3. **Choose the Right Provider for Your Use Case**
-   - **DeepFind**: General purpose search
-   - **Felo**: Fast streaming responses
-   - **Isou**: Scientific or specialized queries
-   - **Genspark**: Clean and efficient responses
-   - **webpilotai**: Comprehensive search
-   - **Scira**: Research-focused responses with real-time streaming
+<details>
+<summary><strong>Provider Selection Guide</strong></summary>
+
+| Use Case | Recommended Provider |
+|----------|----------------------|
+| General purpose search | **DeepFind** |
+| Fast streaming responses | **Felo** |
+| Scientific or specialized queries | **Isou** |
+| Clean and efficient responses | **Genspark** |
+| Web page analysis | **WebPilotAI** |
+| Research with multiple models | **Scira** |
+</details>
 
 ## 🤝 Contributing
 

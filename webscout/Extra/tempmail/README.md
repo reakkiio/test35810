@@ -1,45 +1,61 @@
-
 <div align="center">
   <a href="https://github.com/OEvortex/Webscout">
-    <img src="https://img.shields.io/badge/WebScout-TempMail%20Module-blue?style=for-the-badge&logo=python&logoColor=white" alt="WebScout TempMail">
+    <img src="https://img.shields.io/badge/WebScout-TempMail%20Module-blue?style=for-the-badge&logo=mail&logoColor=white" alt="WebScout TempMail">
   </a>
-  <br/>
-  <h1>📧 TempMail Module</h1>
-  <p><strong>A powerful and flexible temporary email generation library integrated within Webscout.</strong></p>
+
+  <h1>📧 TempMail</h1>
+
+  <p><strong>Powerful Temporary Email Generation & Management</strong></p>
+
   <p>
-    Create disposable email addresses, manage messages, and automate email verification workflows with support for multiple providers and both synchronous and asynchronous APIs.
+    Create disposable email addresses, manage messages, and automate email verification workflows with multiple providers and both synchronous and asynchronous APIs.
   </p>
 
   <!-- Badges -->
   <p>
     <a href="https://pypi.org/project/webscout/"><img src="https://img.shields.io/pypi/v/webscout.svg?style=flat-square&logo=pypi&label=PyPI" alt="PyPI Version"></a>
+    <a href="#"><img src="https://img.shields.io/badge/No%20API%20Key-Required-success?style=flat-square" alt="No API Key Required"></a>
     <a href="#"><img src="https://img.shields.io/badge/Python-3.7%2B-blue?style=flat-square&logo=python" alt="Python Version"></a>
-    <!-- Assuming MIT License based on the original badge -->
-    <a href="#"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License"></a>
   </p>
-
-  <!-- Social/Support Links (Mirrored from main README) -->
-  <div>
-    <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
-    <a href="https://t.me/ANONYMOUS_56788"><img alt="Developer Telegram" src="https://img.shields.io/badge/Developer%20Contact-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
-    <a href="https://buymeacoffee.com/oevortex"><img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
-  </div>
 </div>
 
-## 🚀 Features
+> [!NOTE]
+> TempMail provides disposable email addresses for testing, verification, and privacy protection. It supports multiple providers and offers both synchronous and asynchronous interfaces.
 
-- 📬 **Multiple Providers**: Native support for Mail.TM and TempMail.io services.
-- 🔄 **Sync & Async APIs**: Choose between synchronous and asynchronous interfaces for all operations.
-- 🧩 **Abstract Design**: Provider-based architecture allows for easy extension with new temporary email services.
-- 🔍 **Scout Integration**: Leverages Webscout's `Scout` for HTML parsing, ensuring consistency and avoiding extra dependencies like BeautifulSoup.
-- 💻 **Command Line Interface**: Convenient access to temporary email functionality directly from your terminal.
-- 🛠️ **Helper Utilities**: Includes tools designed to simplify common temporary email workflows (e.g., waiting for messages).
-- 🔒 **Privacy-Focused**: Generate disposable email addresses on demand to protect your primary inbox.
-- ⚡ **High Performance**: Optimized for speed and reliability in generating emails and fetching messages.
+## ✨ Key Features
 
-## ⚙️ Installation
+### Email Management
 
-The TempMail module is an integral part of the Webscout package. Install or update Webscout to get access:
+* **Multiple Provider Support**
+  * Native integration with Mail.TM and TempMail.io services
+  * Extensible architecture for adding new providers
+  * Consistent interface across all providers
+
+* **Privacy Protection**
+  * Generate disposable email addresses on demand
+  * Protect your primary inbox from spam
+  * Automatic cleanup after use
+
+### Developer Experience
+
+* **Dual API Support**
+  * Synchronous interface for simple scripts
+  * Asynchronous interface for high-performance applications
+  * Complete feature parity between both interfaces
+
+* **Automation Tools**
+  * Helper utilities for common workflows
+  * Email verification automation
+  * Message waiting and processing
+
+* **Command Line Interface**
+  * Direct terminal access to all features
+  * Real-time message monitoring
+  * Simple and detailed output modes
+
+## 🚀 Installation
+
+Install or update Webscout to get access to the TempMail module:
 
 ```bash
 pip install -U webscout
@@ -62,8 +78,8 @@ try:
     print("[*] Waiting for messages...")
     # Add a small delay or implement a loop if checking immediately
     import time
-    time.sleep(10) 
-    
+    time.sleep(10)
+
     messages = provider.get_messages()
     if not messages:
         print("[*] No messages received yet.")
@@ -74,7 +90,7 @@ try:
             print(f"  From: {message.get('from', 'N/A')}")
             print(f"  Subject: {message.get('subject', 'N/A')}")
             # Optionally print body, be mindful of length
-            # print(f"  Body: {message.get('body', 'N/A')[:100]}...") 
+            # print(f"  Body: {message.get('body', 'N/A')[:100]}...")
 
 finally:
     # 3. Clean up: Delete the account/email when done
@@ -91,9 +107,9 @@ from webscout.Extra.tempmail import get_provider
 
 # Use Mail.TM (default if unspecified in get_random_email)
 print("[*] Using Mail.TM Provider")
-mailtm_provider = get_provider("mailtm") 
+mailtm_provider = get_provider("mailtm")
 # MailTM typically uses create_account() which generates email+token
-account_info = mailtm_provider.create_account() 
+account_info = mailtm_provider.create_account()
 print(f"[*] Mail.TM Email: {account_info['address']}")
 # ... use mailtm_provider.get_messages(), etc. ...
 mailtm_provider.delete_account(account_info['id'], account_info['token']) # Requires ID and Token for deletion
@@ -137,7 +153,7 @@ async def manage_temp_email_async():
         # 3. Check for messages (async method)
         print("[*] Waiting for messages (async)...")
         await asyncio.sleep(15) # Wait a bit for potential incoming mail
-        
+
         messages = await provider.get_messages()
         if not messages:
             print("[*] No messages received yet.")
@@ -152,13 +168,13 @@ async def manage_temp_email_async():
         # 4. Clean up (async methods)
         print("[*] Deleting temporary email (async)...")
         # Deletion method and required arguments depend on the provider
-        if token and email_id: 
+        if token and email_id:
             await provider.delete_email(email_id, token) # Example for MailTM-like
         elif hasattr(provider, 'delete_email') and not token and not email_id:
              await provider.delete_email(email) # Example if only email needed
         else:
             print("[!] Could not determine deletion method/parameters. Manual cleanup might be needed.")
-            
+
         await provider.close() # Close the underlying HTTP client
         print("[*] Provider closed.")
 
@@ -172,14 +188,14 @@ if __name__ == "__main__":
 Access temporary email features directly from your terminal:
 
 ```bash
-python -m webscout.Extra.tempmail.cli --help 
+python -m webscout.Extra.tempmail.cli --help
 ```
 
 **Example: Get a temp email and watch for messages:**
 
 ```bash
 # This will generate an email and check for new messages every 15 seconds
-python -m webscout.Extra.tempmail.cli --wait 15 
+python -m webscout.Extra.tempmail.cli --wait 15
 ```
 
 **CLI Options:**
@@ -233,17 +249,17 @@ The module is built around abstract base classes for providers, ensuring a consi
 import asyncio
 from webscout.Extra.tempmail import get_provider
 # Assume extract_link_from_message is defined elsewhere
-# from your_parsing_utils import extract_link_from_message 
+# from your_parsing_utils import extract_link_from_message
 
 async def verify_email_signup(service_url, username):
     """
-    Attempts to sign up for a service using a temp email and 
+    Attempts to sign up for a service using a temp email and
     retrieve the verification link.
     """
     provider = get_provider("mailtm", async_provider=True)
     await provider.initialize()
     print(f"[*] Initialized async provider for {service_url} signup")
-    
+
     email_data = None
     verification_link = None
 
@@ -254,7 +270,7 @@ async def verify_email_signup(service_url, username):
 
         # --- Placeholder for your signup logic ---
         print(f"[*] Attempting signup on {service_url} with {email}...")
-        # success = await sign_up_to_service(service_url, username, email) 
+        # success = await sign_up_to_service(service_url, username, email)
         success = True # Assume signup initiates email sending
         if not success:
              print("[!] Service signup failed.")
@@ -263,13 +279,13 @@ async def verify_email_signup(service_url, username):
 
         print("[*] Waiting for verification email...")
         # Wait up to 2 minutes (12 checks * 10 seconds interval)
-        for attempt in range(12): 
+        for attempt in range(12):
             print(f"[*] Checking for messages (Attempt {attempt + 1}/12)...")
             messages = await provider.get_messages()
-            
+
             # Simple check: look for "verify" or "confirm" in subject
             verification_msg = next((
-                m for m in messages 
+                m for m in messages
                 if "verify" in m.get('subject', '').lower() or \
                    "confirm" in m.get('subject', '').lower()
             ), None)
@@ -286,9 +302,9 @@ async def verify_email_signup(service_url, username):
                     break # Exit loop once link is found
                 else:
                     print("[!] Found email, but failed to extract link.")
-            
+
             await asyncio.sleep(10) # Wait before next check
-        
+
         if not verification_link:
             print("[!] Timed out waiting for verification email or link.")
 
@@ -300,11 +316,11 @@ async def verify_email_signup(service_url, username):
             print("[*] Cleaning up temporary email...")
             try:
                 # Adjust deletion based on provider needs (ID, token, etc.)
-                await provider.delete_email(email_data['id'], email_data['token']) 
+                await provider.delete_email(email_data['id'], email_data['token'])
                 print("[*] Temporary email deleted.")
             except Exception as del_e:
                 print(f"[!] Error during email deletion: {del_e}")
-        
+
         await provider.close()
         print("[*] Async provider closed.")
 
@@ -327,7 +343,7 @@ def test_email_sending_feature():
     print("[*] Starting email sending test...")
     email, provider = get_random_email()
     print(f"[*] Generated temp email for receiving: {email}")
-    
+
     test_subject = "My Test Email Subject"
     test_content = "This is the body of the test email."
     test_email_received = False
@@ -347,7 +363,7 @@ def test_email_sending_feature():
 
         print("[*] Checking inbox...")
         messages = provider.get_messages()
-        
+
         if not messages:
             print("[!] No messages received in the temporary inbox.")
         else:
@@ -374,7 +390,7 @@ def test_email_sending_feature():
             print("[*] Account deleted.")
         except Exception as del_e:
             print(f"[!] Error deleting account: {del_e}")
-            
+
     print(f"[*] Email sending test result: {'Success' if test_email_received else 'Failure'}")
     return test_email_received
 
@@ -401,7 +417,7 @@ async def use_async_helpers():
         print("[*] Waiting for a message (up to 60s)...")
         # Simulate sending an email here if needed for testing
         # await send_email_to(email, "Helper Test", "Body content")
-        
+
         message = await wait_for_message(helper, timeout=60, check_interval=5)
 
         if message:

@@ -16,7 +16,7 @@ class Venice(Provider):
     """
     
     AVAILABLE_MODELS = [
-        "llama-3.3-70b",
+        "mistral-31-24b",
         "llama-3.2-3b-akash",
         "qwen2dot5-coder-32b",
         "deepseek-coder-v2-lite",

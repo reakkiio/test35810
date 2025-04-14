@@ -295,19 +295,16 @@ class X0GPT(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        timeout: int = 30,
+        timeout: Optional[int] = None,
         browser: str = "chrome"
     ):
         """
         Initialize the X0GPT client.
 
         Args:
-            api_key: Not used by X0GPT but included for compatibility
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
         """
-        self.api_key = api_key  # Not used by X0GPT but kept for interface compatibility
         self.timeout = timeout
         self.api_endpoint = "https://x0-gpt.devwtf.in/api/stream/reply"
         self.session = requests.Session()

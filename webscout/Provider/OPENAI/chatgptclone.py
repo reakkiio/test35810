@@ -328,25 +328,19 @@ class ChatGPTClone(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        timeout: int = 60,
-        browser: str = "chrome",
-        temperature: float = 0.6,
-        top_p: float = 0.7
+        timeout: Optional[int] = None,
+        browser: str = "chrome"
     ):
         """
         Initialize the ChatGPTClone client.
 
         Args:
-            api_key: Not used by ChatGPTClone but included for compatibility
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
-            temperature: Temperature for response generation
-            top_p: Top-p sampling parameter
         """
         self.timeout = timeout
-        self.temperature = temperature
-        self.top_p = top_p
+        self.temperature = 0.6  # Default temperature
+        self.top_p = 0.7  # Default top_p
 
         # Use cloudscraper to bypass Cloudflare protection
         self.session = cloudscraper.create_scraper()
@@ -431,7 +425,6 @@ class ChatGPTClone(OpenAICompatibleProvider):
                 # Add quotes to make it a valid JSON string
                 json_str = f'"{text}"'
                 # Use json module to decode all escape sequences
-                import json
                 decoded = json.loads(json_str)
                 return decoded
             except json.JSONDecodeError:

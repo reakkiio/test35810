@@ -257,24 +257,16 @@ class Glider(OpenAICompatibleProvider):
         "deepseek-ai/DeepSeek-R1",
     ]
 
-    # Mapping from OpenAI-style model names to Glider model names
-    MODEL_MAPPING = {
-        "llama-3-70b": "chat-llama-3-1-70b",
-        "llama-3-8b": "chat-llama-3-1-8b",
-        "llama-3-3b": "chat-llama-3-2-3b",
-        "deepseek-r1": "deepseek-ai/DeepSeek-R1",
-    }
+    # No model mapping needed as we use the model names directly
 
-    def __init__(self, api_key: Optional[str] = None, timeout: int = 60, browser: str = "chrome"):
+    def __init__(self, timeout: Optional[int] = None, browser: str = "chrome"):
         """
         Initialize the Glider client.
 
         Args:
-            api_key: Not used by Glider but included for compatibility with OpenAI interface
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
         """
-        self.api_key = api_key  # Not used by Glider but kept for interface compatibility
         self.timeout = timeout
         self.api_endpoint = "https://glider.so/api/chat"
         self.session = requests.Session()
@@ -305,7 +297,7 @@ class Glider(OpenAICompatibleProvider):
 
     def convert_model_name(self, model: str) -> str:
         """
-        Convert OpenAI-style model names to Glider model names.
+        Convert model names to ones supported by Glider.
 
         Args:
             model: Model name to convert
@@ -316,10 +308,6 @@ class Glider(OpenAICompatibleProvider):
         # If the model is already a valid Glider model, return it
         if model in self.AVAILABLE_MODELS:
             return model
-
-        # Try to map from OpenAI-style name
-        if model in self.MODEL_MAPPING:
-            return self.MODEL_MAPPING[model]
 
         # Default to the most capable model
         print(f"Warning: Unknown model '{model}'. Using 'chat-llama-3-1-70b' instead.")

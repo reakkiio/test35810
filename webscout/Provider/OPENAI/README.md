@@ -44,10 +44,10 @@ Access DeepInfra's powerful models through an OpenAI-compatible interface.
 Access Glider.so's models through an OpenAI-compatible interface.
 
 **Available Models:**
-- `chat-llama-3-1-70b` (or `llama-3-70b`)
-- `chat-llama-3-1-8b` (or `llama-3-8b`)
-- `chat-llama-3-2-3b` (or `llama-3-3b`)
-- `deepseek-ai/DeepSeek-R1` (or `deepseek-r1`)
+- `chat-llama-3-1-70b`
+- `chat-llama-3-1-8b`
+- `chat-llama-3-2-3b`
+- `deepseek-ai/DeepSeek-R1`
 
 ### ChatGPTClone
 
@@ -70,9 +70,19 @@ Access X0GPT API through an OpenAI-compatible interface.
 Access WiseCat API through an OpenAI-compatible interface.
 
 **Available Models:**
-- `chat-model-small` (or `gpt-3.5-turbo`)
-- `chat-model-large` (or `gpt-4`)
-- `chat-model-reasoning` (or `gpt-4-turbo`)
+- `chat-model-small`
+- `chat-model-large`
+- `chat-model-reasoning`
+
+### Venice
+
+Access Venice AI API through an OpenAI-compatible interface.
+
+**Available Models:**
+- `mistral-31-24b`
+- `llama-3.2-3b-akash`
+- `qwen2dot5-coder-32b`
+- `deepseek-coder-v2-lite`
 
 ## 💻 Usage
 
@@ -109,7 +119,7 @@ client = Glider()
 
 # Create a completion (non-streaming)
 response = client.chat.completions.create(
-    model="chat-llama-3-1-70b",  # or use "llama-3-70b"
+    model="chat-llama-3-1-70b",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Tell me about Python programming."}
@@ -275,7 +285,7 @@ client = WiseCat()
 
 # Create a completion (non-streaming)
 response = client.chat.completions.create(
-    model="chat-model-small", 
+    model="chat-model-small",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Tell me about Python programming."}
@@ -296,7 +306,53 @@ client = WiseCat()
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="chat-model-small", 
+    model="chat-model-small",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
+### Basic Usage with Venice
+
+```python
+from webscout.Provider.OPENAI import Venice
+
+# Initialize the client
+client = Venice(temperature=0.7, top_p=0.9)
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="mistral-31-24b",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with Venice
+
+```python
+from webscout.Provider.OPENAI import Venice
+
+# Initialize the client
+client = Venice()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="mistral-31-24b",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}
@@ -396,6 +452,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 - [ChatGPT Clone Website](https://chatgpt-clone-ten-nu.vercel.app/)
 - [X0GPT Website](https://x0-gpt.devwtf.in/)
 - [WiseCat Website](https://wise-cat-groq.vercel.app/)
+- [Venice AI Website](https://venice.ai/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

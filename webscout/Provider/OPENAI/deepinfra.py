@@ -253,7 +253,7 @@ class DeepInfra(OpenAICompatibleProvider):
         "Qwen/Qwen2.5-Coder-32B-Instruct",
     ]
 
-    def __init__(self, timeout: int = 60, browser: str = "chrome"):
+    def __init__(self, timeout: Optional[int] = None, browser: str = "chrome"):
         self.timeout = timeout
         self.base_url = "https://api.deepinfra.com/v1/openai/chat/completions"
         self.session = requests.Session()

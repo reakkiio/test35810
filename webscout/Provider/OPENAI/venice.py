@@ -1,7 +1,6 @@
 import time
 import uuid
 import requests
-import re
 import json
 from typing import List, Dict, Optional, Union, Generator, Any
 
@@ -30,10 +29,13 @@ except ImportError:
                 "browser_type": browser,
             }
 
-# --- WiseCat Client ---
+        def random(self) -> str:
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+
+# --- Venice Client ---
 
 class Completions(BaseCompletions):
-    def __init__(self, client: 'WiseCat'):
+    def __init__(self, client: 'Venice'):
         self._client = client
 
     def create(
@@ -43,33 +45,44 @@ class Completions(BaseCompletions):
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = 2049,
         stream: bool = False,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
+        temperature: Optional[float] = 0.8,
+        top_p: Optional[float] = 0.9,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
         Creates a model response for the given chat conversation.
         Mimics openai.chat.completions.create
         """
-        # Prepare the payload for WiseCat API
+        # Extract system message if present for systemPrompt parameter
+        system_prompt = self._client.system_prompt
+        for msg in messages:
+            if msg["role"] == "system":
+                system_prompt = msg["content"]
+                break
+
+        # Prepare the payload for Venice API
         payload = {
-            "id": "ephemeral",
-            "messages": messages,
-            "selectedChatModel": self._client.convert_model_name(model)
+            "requestId": str(uuid.uuid4())[:7],
+            "modelId": self._client.convert_model_name(model),
+            "prompt": messages,
+            "systemPrompt": system_prompt,
+            "conversationType": "text",
+            "temperature": temperature if temperature is not None else self._client.temperature,
+            "webEnabled": True,
+            "topP": top_p if top_p is not None else self._client.top_p,
+            "includeVeniceSystemPrompt": False,
+            "isCharacter": False,
+            "clientProcessingTime": 2000
         }
 
         # Add optional parameters if provided
         if max_tokens is not None and max_tokens > 0:
             payload["max_tokens"] = max_tokens
 
-        if temperature is not None:
-            payload["temperature"] = temperature
-
-        if top_p is not None:
-            payload["top_p"] = top_p
-
         # Add any additional parameters
-        payload.update(kwargs)
+        for key, value in kwargs.items():
+            if key not in payload:
+                payload[key] = value
 
         request_id = f"chatcmpl-{uuid.uuid4()}"
         created_time = int(time.time())
@@ -85,14 +98,13 @@ class Completions(BaseCompletions):
         try:
             response = self._client.session.post(
                 self._client.api_endpoint,
-                headers=self._client.headers,
                 json=payload,
                 stream=True,
                 timeout=self._client.timeout
             )
 
             # Handle non-200 responses
-            if not response.ok:
+            if response.status_code != 200:
                 raise IOError(
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
@@ -103,64 +115,73 @@ class Completions(BaseCompletions):
             total_tokens = 0
 
             # Estimate prompt tokens based on message length
-            for msg in payload.get("messages", []):
+            prompt_tokens = 0
+            for msg in payload.get("prompt", []):
                 prompt_tokens += len(msg.get("content", "").split())
+            prompt_tokens += len(payload.get("systemPrompt", "").split())
 
             for line in response.iter_lines():
-                if line:
-                    decoded_line = line.decode('utf-8').strip()
+                if not line:
+                    continue
 
-                    # WiseCat uses a different format, so we need to extract the content
-                    match = re.search(r'0:"(.*?)"', decoded_line)
-                    if match:
-                        content = match.group(1)
+                try:
+                    # Decode bytes to string
+                    line_data = line.decode('utf-8').strip()
+                    if '"kind":"content"' in line_data:
+                        data = json.loads(line_data)
+                        if 'content' in data:
+                            content = data['content']
 
-                        # Format the content (replace escaped newlines)
-                        content = self._client.format_text(content)
+                            # Format the content (replace escaped newlines)
+                            content = self._client.format_text(content)
 
-                        # Update token counts
-                        completion_tokens += 1
-                        total_tokens = prompt_tokens + completion_tokens
+                            # Update token counts
+                            completion_tokens += 1
+                            total_tokens = prompt_tokens + completion_tokens
 
-                        # Create the delta object
-                        delta = ChoiceDelta(
-                            content=content,
-                            role="assistant",
-                            tool_calls=None
-                        )
+                            # Create the delta object
+                            delta = ChoiceDelta(
+                                content=content,
+                                role="assistant",
+                                tool_calls=None
+                            )
 
-                        # Create the choice object
-                        choice = Choice(
-                            index=0,
-                            delta=delta,
-                            finish_reason=None,
-                            logprobs=None
-                        )
+                            # Create the choice object
+                            choice = Choice(
+                                index=0,
+                                delta=delta,
+                                finish_reason=None,
+                                logprobs=None
+                            )
 
-                        # Create the chunk object
-                        chunk = ChatCompletionChunk(
-                            id=request_id,
-                            choices=[choice],
-                            created=created_time,
-                            model=model,
-                            system_fingerprint=None
-                        )
+                            # Create the chunk object
+                            chunk = ChatCompletionChunk(
+                                id=request_id,
+                                choices=[choice],
+                                created=created_time,
+                                model=model,
+                                system_fingerprint=None
+                            )
 
-                        # Convert to dict for proper formatting
-                        chunk_dict = chunk.to_dict()
+                            # Convert to dict for proper formatting
+                            chunk_dict = chunk.to_dict()
 
-                        # Add usage information to match OpenAI format
-                        usage_dict = {
-                            "prompt_tokens": prompt_tokens,
-                            "completion_tokens": completion_tokens,
-                            "total_tokens": total_tokens,
-                            "estimated_cost": None
-                        }
+                            # Add usage information to match OpenAI format
+                            usage_dict = {
+                                "prompt_tokens": prompt_tokens,
+                                "completion_tokens": completion_tokens,
+                                "total_tokens": total_tokens,
+                                "estimated_cost": None
+                            }
 
-                        chunk_dict["usage"] = usage_dict
+                            chunk_dict["usage"] = usage_dict
 
-                        # Return the chunk object for internal processing
-                        yield chunk
+                            # Return the chunk object for internal processing
+                            yield chunk
+                except json.JSONDecodeError:
+                    continue
+                except UnicodeDecodeError:
+                    continue
 
             # Final chunk with finish_reason="stop"
             delta = ChoiceDelta(
@@ -195,8 +216,8 @@ class Completions(BaseCompletions):
             yield chunk
 
         except Exception as e:
-            print(f"Error during WiseCat stream request: {e}")
-            raise IOError(f"WiseCat request failed: {e}") from e
+            print(f"Error during Venice stream request: {e}")
+            raise IOError(f"Venice request failed: {e}") from e
 
     def _create_non_stream(
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
@@ -205,35 +226,44 @@ class Completions(BaseCompletions):
             # For non-streaming, we still use streaming internally to collect the full response
             response = self._client.session.post(
                 self._client.api_endpoint,
-                headers=self._client.headers,
                 json=payload,
                 stream=True,
                 timeout=self._client.timeout
             )
 
             # Handle non-200 responses
-            if not response.ok:
+            if response.status_code != 200:
                 raise IOError(
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
 
             # Collect the full response
             full_text = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    match = re.search(r'0:"(.*?)"', line)
-                    if match:
-                        content = match.group(1)
-                        full_text += content
+            for line in response.iter_lines():
+                if not line:
+                    continue
+
+                try:
+                    # Decode bytes to string
+                    line_data = line.decode('utf-8').strip()
+                    if '"kind":"content"' in line_data:
+                        data = json.loads(line_data)
+                        if 'content' in data:
+                            content = data['content']
+                            full_text += content
+                except json.JSONDecodeError:
+                    continue
+                except UnicodeDecodeError:
+                    continue
 
             # Format the text (replace escaped newlines)
             full_text = self._client.format_text(full_text)
 
             # Estimate token counts
             prompt_tokens = 0
-            for msg in payload.get("messages", []):
+            for msg in payload.get("prompt", []):
                 prompt_tokens += len(msg.get("content", "").split())
-
+            prompt_tokens += len(payload.get("systemPrompt", "").split())
             completion_tokens = len(full_text.split())
             total_tokens = prompt_tokens + completion_tokens
 
@@ -269,29 +299,30 @@ class Completions(BaseCompletions):
             return completion
 
         except Exception as e:
-            print(f"Error during WiseCat non-stream request: {e}")
-            raise IOError(f"WiseCat request failed: {e}") from e
+            print(f"Error during Venice non-stream request: {e}")
+            raise IOError(f"Venice request failed: {e}") from e
 
 class Chat(BaseChat):
-    def __init__(self, client: 'WiseCat'):
+    def __init__(self, client: 'Venice'):
         self.completions = Completions(client)
 
-class WiseCat(OpenAICompatibleProvider):
+class Venice(OpenAICompatibleProvider):
     """
-    OpenAI-compatible client for WiseCat API.
+    OpenAI-compatible client for Venice AI API.
 
     Usage:
-        client = WiseCat()
+        client = Venice()
         response = client.chat.completions.create(
-            model="chat-model-large",
+            model="mistral-31-24b",
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
 
     AVAILABLE_MODELS = [
-        "chat-model-small",
-        "chat-model-large",
-        "chat-model-reasoning",
+        "mistral-31-24b",
+        "llama-3.2-3b-akash",
+        "qwen2dot5-coder-32b",
+        "deepseek-coder-v2-lite",
     ]
 
     # No model mapping needed as we use the model names directly
@@ -302,22 +333,38 @@ class WiseCat(OpenAICompatibleProvider):
         browser: str = "chrome"
     ):
         """
-        Initialize the WiseCat client.
+        Initialize the Venice client.
 
         Args:
             timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
         """
         self.timeout = timeout
-        self.api_endpoint = "https://wise-cat-groq.vercel.app/api/chat"
+        self.temperature = 0.8  # Default temperature
+        self.top_p = 0.9  # Default top_p
+        self.system_prompt = "You are a helpful AI assistant."  # Default system prompt
+        self.api_endpoint = "https://venice.ai/api/inference/chat"
         self.session = requests.Session()
 
         # Initialize LitAgent for user agent generation
         agent = LitAgent()
         self.fingerprint = agent.generate_fingerprint(browser)
 
-        # Use the fingerprint for headers
-        self.headers = self.fingerprint
+        # Headers for the request
+        self.headers = {
+            "User-Agent": self.fingerprint["user_agent"],
+            "accept": self.fingerprint["accept"],
+            "accept-language": self.fingerprint["accept_language"],
+            "content-type": "application/json",
+            "origin": "https://venice.ai",
+            "referer": "https://venice.ai/chat/",
+            "sec-ch-ua": self.fingerprint["sec_ch_ua"] or '"Google Chrome";v="133", "Chromium";v="133", "Not?A_Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": f'"{self.fingerprint["platform"]}"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin"
+        }
 
         self.session.headers.update(self.headers)
 
@@ -364,18 +411,18 @@ class WiseCat(OpenAICompatibleProvider):
 
     def convert_model_name(self, model: str) -> str:
         """
-        Convert model names to ones supported by WiseCat.
+        Convert model names to ones supported by Venice.
 
         Args:
             model: Model name to convert
 
         Returns:
-            WiseCat model name
+            Venice model name
         """
-        # If the model is already a valid WiseCat model, return it
+        # If the model is already a valid Venice model, return it
         if model in self.AVAILABLE_MODELS:
             return model
 
         # Default to the most capable model
-        print(f"Warning: Unknown model '{model}'. Using 'chat-model-large' instead.")
-        return "chat-model-large"
+        print(f"Warning: Unknown model '{model}'. Using 'mistral-31-24b' instead.")
+        return "mistral-31-24b"

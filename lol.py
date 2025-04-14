@@ -1,18 +1,16 @@
-from webscout.Provider.OPENAI import ExaChat
+from webscout.Provider.OPENAI import Netwrck
 
 # Initialize the client
-client = ExaChat(timeout=60)
+client = Netwrck(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="gemini-2.0-pro-exp-02-05",
+    model="anthropic/claude-3-7-sonnet-20250219",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"},
         {"role": "assistant", "content": "The capital of France is Paris."},
         {"role": "user", "content": "Can you tell me more"}
-
-
     ],
     stream=True
 )

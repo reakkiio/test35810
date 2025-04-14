@@ -110,7 +110,8 @@ class AwesomePrompts:
         self,
         key: Union[str, int],
         default: Optional[str] = None,
-        case_insensitive: bool = True
+        case_insensitive: bool = True,
+        raise_not_found: bool = False # currently unused
     ) -> Optional[str]:
         """Get that perfect prompt! 🎯
 

@@ -1,14 +1,18 @@
-from webscout.Provider.OPENAI import HeckAI
+from webscout.Provider.OPENAI import SonusAI
 
 # Initialize the client
-client = HeckAI()
+client = SonusAI(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="google/gemini-2.0-flash-001",
+    model="air",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "hi"}
+        {"role": "user", "content": "What is the capital of France?"},
+        {"role": "assistant", "content": "The capital of France is Paris."},
+        {"role": "user", "content": "Can you tell me more"}
+
+
     ],
     stream=True
 )

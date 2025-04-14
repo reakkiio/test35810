@@ -42,6 +42,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - FreeAIChat
 - YEPCHAT
 - HeckAI
+- SonusAI
 
 ---
 
@@ -238,6 +239,18 @@ Access HeckAI's models through an OpenAI-compatible interface.
 *   `openai/gpt-4o-mini`
 *   `deepseek/deepseek-r1`
 *   `google/gemini-2.0-flash-001`
+
+---
+
+### <img src="https://img.shields.io/badge/SonusAI-00BFFF?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmE5IDkgMCAwIDEgOSA5LjUgOSA5IDAgMCAxLTkgOS41IDkgOSAwIDAgMS05LTkuNUE5IDkgMCAwIDEgMTIgMnoiPjwvcGF0aD48cGF0aCBkPSJNOCAxNGEzIDMgMCAwIDAgNiAwIj48L3BhdGg+PHBhdGggZD0iTTkgOWguMDEiPjwvcGF0aD48cGF0aCBkPSJNMTUgOWguMDEiPjwvcGF0aD48L3N2Zz4=" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> SonusAI
+
+Access SonusAI's models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   `pro` - SonusAI's premium model
+*   `air` - SonusAI's balanced model
+*   `mini` - SonusAI's lightweight model
 
 ---
 
@@ -829,6 +842,28 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+### Basic Usage with SonusAI
+
+```python
+from webscout.Provider.OPENAI import SonusAI
+
+# Initialize the client
+client = SonusAI()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="pro",  # Choose from 'pro', 'air', or 'mini'
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ],
+    reasoning=True  # Optional: Enable reasoning mode
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
 ### Streaming with YEPCHAT
 
 ```python
@@ -840,6 +875,31 @@ client = YEPCHAT()
 # Create a streaming completion
 stream = client.chat.completions.create(
     model="Mixtral-8x7B-Instruct-v0.1",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
+### Streaming with SonusAI
+
+```python
+from webscout.Provider.OPENAI import SonusAI
+
+# Initialize the client
+client = SonusAI(timeout=60)
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="air",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}
@@ -945,6 +1005,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [LLMChatCo Website](https://llmchat.co/)
 *   [Yep.com Website](https://yep.com/)
 *   [HeckAI Website](https://heck.ai/)
+*   [SonusAI Website](https://chat.sonus.ai/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

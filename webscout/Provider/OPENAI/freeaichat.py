@@ -73,7 +73,7 @@ class Completions(BaseCompletions):
                 stream=True,
                 timeout=self._client.timeout
             )
-            
+
             # Handle non-200 responses
             if not response.ok:
                 raise IOError(
@@ -84,7 +84,7 @@ class Completions(BaseCompletions):
             prompt_tokens = 0
             completion_tokens = 0
             total_tokens = 0
-            
+
             # Estimate prompt tokens based on message length
             for msg in payload.get("messages", []):
                 prompt_tokens += len(msg.get("content", "").split())
@@ -92,34 +92,34 @@ class Completions(BaseCompletions):
             for line in response.iter_lines():
                 if not line:
                     continue
-                
+
                 line_str = line.decode('utf-8').strip()
-                
+
                 if line_str.startswith("data: "):
                     json_str = line_str[6:]  # Remove "data: " prefix
                     if json_str == "[DONE]":
                         break
-                    
+
                     try:
                         data = json.loads(json_str)
                         choice_data = data.get('choices', [{}])[0]
                         delta_data = choice_data.get('delta', {})
                         finish_reason = choice_data.get('finish_reason')
-                        
+
                         # Update token counts if available
                         usage_data = data.get('usage', {})
                         if usage_data:
                             prompt_tokens = usage_data.get('prompt_tokens', prompt_tokens)
                             completion_tokens = usage_data.get('completion_tokens', completion_tokens)
                             total_tokens = usage_data.get('total_tokens', total_tokens)
-                        
+
                         # Create the delta object
                         delta = ChoiceDelta(
                             content=delta_data.get('content'),
                             role=delta_data.get('role'),
                             tool_calls=delta_data.get('tool_calls')
                         )
-                        
+
                         # Create the choice object
                         choice = Choice(
                             index=choice_data.get('index', 0),
@@ -127,7 +127,7 @@ class Completions(BaseCompletions):
                             finish_reason=finish_reason,
                             logprobs=choice_data.get('logprobs')
                         )
-                        
+
                         # Create the chunk object
                         chunk = ChatCompletionChunk(
                             id=request_id,
@@ -136,27 +136,27 @@ class Completions(BaseCompletions):
                             model=model,
                             system_fingerprint=data.get('system_fingerprint')
                         )
-                        
+
                         # Return the chunk object
                         yield chunk
                     except json.JSONDecodeError:
                         print(f"Warning: Could not decode JSON line: {json_str}")
                         continue
-                        
+
             # Final chunk with finish_reason="stop"
             delta = ChoiceDelta(
                 content=None,
                 role=None,
                 tool_calls=None
             )
-            
+
             choice = Choice(
                 index=0,
                 delta=delta,
                 finish_reason="stop",
                 logprobs=None
             )
-            
+
             chunk = ChatCompletionChunk(
                 id=request_id,
                 choices=[choice],
@@ -164,9 +164,9 @@ class Completions(BaseCompletions):
                 model=model,
                 system_fingerprint=None
             )
-            
+
             yield chunk
-            
+
         except Exception as e:
             print(f"Error during FreeAIChat stream request: {e}")
             raise IOError(f"FreeAIChat request failed: {e}") from e
@@ -181,19 +181,19 @@ class Completions(BaseCompletions):
                 json=payload,
                 timeout=self._client.timeout
             )
-            
+
             # Handle non-200 responses
             if not response.ok:
                 raise IOError(
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
-            
+
             # Parse the response
             data = response.json()
-            
+
             choices_data = data.get('choices', [])
             usage_data = data.get('usage', {})
-            
+
             choices = []
             for choice_d in choices_data:
                 message_d = choice_d.get('message', {})
@@ -207,13 +207,13 @@ class Completions(BaseCompletions):
                     finish_reason=choice_d.get('finish_reason', 'stop')
                 )
                 choices.append(choice)
-            
+
             usage = CompletionUsage(
                 prompt_tokens=usage_data.get('prompt_tokens', 0),
                 completion_tokens=usage_data.get('completion_tokens', 0),
                 total_tokens=usage_data.get('total_tokens', 0)
             )
-            
+
             completion = ChatCompletion(
                 id=request_id,
                 choices=choices,
@@ -222,7 +222,7 @@ class Completions(BaseCompletions):
                 usage=usage,
             )
             return completion
-            
+
         except Exception as e:
             print(f"Error during FreeAIChat non-stream request: {e}")
             raise IOError(f"FreeAIChat request failed: {e}") from e
@@ -234,7 +234,7 @@ class Chat(BaseChat):
 class FreeAIChat(OpenAICompatibleProvider):
     """
     OpenAI-compatible client for FreeAIChat API.
-    
+
     Usage:
         client = FreeAIChat()
         response = client.chat.completions.create(
@@ -242,7 +242,7 @@ class FreeAIChat(OpenAICompatibleProvider):
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
-    
+
     AVAILABLE_MODELS = [
         # OpenAI Models
         "GPT 4o",
@@ -299,26 +299,30 @@ class FreeAIChat(OpenAICompatibleProvider):
         "Grok 2",
         "Grok 3",
     ]
-    
+
     def __init__(
-        self, 
-        timeout: Optional[int] = None, 
+        self,
+        timeout: Optional[int] = None,
         browser: str = "chrome"
     ):
         """
         Initialize the FreeAIChat client.
-        
+
         Args:
             timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
         """
-        self.timeout = timeout or 30  # Default to 30 seconds if None
+        self.timeout = timeout
         self.api_endpoint = "https://freeaichatplayground.com/api/v1/chat/completions"
         self.session = requests.Session()
-        
+
+        # Initialize LitAgent for user agent generation
+        agent = LitAgent()
+        self.fingerprint = agent.generate_fingerprint(browser)
+
         # Initialize headers
         self.headers = {
-            'User-Agent': LitAgent().random(),
+            'User-Agent': self.fingerprint["user_agent"],
             'Accept': '*/*',
             'Content-Type': 'application/json',
             'Origin': 'https://freeaichatplayground.com',
@@ -326,26 +330,26 @@ class FreeAIChat(OpenAICompatibleProvider):
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
         }
-        
+
         self.session.headers.update(self.headers)
-        
+
         # Initialize the chat interface
         self.chat = Chat(self)
-    
+
     def convert_model_name(self, model: str) -> str:
         """
         Convert model names to ones supported by FreeAIChat.
-        
+
         Args:
             model: Model name to convert
-            
+
         Returns:
             FreeAIChat model name
         """
         # If the model is already a valid FreeAIChat model, return it
         if model in self.AVAILABLE_MODELS:
             return model
-        
+
         # Default to GPT 4o if model not found
         print(f"Warning: Unknown model '{model}'. Using 'GPT 4o' instead.")
         return "GPT 4o"

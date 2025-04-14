@@ -1,3 +1,4 @@
+from os import system
 import requests
 import json
 import uuid
@@ -38,7 +39,8 @@ class SciraAI(Provider):
         model: str = "scira-default",
         chat_id: str = None,
         user_id: str = None,
-        browser: str = "chrome"
+        browser: str = "chrome",
+        system_prompt: str = "You are a helpful assistant.",
     ):
         """Initializes the Scira AI API client.
 
@@ -56,6 +58,7 @@ class SciraAI(Provider):
             chat_id (str): Unique identifier for the chat session.
             user_id (str): Unique identifier for the user.
             browser (str): Browser to emulate in requests.
+            system_prompt (str): System prompt for the AI.
 
         """
         if model not in self.AVAILABLE_MODELS:
@@ -67,7 +70,8 @@ class SciraAI(Provider):
         self.agent = LitAgent()
         # Use fingerprinting to create a consistent browser identity
         self.fingerprint = self.agent.generate_fingerprint(browser)
-
+        self.system_prompt = system_prompt
+        
         # Use the fingerprint for headers
         self.headers = {
             "Accept": self.fingerprint["accept"],
@@ -158,18 +162,17 @@ class SciraAI(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": conversation_prompt, "parts": [{"type": "text", "text": conversation_prompt}]}
+        ]
+
         # Prepare the request payload
         payload = {
             "id": self.chat_id,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": conversation_prompt,
-                    "parts": [{"type": "text", "text": conversation_prompt}]
-                }
-            ],
+            "messages": messages,
             "model": self.model,
-            "group": "chat",  # Always use chat mode (no web search)
+            "group": self.search_mode,
             "user_id": self.user_id,
             "timezone": "Asia/Calcutta"
         }

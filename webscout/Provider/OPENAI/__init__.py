@@ -7,3 +7,4 @@ from .wisecat import *
 from .venice import *
 from .exaai import *
 from .typegpt import *
+from .scirachat import *

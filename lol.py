@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import TypeGPT
+from webscout.Provider.OPENAI import SciraChat
 
 # Initialize the client
-client = TypeGPT()
+client = SciraChat()
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="gpt-4o-mini",
+    model="scira-default",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}

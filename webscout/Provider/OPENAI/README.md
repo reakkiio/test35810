@@ -29,6 +29,18 @@ The WebScout OpenAI-Compatible Providers module offers a standardized way to int
 
 Currently, the following providers are implemented with OpenAI-compatible interfaces:
 
+- DeepInfra
+- Glider
+- ChatGPTClone
+- X0GPT
+- WiseCat
+- Venice
+- ExaAI
+- TypeGPT
+- SciraChat
+- LLMChatCo
+- FreeAIChat
+
 ---
 
 ### <img src="https://img.shields.io/badge/DeepInfra-0A0A0A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1OGE2ZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjAgMTFhOCA4IDAgMCAwLTE2IDAiPjwvcGF0aD48cGF0aCBkPSJtMTIgMTEgOS0xIj48L3BhdGg+PHBhdGggZD0iTTEyIDExIDMgMTAiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFWMiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxMXY5Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> DeepInfra
@@ -147,6 +159,18 @@ Access Scira.ai's models through an OpenAI-compatible interface.
 *   `scira-vision`: Grok2-Vision (vision model)
 *   `scira-claude`: Sonnet-3.7 model
 *   `scira-optimus`: Optimus model
+
+---
+
+### <img src="https://img.shields.io/badge/LLMChatCo-4A90E2?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmExMCAxMCAwIDEgMCAwIDIwIDEwIDEwIDAgMCAwIDAtMjB6Ij48L3BhdGg+PHBhdGggZD0iTTggMTRzMS41IDIgNCAxLjVjMi41LS41IDQtMS41IDQtMS41Ij48L3BhdGg+PHBhdGggZD0iTTkgOWguMDEiPjwvcGF0aD48cGF0aCBkPSJNMTUgOWguMDEiPjwvcGF0aD48L3N2Zz4=" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> LLMChatCo
+
+Access LLMChat.co's models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   `gemini-flash-2.0`: Google's Gemini Flash 2.0 model (default)
+*   `llama-4-scout`: Meta's Llama 4 Scout model
+*   `gpt-4o-mini`: OpenAI's GPT-4o mini model
 
 ---
 
@@ -664,6 +688,53 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with LLMChatCo
+
+```python
+from webscout.Provider.OPENAI import LLMChatCo
+
+# Initialize the client
+client = LLMChatCo()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="gemini-flash-2.0",  # Default model
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ],
+    temperature=0.7
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with LLMChatCo
+
+```python
+from webscout.Provider.OPENAI import LLMChatCo
+
+# Initialize the client
+client = LLMChatCo()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="gemini-flash-2.0",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Write a short poem about programming."}
+    ],
+    stream=True
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 All providers return responses that mimic the OpenAI API structure, ensuring compatibility with tools built for OpenAI.
@@ -752,6 +823,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [TypeGPT Website](https://chat.typegpt.net/)
 *   [SciraChat Website](https://scira.ai/)
 *   [FreeAIChat Website](https://freeaichatplayground.com/)
+*   [LLMChatCo Website](https://llmchat.co/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

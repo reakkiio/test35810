@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import FreeAIChat
+from webscout.Provider.OPENAI import LLMChatCo
 
 # Initialize the client
-client = FreeAIChat()
+client = LLMChatCo()
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="GPT 4o Search Preview",
+    model="gemini-flash-2.0",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a short poem about programming."}

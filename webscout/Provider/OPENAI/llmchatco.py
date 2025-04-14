@@ -1,0 +1,350 @@
+import time
+import uuid
+import requests
+import json
+from typing import List, Dict, Optional, Union, Generator, Any
+
+# Import base classes and utility structures
+from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from .utils import (
+    ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
+    ChatCompletionMessage, CompletionUsage, get_last_user_message, get_system_prompt, format_prompt # Import format_prompt
+)
+
+# Attempt to import LitAgent, fallback if not available
+try:
+    from webscout.litagent import LitAgent
+except ImportError:
+    # Define a dummy LitAgent if webscout is not installed or accessible
+    class LitAgent:
+        def random(self) -> str:
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+
+# --- LLMChatCo Client ---
+
+class Completions(BaseCompletions):
+    def __init__(self, client: 'LLMChatCo'):
+        self._client = client
+
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = 2048, # Note: LLMChatCo doesn't seem to use max_tokens directly in payload
+        stream: bool = False,
+        temperature: Optional[float] = None, # Note: LLMChatCo doesn't seem to use temperature directly in payload
+        top_p: Optional[float] = None, # Note: LLMChatCo doesn't seem to use top_p directly in payload
+        web_search: bool = False, # LLMChatCo specific parameter
+        system_prompt: Optional[str] = None, # Allow overriding system prompt per request
+        **kwargs: Any
+    ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
+        """
+        Creates a model response for the given chat conversation.
+        Mimics openai.chat.completions.create
+        """
+        if model not in self._client.AVAILABLE_MODELS:
+             # Fallback or raise error if model not supported by this specific provider
+            print(f"Warning: Model '{model}' not in LLMChatCo's known list. Using '{self._client.model}' instead.")
+            actual_model = self._client.model
+        else:
+            actual_model = model
+
+        # Determine the effective system prompt
+        effective_system_prompt = system_prompt or self._client.system_prompt
+        message_list_system_prompt = get_system_prompt(messages)
+        if not effective_system_prompt and message_list_system_prompt:
+             effective_system_prompt = message_list_system_prompt
+
+        # Prepare final messages list, ensuring only one system message at the start
+        # This structure is still needed for the API payload's 'messages' field
+        final_messages = []
+        if effective_system_prompt:
+            final_messages.append({"role": "system", "content": effective_system_prompt})
+        final_messages.extend([msg for msg in messages if msg.get("role") != "system"])
+
+        # Extract the last user prompt using the utility function for the separate 'prompt' field
+        last_user_prompt = get_last_user_message(final_messages)
+
+        # Note: format_prompt is not directly used here as the API requires the structured 'messages' list
+        # and a separate 'prompt' field, rather than a single formatted string.
+
+        # Generate a unique ID for this message
+        thread_item_id = ''.join(str(uuid.uuid4()).split('-'))[:20]
+
+        payload = {
+            "mode": actual_model,
+            "prompt": last_user_prompt, # LLMChatCo seems to require the last prompt separately
+            "threadId": self._client.thread_id,
+            "messages": final_messages, # Use the reconstructed final_messages list
+            "mcpConfig": {}, # Keep structure as observed
+            "threadItemId": thread_item_id,
+            "parentThreadItemId": "", # Assuming no parent for simplicity
+            "webSearch": web_search,
+            "showSuggestions": True # Keep structure as observed
+        }
+
+        # Add any extra kwargs to the payload if needed, though LLMChatCo seems limited
+        payload.update(kwargs)
+
+        request_id = f"chatcmpl-{uuid.uuid4()}"
+        created_time = int(time.time())
+
+        if stream:
+            return self._create_stream(request_id, created_time, actual_model, payload)
+        else:
+            return self._create_non_stream(request_id, created_time, actual_model, payload)
+
+    def _create_stream(
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+    ) -> Generator[ChatCompletionChunk, None, None]:
+        try:
+            response = self._client.session.post(
+                self._client.api_endpoint,
+                headers=self._client.headers,
+                json=payload,
+                stream=True,
+                timeout=self._client.timeout
+            )
+
+            if not response.ok:
+                raise IOError(
+                    f"LLMChatCo API Error: {response.status_code} {response.reason} - {response.text}"
+                )
+
+            full_response_text = ""
+            current_event = None
+            buffer = ""
+
+            for chunk_bytes in response.iter_content(chunk_size=None, decode_unicode=False):
+                if not chunk_bytes:
+                    continue
+
+                buffer += chunk_bytes.decode('utf-8', errors='replace')
+
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+
+                    if not line: # End of an event block
+                        current_event = None
+                        continue
+
+                    if line.startswith('event:'):
+                        current_event = line[len('event:'):].strip()
+                    elif line.startswith('data:'):
+                        data_content = line[len('data:'):].strip()
+                        if data_content and current_event == 'answer':
+                            try:
+                                json_data = json.loads(data_content)
+                                answer_data = json_data.get("answer", {})
+                                text_chunk = answer_data.get("text", "")
+                                full_text = answer_data.get("fullText")
+                                status = answer_data.get("status")
+
+                                # Prefer fullText if available and status is COMPLETED
+                                if full_text is not None and status == "COMPLETED":
+                                    delta_content = full_text[len(full_response_text):]
+                                    full_response_text = full_text # Update full response tracker
+                                elif text_chunk is not None:
+                                    # Calculate delta based on potentially partial 'text' field
+                                    delta_content = text_chunk[len(full_response_text):]
+                                    full_response_text = text_chunk # Update full response tracker
+                                else:
+                                    delta_content = None
+
+                                if delta_content:
+                                    delta = ChoiceDelta(content=delta_content, role="assistant")
+                                    choice = Choice(index=0, delta=delta, finish_reason=None)
+                                    chunk = ChatCompletionChunk(
+                                        id=request_id,
+                                        choices=[choice],
+                                        created=created_time,
+                                        model=model,
+                                    )
+                                    yield chunk
+
+                            except json.JSONDecodeError:
+                                print(f"Warning: Could not decode JSON data line: {data_content}")
+                                continue
+                        elif data_content and current_event == 'done':
+                            # The 'done' event signals the end of the stream
+                            delta = ChoiceDelta() # Empty delta
+                            choice = Choice(index=0, delta=delta, finish_reason="stop")
+                            chunk = ChatCompletionChunk(
+                                id=request_id,
+                                choices=[choice],
+                                created=created_time,
+                                model=model,
+                            )
+                            yield chunk
+                            return # End the generator
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error during LLMChatCo stream request: {e}")
+            raise IOError(f"LLMChatCo request failed: {e}") from e
+        except Exception as e:
+            print(f"Unexpected error during LLMChatCo stream: {e}")
+            raise IOError(f"LLMChatCo stream processing failed: {e}") from e
+
+        # Fallback final chunk if 'done' event wasn't received properly
+        delta = ChoiceDelta()
+        choice = Choice(index=0, delta=delta, finish_reason="stop")
+        chunk = ChatCompletionChunk(
+            id=request_id,
+            choices=[choice],
+            created=created_time,
+            model=model,
+        )
+        yield chunk
+
+
+    def _create_non_stream(
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+    ) -> ChatCompletion:
+        # Non-streaming requires accumulating stream chunks
+        full_response_content = ""
+        finish_reason = "stop" # Assume stop unless error occurs
+
+        try:
+            stream_generator = self._create_stream(request_id, created_time, model, payload)
+            for chunk in stream_generator:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    full_response_content += chunk.choices[0].delta.content
+                if chunk.choices and chunk.choices[0].finish_reason:
+                    finish_reason = chunk.choices[0].finish_reason
+
+        except IOError as e:
+            print(f"Error obtaining non-stream response from LLMChatCo: {e}")
+            # Return a partial or error response if needed, or re-raise
+            # For simplicity, we'll return what we have, potentially empty
+            finish_reason = "error" # Indicate an issue
+
+        # Construct the final ChatCompletion object
+        message = ChatCompletionMessage(
+            role="assistant",
+            content=full_response_content
+        )
+        choice = Choice(
+            index=0,
+            message=message,
+            finish_reason=finish_reason
+        )
+        # Usage data is not provided by this API, so set to 0
+        usage = CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+
+        completion = ChatCompletion(
+            id=request_id,
+            choices=[choice],
+            created=created_time,
+            model=model,
+            usage=usage,
+        )
+        return completion
+
+class Chat(BaseChat):
+    def __init__(self, client: 'LLMChatCo'):
+        self.completions = Completions(client)
+
+class LLMChatCo(OpenAICompatibleProvider):
+    """
+    OpenAI-compatible client for LLMChat.co API.
+
+    Usage:
+        client = LLMChatCo()
+        response = client.chat.completions.create(
+            model="gemini-flash-2.0",
+            messages=[{"role": "user", "content": "Hello!"}]
+        )
+        print(response.choices[0].message.content)
+    """
+    AVAILABLE_MODELS = [
+        "gemini-flash-2.0",        # Default model
+        "llama-4-scout",
+        "gpt-4o-mini",
+        # Add other models if they become available and tested
+    ]
+
+    def __init__(
+        self,
+        model: str = "gemini-flash-2.0",
+        timeout: int = 60,
+        system_prompt: str = "You are a helpful assistant.",
+        proxies: Optional[Dict] = None,
+        browser: str = "chrome" # For User-Agent generation
+    ):
+        """
+        Initialize the LLMChatCo client.
+
+        Args:
+            model: Default model to use if not specified in create().
+            timeout: Request timeout in seconds.
+            system_prompt: Default system prompt to prepend to messages.
+            proxies: Dictionary of proxies for requests.
+            browser: Browser name for LitAgent to generate User-Agent.
+        """
+        if model not in self.AVAILABLE_MODELS:
+            print(f"Warning: Default model '{model}' not in known list {self.AVAILABLE_MODELS}. Using 'gemini-flash-2.0'.")
+            self.model = "gemini-flash-2.0"
+        else:
+            self.model = model
+
+        self.timeout = timeout
+        self.system_prompt = system_prompt
+        self.api_endpoint = "https://llmchat.co/api/completion"
+        self.session = requests.Session()
+        self.thread_id = str(uuid.uuid4()) # Unique thread ID per client instance
+
+        if proxies:
+            self.session.proxies = proxies
+
+        # Initialize LitAgent for user agent generation and fingerprinting
+        try:
+            agent = LitAgent()
+            fingerprint = agent.generate_fingerprint(browser=browser)
+        except Exception as e:
+            print(f"Warning: Failed to generate fingerprint with LitAgent: {e}. Using fallback.")
+            # Fallback fingerprint data
+            fingerprint = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept_language": "en-US,en;q=0.9",
+                "sec_ch_ua": '"Not/A)Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
+                "platform": "Windows",
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+            }
+
+        # Initialize headers using the fingerprint
+        self.headers = {
+            "Accept": fingerprint["accept"],
+            "Accept-Encoding": "gzip, deflate, br, zstd", # Standard encoding
+            "Accept-Language": fingerprint["accept_language"],
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Origin": "https://llmchat.co", # Specific origin for LLMChatCo
+            "Pragma": "no-cache",
+            "Referer": f"https://llmchat.co/chat/{self.thread_id}", # Specific referer for LLMChatCo
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-CH-UA": fingerprint["sec_ch_ua"] or '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"', # Fallback if empty
+            "Sec-CH-UA-Mobile": "?0",
+            "Sec-CH-UA-Platform": f'"{fingerprint["platform"]}"',
+            "User-Agent": fingerprint["user_agent"],
+            "DNT": "1", # Added back from previous version
+        }
+        self.session.headers.update(self.headers)
+
+        # Initialize the chat interface
+        self.chat = Chat(self)
+
+    def convert_model_name(self, model: str) -> str:
+        """
+        Ensures the model name is valid for LLMChatCo.
+        Returns the validated model name or the default if invalid.
+        """
+        if model in self.AVAILABLE_MODELS:
+            return model
+        else:
+            print(f"Warning: Model '{model}' not supported by LLMChatCo. Using default '{self.model}'.")
+            return self.model

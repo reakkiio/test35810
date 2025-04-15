@@ -92,6 +92,7 @@ from .ExaAI import ExaAI
 from .OpenGPT import OpenGPT
 from .scira_chat import *
 from .StandardInput import *
+from .Writecream import Writecream
 
 __all__ = [
     'LLAMA',
@@ -188,4 +189,5 @@ __all__ = [
     'AskSteve',
     'Aitopia',
     'SearchChatAI',
+    'Writecream',
 ]

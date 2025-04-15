@@ -1,7 +1,7 @@
-from webscout.Provider.OPENAI import StandardInput
+from webscout.Provider.OPENAI import Writecream
 
 # Initialize the client
-client = StandardInput(timeout=60)
+client = Writecream(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(

@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import Netwrck
+from webscout.Provider.OPENAI import StandardInput
 
 # Initialize the client
-client = Netwrck(timeout=60)
+client = StandardInput(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="anthropic/claude-3-7-sonnet-20250219",
+    model="standard-quick",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"},

@@ -91,11 +91,12 @@ from .searchchat import *
 from .ExaAI import ExaAI
 from .OpenGPT import OpenGPT
 from .scira_chat import *
-from .AISEARCH.iask_search import IAsk
+from .StandardInput import *
+
 __all__ = [
     'LLAMA',
-    'IAsk',
     'SciraAI',
+    'StandardInputAI',
     'LabyrinthAI',
     'OpenGPT',
     'C4ai',

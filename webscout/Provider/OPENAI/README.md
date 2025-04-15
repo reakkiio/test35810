@@ -45,6 +45,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - SonusAI
 - ExaChat
 - Netwrck
+- StandardInput
 
 ---
 
@@ -283,6 +284,17 @@ Access Netwrck's models through an OpenAI-compatible interface.
 *   `x-ai/grok-2`
 *   `google/gemini-pro-1.5`
 *   And more
+
+---
+
+### <img src="https://img.shields.io/badge/StandardInput-4A90E2?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTVhMiAyIDAgMCAxLTIgMkgzYTIgMiAwIDAgMS0yLTJWN2EyIDIgMCAwIDEgMi0yaDEwYTIgMiAwIDAgMSAyIDJ2M2g0YTIgMiAwIDAgMSAyIDJ6Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> StandardInput
+
+Access Standard Input's chat models through an OpenAI-compatible interface.
+
+**Available Models:**
+
+*   `standard-quick`: Standard Input's quick response model
+*   `standard-reasoning`: Standard Input's model with reasoning capabilities
 
 ---
 
@@ -1049,6 +1061,53 @@ for chunk in stream:
 print()  # Add a newline at the end
 ```
 
+### Basic Usage with StandardInput
+
+```python
+from webscout.Provider.OPENAI import StandardInput
+
+# Initialize the client
+client = StandardInput()
+
+# Create a completion (non-streaming)
+response = client.chat.completions.create(
+    model="standard-quick",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about Python programming."}
+    ]
+)
+
+# Print the response
+print(response.choices[0].message.content)
+```
+
+### Streaming with StandardInput
+
+```python
+from webscout.Provider.OPENAI import StandardInput
+
+# Initialize the client
+client = StandardInput()
+
+# Create a streaming completion
+stream = client.chat.completions.create(
+    model="standard-reasoning",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Count from 1 to 5."}
+    ],
+    stream=True,
+    enable_reasoning=True  # Enable reasoning capabilities
+)
+
+# Process the streaming response
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Add a newline at the end
+```
+
 ## 🔄 Response Format
 
 All providers return responses that mimic the OpenAI API structure, ensuring compatibility with tools built for OpenAI.
@@ -1143,6 +1202,7 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 *   [SonusAI Website](https://chat.sonus.ai/)
 *   [ExaChat Website](https://exa-chat.vercel.app/)
 *   [Netwrck Website](https://netwrck.com/)
+*   [StandardInput Website](https://chat.standard-input.com/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

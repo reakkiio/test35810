@@ -93,9 +93,11 @@ from .OpenGPT import OpenGPT
 from .scira_chat import *
 from .StandardInput import *
 from .Writecream import Writecream
-
+from .toolbaz import Toolbaz
+from .scnet import SCNet
 __all__ = [
     'LLAMA',
+    'SCNet',
     'SciraAI',
     'StandardInputAI',
     'LabyrinthAI',
@@ -190,4 +192,5 @@ __all__ = [
     'Aitopia',
     'SearchChatAI',
     'Writecream',
+    'Toolbaz'
 ]

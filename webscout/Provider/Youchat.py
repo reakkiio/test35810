@@ -53,11 +53,11 @@ class YouChat(Provider):
         "command_r_plus",
         
         # Free models not enabled for user chat modes
-        # "llama3_3_70b",  # isAllowedForUserChatModes: false
-        # "llama3_2_90b",  # isAllowedForUserChatModes: false
-        # "databricks_dbrx_instruct",  # isAllowedForUserChatModes: false
-        # "solar_1_mini",  # isAllowedForUserChatModes: false
-        # "dolphin_2_5",  # isAllowedForUserChatModes: false, isUncensoredModel: true
+        "llama3_3_70b",  # isAllowedForUserChatModes: false
+        "llama3_2_90b",  # isAllowedForUserChatModes: false
+        "databricks_dbrx_instruct",  # isAllowedForUserChatModes: false
+        "solar_1_mini",  # isAllowedForUserChatModes: false
+        "dolphin_2_5",  # isAllowedForUserChatModes: false, isUncensoredModel: true
     ]
 
     def __init__(
@@ -108,6 +108,7 @@ class YouChat(Provider):
             "Content-Type": "text/plain;charset=UTF-8",
         }
         self.cookies = {
+            "uuid_guest": uuid4().hex,
             "uuid_guest_backup": uuid4().hex,
             "youchat_personalization": "true",
             "youchat_smart_learn": "true",
@@ -188,9 +189,10 @@ class YouChat(Provider):
             "queryTraceId": trace_id,
             "chatId": trace_id,
             "conversationTurnId": conversation_turn_id,
-            "pastChatLength": 0,
-            "selectedChatMode": "smart_routing",  # Updated from custom to smart_routing
-            "enable_agent_clarification_questions": "true",
+            "pastChatLength": len(self.conversation.history) if hasattr(self.conversation, "history") else 0,
+            "selectedChatMode": "custom",
+            "selectedAiModel": self.model,
+            # "enable_agent_clarification_questions": "true",
             "traceId": f"{trace_id}|{conversation_turn_id}|{current_time}",
             "use_nested_youchat_updates": "true"
         }
@@ -217,29 +219,31 @@ class YouChat(Provider):
                 )
 
             streaming_text = ""
-            found_marker = False  # Flag to track if we've passed the '####' marker
-            
+            # New SSE event-based parsing
+            event_type = None
             for value in response.iter_lines(
                 decode_unicode=True,
                 chunk_size=self.stream_chunk_size,
                 delimiter="\n",
             ):
-                try:
-                    if bool(value) and value.startswith('data: ') and 'youChatToken' in value:
-                        data = json.loads(value[6:])
-                        token = data.get('youChatToken', '')
-                        
-                        # Check if this is the marker with '####'
-                        if token == '####':
-                            found_marker = True
-                            continue  # Skip the marker itself
-                        
-                        # Only process tokens after the marker has been found
-                        if found_marker and token:
-                            streaming_text += token
-                            yield token if raw else dict(text=token)
-                except json.decoder.JSONDecodeError:
-                    pass
+                if not value:
+                    continue
+                if value.startswith("event: "):
+                    event_type = value[7:].strip()
+                    continue
+                if value.startswith("data: "):
+                    data_str = value[6:]
+                    if event_type == "youChatToken":
+                        try:
+                            data = json.loads(data_str)
+                            token = data.get("youChatToken", "")
+                            if token:
+                                streaming_text += token
+                                yield token if raw else dict(text=token)
+                        except Exception:
+                            pass
+                    # Reset event_type after processing
+                    event_type = None
 
             self.last_response.update(dict(text=streaming_text))
             self.conversation.update_chat_history(

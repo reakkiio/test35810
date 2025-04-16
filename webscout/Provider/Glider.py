@@ -13,9 +13,11 @@ class GliderAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "chat-llama-3-1-70b",
         "chat-llama-3-1-8b",
         "chat-llama-3-2-3b",
+        "chat-deepseek-r1-qwen-32b",
+        "chat-qwen-2-5-7b",
+        "chat-qwen-qwq-32b",
         "deepseek-ai/DeepSeek-R1",
     ]
 
@@ -30,7 +32,7 @@ class GliderAI(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: Optional[str] = None,
-        model: str = "chat-llama-3-1-70b",
+        model: str = "chat-llama-3-1-8b",
         system_prompt: str = "You are a helpful AI assistant."
     ):
         """Initializes the GliderAI API client."""

@@ -251,9 +251,11 @@ class Glider(OpenAICompatibleProvider):
     """
 
     AVAILABLE_MODELS = [
-        "chat-llama-3-1-70b",
         "chat-llama-3-1-8b",
         "chat-llama-3-2-3b",
+        "chat-deepseek-r1-qwen-32b",
+        "chat-qwen-2-5-7b",
+        "chat-qwen-qwq-32b",
         "deepseek-ai/DeepSeek-R1",
     ]
 

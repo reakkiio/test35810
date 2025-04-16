@@ -3,7 +3,6 @@ import json
 import secrets
 from typing import Any, Dict, Optional, Generator, Union
 
-from webscout.swiftcli import pass_context
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions

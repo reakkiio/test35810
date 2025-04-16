@@ -11,11 +11,11 @@ from webscout.litagent import LitAgent
 # Model configurations
 MODEL_CONFIGS = {
     "exaanswer": {
-        "endpoint": "https://exa-chat.vercel.app/api/exaanswer",
+        "endpoint": "https://ayle.chat/api/exaanswer",
         "models": ["exaanswer"],
     },
     "gemini": {
-        "endpoint": "https://exa-chat.vercel.app/api/gemini",
+        "endpoint": "https://ayle.chat/api/gemini",
         "models": [
             "gemini-2.0-flash",
             "gemini-2.0-flash-exp-image-generation",
@@ -26,7 +26,7 @@ MODEL_CONFIGS = {
         ],
     },
     "openrouter": {
-        "endpoint": "https://exa-chat.vercel.app/api/openrouter",
+        "endpoint": "https://ayle.chat/api/openrouter",
         "models": [
             "mistralai/mistral-small-3.1-24b-instruct:free",
             "deepseek/deepseek-r1:free",
@@ -36,7 +36,7 @@ MODEL_CONFIGS = {
         ],
     },
     "groq": {
-        "endpoint": "https://exa-chat.vercel.app/api/groq",
+        "endpoint": "https://ayle.chat/api/groq",
         "models": [
             "deepseek-r1-distill-llama-70b",
             "deepseek-r1-distill-qwen-32b",
@@ -56,7 +56,7 @@ MODEL_CONFIGS = {
         ],
     },
     "cerebras": {
-        "endpoint": "https://exa-chat.vercel.app/api/cerebras",
+        "endpoint": "https://ayle.chat/api/cerebras",
         "models": [
             "llama3.1-8b",
             "llama-3.3-70b"
@@ -150,8 +150,8 @@ class ExaChat(Provider):
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9",
             "content-type": "application/json",
-            "origin": "https://exa-chat.vercel.app",
-            "referer": "https://exa-chat.vercel.app/",
+            "origin": "https://ayle.chat/",
+            "referer": "https://ayle.chat/",
             "user-agent": self.agent.random(),
         }
         

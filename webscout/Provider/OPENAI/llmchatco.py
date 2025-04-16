@@ -259,7 +259,9 @@ class LLMChatCo(OpenAICompatibleProvider):
         "gemini-flash-2.0",        # Default model
         "llama-4-scout",
         "gpt-4o-mini",
-        # Add other models if they become available and tested
+        # "gpt-4.1",
+        # "gpt-4.1-mini",
+        "gpt-4.1-nano",
     ]
 
     def __init__(

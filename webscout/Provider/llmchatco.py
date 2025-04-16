@@ -20,6 +20,11 @@ class LLMChatCo(Provider):
         "gemini-flash-2.0",        # Default model
         "llama-4-scout",
         "gpt-4o-mini",
+        "gpt-4.1-nano",
+
+
+        # "gpt-4.1",
+        # "gpt-4.1-mini",
         # "o3-mini",
         # "claude-3-5-sonnet",
         # "deepseek-r1",

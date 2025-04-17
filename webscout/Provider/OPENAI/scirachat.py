@@ -329,6 +329,7 @@ class SciraChat(OpenAICompatibleProvider):
         "scira-vision",        # vision model
         "scira-4.1-mini",
         "scira-qwq",
+        "scira-o4-mini"
 
     ]
     

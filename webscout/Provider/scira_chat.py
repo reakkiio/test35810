@@ -22,6 +22,7 @@ class SciraAI(Provider):
         "scira-vision" : "Grok2-Vision", # vision model
         "scira-4.1-mini": "GPT4.1-mini",
         "scira-qwq": "QWQ-32B",
+        "scira-o4-mini": "o4-mini",
 
     }
 

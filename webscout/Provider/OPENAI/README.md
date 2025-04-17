@@ -46,6 +46,9 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - ExaChat
 - Netwrck
 - StandardInput
+- Writecream
+- toolbaz
+- UncovrAI
 
 ---
 

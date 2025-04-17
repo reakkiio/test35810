@@ -26,7 +26,9 @@ class GithubChat(Provider):
         "claude-3.7-sonnet-thought",
         "gemini-2.0-flash-001",
         "gemini-2.5-pro",
-        "gpt-4.1"
+        "gpt-4.1",
+        "o4-mini"
+
 
 
     ]

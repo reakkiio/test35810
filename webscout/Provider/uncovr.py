@@ -20,14 +20,14 @@ class UncovrAI(Provider):
         "gpt-4o-mini",
         "gemini-2-flash",
         "gemini-2-flash-lite",
-        "groq-llama-3-1-8b"
+        "groq-llama-3-1-8b",
+        "o3-mini",
+        "deepseek-r1-distill-qwen-32b",
         # The following models are not available in the free plan:
-        # "o3-mini",
         # "claude-3-7-sonnet",
         # "gpt-4o",
         # "claude-3-5-sonnet-v2",
         # "deepseek-r1-distill-llama-70b",
-        # "deepseek-r1-distill-qwen-32b",
         # "gemini-2-flash-lite-preview",
         # "qwen-qwq-32b"
     ]

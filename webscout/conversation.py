@@ -281,11 +281,11 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             if not os.path.exists(self.file):
                 with open(self.file, "w", encoding="utf-8") as fh:
                     fh.write(self.intro + "\n")
-            
+
             # Append new history
             with open(self.file, "a", encoding="utf-8") as fh:
                 fh.write(new_history)
-        
+
         self.chat_history += new_history
         # logger.info(f"Chat history updated with prompt: {prompt}")
 
@@ -317,21 +317,21 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             "tool": tool_name,
             "result": tool_result
         }
-        
+
         if self.file and self.update_file:
             # Create file if it doesn't exist
             if not os.path.exists(self.file):
                 with open(self.file, "w", encoding="utf-8") as fh:
                     fh.write(self.intro + "\n")
-            
+
             # Append new history
             with open(self.file, "a", encoding="utf-8") as fh:
                 fh.write(new_history)
-        
+
         self.chat_history += new_history
 
     def add_message(self, role: str, content: str) -> None:
-        """Add a new message to the chat - simple and clean! 
+        """Add a new message to the chat - simple and clean!
 
         This method:
         - Validates the message role
@@ -379,10 +379,10 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
 
     def _parse_function_call(self, response: str) -> FunctionCallData:
         """Parse a function call from the LLM's response.
-        
+
         Args:
             response (str): The LLM's response containing a function call
-            
+
         Returns:
             FunctionCallData: Parsed function call data or error
         """
@@ -399,13 +399,13 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
                 end_tag = "</tool_call>"
                 start_idx = response.find(start_tag)
                 end_idx = response.rfind(end_tag)
-                
+
                 if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
                     raise ValueError("No valid <tool_call> JSON structure found in the response.")
-                
+
                 # Extract JSON content - for the format without brackets
                 json_str: str = response[start_idx + len(start_tag):end_idx].strip()
-                
+
                 # Try to parse the JSON directly
                 try:
                     parsed_response: Any = json.loads(json_str)
@@ -425,7 +425,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
                 # Extract JSON content - for the format with brackets
                 json_str: str = response[start_idx + len(start_tag):end_idx].strip()
                 parsed_response: Any = json.loads(json_str)
-                
+
                 if isinstance(parsed_response, list):
                     return {"tool_calls": parsed_response}
                 elif isinstance(parsed_response, dict):
@@ -439,10 +439,10 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
 
     def execute_function(self, function_call_data: FunctionCallData) -> str:
         """Execute a function call and return the result.
-        
+
         Args:
             function_call_data (FunctionCallData): The function call data
-            
+
         Returns:
             str: Result of the function execution
         """
@@ -450,7 +450,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
 
         if not tool_calls or not isinstance(tool_calls, list):
             return "Invalid tool_calls format."
-        
+
         results: List[str] = []
         for tool_call in tool_calls:
             function_name: str = tool_call.get("name")
@@ -465,19 +465,19 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             results.append(f"Executed {function_name} with arguments {arguments}")
 
         return "; ".join(results)
-        
+
     def _convert_fns_to_tools(self, fns: Optional[List[Fn]]) -> List[ToolDefinition]:
         """Convert functions to tool definitions for the LLM.
-        
+
         Args:
             fns (Optional[List[Fn]]): List of function definitions
-            
+
         Returns:
             List[ToolDefinition]: List of tool definitions
         """
         if not fns:
             return []
-        
+
         tools: List[ToolDefinition] = []
         for fn in fns:
             tool: ToolDefinition = {
@@ -499,55 +499,55 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             }
             tools.append(tool)
         return tools
-        
+
     def get_tools_description(self) -> str:
         """Get a formatted string of available tools for the intro prompt.
-        
+
         Returns:
             str: Formatted tools description
         """
         if not self.tools:
             return ""
-            
+
         tools_desc = []
         for fn in self.tools:
             params_desc = ", ".join([f"{name}: {typ}" for name, typ in fn.parameters.items()])
             tools_desc.append(f"- {fn.name}: {fn.description} (Parameters: {params_desc})")
-            
+
         return "\n".join(tools_desc)
 
     def handle_tool_response(self, response: str) -> Dict[str, Any]:
         """Process a response that might contain a tool call.
-        
+
         This method:
         - Checks if the response contains a tool call
         - Parses and executes the tool call if present
         - Returns the appropriate result
-        
+
         Args:
             response (str): The LLM's response
-            
+
         Returns:
             Dict[str, Any]: Result containing 'is_tool_call', 'result', and 'original_response'
         """
         # Check if response contains a tool call
         if "<tool_call>" in response:
             function_call_data = self._parse_function_call(response)
-            
+
             if "error" in function_call_data:
                 return {
-                    "is_tool_call": True, 
+                    "is_tool_call": True,
                     "success": False,
                     "result": function_call_data["error"],
                     "original_response": response
                 }
-                
+
             # Execute the function call
             result = self.execute_function(function_call_data)
-            
+
             # Add the result to chat history as a tool message
             self.add_message("tool", result)
-            
+
             return {
                 "is_tool_call": True,
                 "success": True,
@@ -555,7 +555,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
                 "tool_calls": function_call_data.get("tool_calls", []),
                 "original_response": response
             }
-        
+
         return {
             "is_tool_call": False,
             "result": response,

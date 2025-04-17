@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import Writecream
+from webscout.Provider.OPENAI import UncovrAI
 
 # Initialize the client
-client = Writecream(timeout=60)
+client = UncovrAI(timeout=60)
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="standard-quick",
+    model="default",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"},

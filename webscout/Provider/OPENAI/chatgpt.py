@@ -1,11 +1,24 @@
+import time
+import uuid
+import requests
 import json
 import random
-import uuid
-import time
 import base64
 import hashlib
-import requests
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Union, Generator, Any
+
+# Import base classes and utility structures
+from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from .utils import (
+    ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
+    ChatCompletionMessage, CompletionUsage
+)
+
+# ANSI escape codes for formatting
+BOLD = "\033[1m"
+RED = "\033[91m"
+RESET = "\033[0m"
 
 class ChatGPTReversed:
     csrf_token = None
@@ -305,9 +318,232 @@ class ChatGPTReversed:
         return self.parse_response(response.text)
 
 
+class Completions(BaseCompletions):
+    def __init__(self, client: 'ChatGPT'):
+        self._client = client
+        self._chatgpt_reversed = None
 
-# Example usage when running the file directly
-if __name__ == "__main__":
-    ai = ChatGPTReversed(model="gpt-4o")
-    response = ai.complete("Hello, how are you?")
-    print(response)
+    def create(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        stream: bool = False,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        **kwargs: Any
+    ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
+        """
+        Create a chat completion with ChatGPT API.
+
+        Args:
+            model: The model to use (from AVAILABLE_MODELS)
+            messages: List of message dictionaries with 'role' and 'content'
+            max_tokens: Maximum number of tokens to generate
+            stream: Whether to stream the response
+            temperature: Sampling temperature (0-1)
+            top_p: Nucleus sampling parameter (0-1)
+            **kwargs: Additional parameters to pass to the API
+
+        Returns:
+            If stream=False, returns a ChatCompletion object
+            If stream=True, returns a Generator yielding ChatCompletionChunk objects
+        """
+        # Initialize ChatGPTReversed if not already initialized
+        if self._chatgpt_reversed is None:
+            self._chatgpt_reversed = ChatGPTReversed(model=model)
+
+        # Use streaming implementation if requested
+        if stream:
+            return self._create_streaming(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                **kwargs
+            )
+        
+        # Otherwise use non-streaming implementation
+        return self._create_non_streaming(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            **kwargs
+        )
+
+    def _create_streaming(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        **kwargs: Any
+    ) -> Generator[ChatCompletionChunk, None, None]:
+        """Implementation for streaming chat completions."""
+        try:
+            # Generate request ID and timestamp
+            request_id = str(uuid.uuid4())
+            created_time = int(time.time())
+            
+            # Get the last user message
+            last_user_message = None
+            for msg in reversed(messages):
+                if msg["role"] == "user":
+                    last_user_message = msg["content"]
+                    break
+            
+            if not last_user_message:
+                raise ValueError("No user message found in the conversation")
+            
+            # Get the response from ChatGPT
+            response = self._chatgpt_reversed.complete(last_user_message, model=model)
+            
+            # Split the response into chunks for streaming simulation
+            chunk_size = 10  # Characters per chunk
+            for i in range(0, len(response), chunk_size):
+                chunk_text = response[i:i+chunk_size]
+                
+                # Create and yield a chunk
+                delta = ChoiceDelta(content=chunk_text)
+                choice = Choice(index=0, delta=delta, finish_reason=None)
+                chunk = ChatCompletionChunk(
+                    id=request_id,
+                    choices=[choice],
+                    created=created_time,
+                    model=model
+                )
+                
+                yield chunk
+                
+                # Add a small delay to simulate streaming
+                time.sleep(0.05)
+            
+            # Final chunk with finish_reason
+            delta = ChoiceDelta(content=None)
+            choice = Choice(index=0, delta=delta, finish_reason="stop")
+            chunk = ChatCompletionChunk(
+                id=request_id,
+                choices=[choice],
+                created=created_time,
+                model=model
+            )
+            
+            yield chunk
+            
+        except Exception as e:
+            print(f"{RED}Error during ChatGPT streaming request: {e}{RESET}")
+            raise IOError(f"ChatGPT streaming request failed: {e}") from e
+
+    def _create_non_streaming(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        **kwargs: Any
+    ) -> ChatCompletion:
+        """Implementation for non-streaming chat completions."""
+        try:
+            # Generate request ID and timestamp
+            request_id = str(uuid.uuid4())
+            created_time = int(time.time())
+            
+            # Get the last user message
+            last_user_message = None
+            for msg in reversed(messages):
+                if msg["role"] == "user":
+                    last_user_message = msg["content"]
+                    break
+            
+            if not last_user_message:
+                raise ValueError("No user message found in the conversation")
+            
+            # Get the response from ChatGPT
+            full_content = self._chatgpt_reversed.complete(last_user_message, model=model)
+            
+            # Create the completion message
+            message = ChatCompletionMessage(
+                role="assistant",
+                content=full_content
+            )
+            
+            # Create the choice
+            choice = Choice(
+                index=0,
+                message=message,
+                finish_reason="stop"
+            )
+            
+            # Estimate token usage (very rough estimate)
+            prompt_tokens = sum(len(msg.get("content", "")) // 4 for msg in messages)
+            completion_tokens = len(full_content) // 4
+            usage = CompletionUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens
+            )
+            
+            # Create the completion object
+            completion = ChatCompletion(
+                id=request_id,
+                choices=[choice],
+                created=created_time,
+                model=model,
+                usage=usage,
+            )
+            
+            return completion
+            
+        except Exception as e:
+            print(f"{RED}Error during ChatGPT non-stream request: {e}{RESET}")
+            raise IOError(f"ChatGPT request failed: {e}") from e
+
+class Chat(BaseChat):
+    def __init__(self, client: 'ChatGPT'):
+        self.completions = Completions(client)
+
+class ChatGPT(OpenAICompatibleProvider):
+    """
+    OpenAI-compatible client for ChatGPT API.
+
+    Usage:
+        client = ChatGPT()
+        response = client.chat.completions.create(
+            model="auto",
+            messages=[{"role": "user", "content": "Hello!"}]
+        )
+        print(response.choices[0].message.content)
+    """
+
+    AVAILABLE_MODELS = [
+        "auto", 
+        "gpt-4o-mini", 
+        "gpt-4o", 
+        "o4-mini"
+    ]
+
+    def __init__(
+        self,
+        timeout: int = 60,
+        proxies: dict = {}
+    ):
+        """
+        Initialize the ChatGPT client.
+
+        Args:
+            timeout: Request timeout in seconds
+            proxies: Optional proxy configuration
+        """
+        self.timeout = timeout
+        self.proxies = proxies
+        
+        # Initialize chat interface
+        self.chat = Chat(self)

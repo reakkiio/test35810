@@ -1,11 +1,10 @@
-from webscout.Provider.OPENAI import UncovrAI
+from webscout.Provider.OPENAI import OPKFC
 
-# Initialize the client
-client = UncovrAI(timeout=60)
+client = OPKFC(timeout=60)  # No browser parameter needed anymore
 
 # Create a streaming completion
 stream = client.chat.completions.create(
-    model="default",
+    model="o4-mini",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "What is the capital of France?"},
@@ -15,8 +14,5 @@ stream = client.chat.completions.create(
     stream=True
 )
 
-# Process the streaming response
-for chunk in stream:
-    if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="", flush=True)
-print()  # Add a newline at the end
+for chunks in stream:
+    print(chunks.choices[0].delta.content, end="", flush=True)

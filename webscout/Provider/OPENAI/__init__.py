@@ -19,3 +19,4 @@ from .standardinput import *
 from .writecream import *
 from .toolbaz import *
 from .uncovrAI import *
+from .opkfc import *

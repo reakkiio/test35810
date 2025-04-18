@@ -198,6 +198,7 @@ print(response.content)
 
 ## 📦 Requirements
 
+### Software Requirements
 - Python 3.9+
 - llama-cpp-python
 - FastAPI
@@ -207,6 +208,14 @@ print(response.content)
 - Hugging Face Hub
 - Pydantic
 - Requests
+
+### Hardware Requirements
+- Around 2 GB of RAM is needed for 1B models
+- Around 4 GB of RAM is needed for 3B models
+- You should have at least 8 GB of RAM available to run 7B models
+- 16 GB of RAM is recommended for 13B models
+- 32 GB of RAM is required for 33B models
+- GPU acceleration is recommended for better performance
 
 ## 🤝 Contributing
 

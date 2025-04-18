@@ -123,6 +123,15 @@ python -m inferno --help
 | `python -m inferno remove <model>` | Remove a downloaded model |
 | `python -m inferno version` | Show version information |
 
+> [!NOTE]
+> Hardware requirements for running models:
+> - Around 2 GB of RAM for 1B models
+> - Around 4 GB of RAM for 3B models
+> - At least 8 GB of RAM for 7B models
+> - 16 GB of RAM for 13B models
+> - 32 GB of RAM for 33B models
+> - GPU acceleration is recommended for better performance
+
 
 
 ## 🔍 Search Engines

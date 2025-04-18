@@ -323,15 +323,17 @@ class SciraChat(OpenAICompatibleProvider):
         )
     """
     
-    AVAILABLE_MODELS = [
-        "scira-default",
-        "scira-grok-3-mini",  # thinking model
-        "scira-vision",        # vision model
-        "scira-4.1-mini",
-        "scira-qwq",
-        "scira-o4-mini"
+    AVAILABLE_MODELS = {
+        "scira-default": "Grok3",
+        "scira-grok-3-mini": "Grok3-mini", # thinking model
+        "scira-vision" : "Grok2-Vision", # vision model
+        "scira-4.1-mini": "GPT4.1-mini",
+        "scira-qwq": "QWQ-32B",
+        "scira-o4-mini": "o4-mini",
+        "scira-google": "gemini 2.5 flash"
 
-    ]
+
+    }
     
     def __init__(
         self, 

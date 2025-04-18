@@ -26,6 +26,9 @@
 | **Monica** | Comprehensive search | Related question suggestions, source references |
 | **WebPilotAI** | Web-integrated search | Web page analysis, content extraction |
 | **Scira** | Research-focused search | Multiple models (Grok3, Claude), vision support |
+| **IAsk** | Multi-mode search | Question, Academic, Fast modes, detail levels |
+| **Hika** | General AI search | Simple interface, clean text output |
+| **Perplexity** | Advanced AI search & chat | Multiple modes (Pro, Reasoning), model selection, source control |
 
 ## 🚀 Installation
 
@@ -117,6 +120,38 @@ print(response)
 ```
 </details>
 
+<details>
+<summary><strong>Perplexity Example</strong></summary>
+
+```python
+from webscout import Perplexity
+
+# Initialize (optionally pass cookies for authenticated features)
+# cookies = {"perplexity-user": "your_cookie_value"}
+# ai = Perplexity(cookies=cookies)
+ai = Perplexity() # Anonymous access
+
+# Basic search (auto mode)
+response = ai.search("What is the weather in London?")
+print(response)
+
+# Streaming search
+for chunk in ai.search("Explain black holes", stream=True):
+    print(chunk, end="", flush=True)
+
+# Pro search with specific model (requires authentication via cookies)
+# try:
+#     ai_pro = Perplexity(cookies=your_cookies)
+#     response_pro = ai_pro.search("Latest AI research papers", mode='pro', model='gpt-4o', sources=['scholar'])
+#     print(response_pro)
+# except Exception as e:
+#     print(f"Pro search failed: {e}")
+
+# Available modes: 'auto', 'pro', 'reasoning', 'deep research'
+# Available sources: 'web', 'scholar', 'social'
+# Models depend on the mode selected.
+```
+</details>
 
 ## 🎛️ Advanced Configuration
 
@@ -164,7 +199,9 @@ response = ai.search("Hello", stream=True)
 | **Monica** | • Comprehensive search responses<br>• Related question suggestions<br>• Source references | • Answer snippets<br>• Clean formatted responses<br>• Web content integration |
 | **WebPilotAI** | • Web page analysis<br>• Content extraction<br>• Structured data retrieval | • URL processing<br>• HTML parsing<br>• Metadata extraction |
 | **Scira** | • Research-focused search<br>• Multiple model options<br>• Vision support | • Grok3, Claude, Vision models<br>• Customizable group parameters<br>• Efficient content parsing |
-
+| **IAsk** | • Multi-mode search (Question, Academic, etc.)<br>• Adjustable detail level<br>• Source citation | • Asynchronous backend (sync wrapper)<br>• WebSocket communication<br>• HTML parsing & formatting |
+| **Hika** | • General AI search<br>• Simple streaming<br>• Basic text cleaning | • SSE streaming<br>• Custom headers for auth<br>• JSON response parsing |
+| **Perplexity** | • Multiple search modes (Pro, Reasoning)<br>• Model selection per mode<br>• Source filtering (web, scholar, social)<br>• Follow-up questions | • `curl_cffi` for Cloudflare bypass<br>• Socket.IO communication<br>• SSE streaming<br>• Requires cookies for Pro features |
 
 ## 🛡️ Error Handling
 
@@ -226,12 +263,15 @@ except exceptions.APIConnectionError:
 
 | Use Case | Recommended Provider |
 |----------|----------------------|
-| General purpose search | **DeepFind** |
+| General purpose search | **DeepFind**, **Hika** |
 | Fast streaming responses | **Felo** |
-| Scientific or specialized queries | **Isou** |
+| Scientific or specialized queries | **Isou**, **Scira** |
 | Clean and efficient responses | **Genspark** |
-| Web page analysis | **WebPilotAI** |
-| Research with multiple models | **Scira** |
+| Comprehensive answers with sources | **Monica**, **IAsk** |
+| Web page interaction/analysis | **WebPilotAI** |
+| Advanced control (modes, models) | **Perplexity**, **Scira**, **Isou** |
+| Research-focused | **Scira**, **Isou**, **Perplexity** (with scholar source) |
+
 </details>
 
 ## 🤝 Contributing

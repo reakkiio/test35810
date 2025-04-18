@@ -24,21 +24,22 @@ RESET = "\033[0m"
 # Model configurations
 MODEL_CONFIGS = {
     "exaanswer": {
-        "endpoint": "https://ayle.chat//api/exaanswer",
+        "endpoint": "https://ayle.chat/api/exaanswer",
         "models": ["exaanswer"],
     },
     "gemini": {
-        "endpoint": "https://ayle.chat//api/gemini",
+        "endpoint": "https://ayle.chat/api/gemini",
         "models": [
             "gemini-2.0-flash",
             "gemini-2.0-flash-exp-image-generation",
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.0-pro-exp-02-05",
+        
         ],
     },
     "openrouter": {
-        "endpoint": "https://ayle.chat//api/openrouter",
+        "endpoint": "https://ayle.chat/api/openrouter",
         "models": [
             "mistralai/mistral-small-3.1-24b-instruct:free",
             "deepseek/deepseek-r1:free",
@@ -48,7 +49,7 @@ MODEL_CONFIGS = {
         ],
     },
     "groq": {
-        "endpoint": "https://ayle.chat//api/groq",
+        "endpoint": "https://ayle.chat/api/groq",
         "models": [
             "deepseek-r1-distill-llama-70b",
             "deepseek-r1-distill-qwen-32b",
@@ -68,10 +69,16 @@ MODEL_CONFIGS = {
         ],
     },
     "cerebras": {
-        "endpoint": "https://ayle.chat//api/cerebras",
+        "endpoint": "https://ayle.chat/api/cerebras",
         "models": [
             "llama3.1-8b",
             "llama-3.3-70b"
+        ],
+    },
+    "xai": {
+        "endpoint": "https://ayle.chat/api/xai",
+        "models": [
+            "grok-3-mini-beta"
         ],
     },
 }
@@ -275,6 +282,9 @@ class ExaChat(OpenAICompatibleProvider):
     AVAILABLE_MODELS = [
         # ExaAnswer Models
         "exaanswer",
+
+        # XAI Models
+        "grok-3-mini-beta",
         
         # Gemini Models
         "gemini-2.0-flash",
@@ -306,10 +316,12 @@ class ExaChat(OpenAICompatibleProvider):
         "qwen-2.5-coder-32b",
         "qwen-qwq-32b",
         "meta-llama/llama-4-scout-17b-16e-instruct",
+
         
         # Cerebras Models
         "llama3.1-8b",
-        "llama-3.3-70b"
+        "llama-3.3-70b",
+
     ]
 
     def __init__(

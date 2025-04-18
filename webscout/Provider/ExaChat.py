@@ -62,6 +62,12 @@ MODEL_CONFIGS = {
             "llama-3.3-70b"
         ],
     },
+    "xai": {
+        "endpoint": "https://ayle.chat/api/xai",
+        "models": [
+            "grok-3-mini-beta"
+        ],
+    },
 }
 
 class ExaChat(Provider):
@@ -71,6 +77,9 @@ class ExaChat(Provider):
     AVAILABLE_MODELS = [
         # ExaAnswer Models
         "exaanswer",
+
+        # XAI Models
+        "grok-3-mini-beta",
         
         # Gemini Models
         "gemini-2.0-flash",
@@ -106,7 +115,8 @@ class ExaChat(Provider):
         
         # Cerebras Models
         "llama3.1-8b",
-        "llama-3.3-70b"
+        "llama-3.3-70b",
+
     ]
 
     def __init__(

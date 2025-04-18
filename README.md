@@ -21,9 +21,10 @@
 </div>
 
 > [!IMPORTANT]
-> Webscout supports two types of compatibility:
+> Webscout supports three types of compatibility:
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
+> - **Local LLM Compatibility:** Run local models with [Inferno](webscout/Local/README.md), an OpenAI-compatible server
 >
 > Choose the approach that best fits your needs! For OpenAI compatibility, check the [OpenAI Providers README](webscout/Provider/OPENAI/README.md).
 
@@ -47,9 +48,10 @@
 
 ### Search & AI
 * **Comprehensive Search:** Leverage Google, DuckDuckGo, and Yep for diverse search results
-* **AI Powerhouse:** Access and interact with various AI models through two compatibility options:
+* **AI Powerhouse:** Access and interact with various AI models through three compatibility options:
   * **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
   * **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces
+  * **[Local LLMs with Inferno](webscout/Local/README.md):** Run local models with an OpenAI-compatible server
 * **[AI Search](webscout/Provider/AISEARCH/README.md):** AI-powered search engines with advanced capabilities
 
 ### Media & Content Tools
@@ -65,6 +67,7 @@
 * **[LitLogger](webscout/litlogger/Readme.md):** Simplified logging with customizable formats and color schemes
 * **[LitAgent](webscout/litagent/Readme.md):** Modern user agent generator that keeps your requests undetectable
 * **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
+* **[Inferno](webscout/Local/README.md):** Run local LLMs with an OpenAI-compatible API and interactive CLI
 * **GGUF Conversion:** Convert and quantize Hugging Face models to GGUF format
 
 ### Privacy & Utilities
@@ -87,6 +90,8 @@ Webscout provides a powerful command-line interface for quick access to its feat
 python -m webscout --help
 ```
 
+### Web Search Commands
+
 | Command | Description |
 |---------|-------------|
 | `python -m webscout answers -k "query"` | Perform an answers search |
@@ -100,6 +105,23 @@ python -m webscout --help
 | `python -m webscout version` | Display the current version |
 | `python -m webscout videos -k "query"` | Search for videos |
 | `python -m webscout weather -l "location"` | Get weather information |
+
+### Inferno LLM Commands
+
+Inferno provides commands for managing and using local LLMs:
+
+```bash
+python -m inferno --help
+```
+
+| Command | Description |
+|---------|-------------|
+| `python -m inferno pull <model>` | Download a model from Hugging Face |
+| `python -m inferno list` | List downloaded models |
+| `python -m inferno serve <model>` | Start a model server with OpenAI-compatible API |
+| `python -m inferno run <model>` | Chat with a model interactively |
+| `python -m inferno remove <model>` | Remove a downloaded model |
+| `python -m inferno version` | Show version information |
 
 
 

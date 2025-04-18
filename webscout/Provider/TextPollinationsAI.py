@@ -12,34 +12,33 @@ class TextPollinationsAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "openai",                  # OpenAI GPT-4o-mini
-        "openai-large",            # OpenAI GPT-4o
-        "openai-reasoning",        # OpenAI o3-mini
-        "qwen-coder",              # Qwen 2.5 Coder 32B
-        "llama",                   # Llama 3.3 70B
-        "mistral",                 # Mistral Small 3
-        "unity",                   # Unity Mistral Large
-        "midijourney",             # Midijourney
-        "rtist",                   # Rtist
-        "searchgpt",               # SearchGPT
-        "evil",                    # Evil
-        "deepseek-reasoning",      # DeepSeek-R1 Distill Qwen 32B
-        "deepseek-reasoning-large",# DeepSeek R1 - Llama 70B
-        # "llamalight",            # Llama 3.1 8B Instruct # >>> NOT WORKING
-        "phi",                     # Phi-4 Instruct
-        "llama-vision",            # Llama 3.2 11B Vision
-        "pixtral",                 # Pixtral 12B
-        "gemini",                  # Gemini 2.0 Flash
-        "gemini-reasoning",        # Gemini 2.0 Flash Thinking
-        "hormoz",                  # Hormoz 8b
-        "hypnosis-tracy",          # Hypnosis Tracy 7B
-        "mistral-roblox",          # Mistral Roblox on Scaleway
-        "roblox-rp",               # Roblox Roleplay Assistant
-        "deepseek",                # DeepSeek-V3
-        "qwen-reasoning",          # Qwen QWQ 32B - Advanced Reasoning
-        "sur",                     # Sur AI Assistant (Mistral)
-        "llama-scaleway",          # Llama (Scaleway)
-        "openai-audio",            # OpenAI GPT-4o-audio-preview
+        "openai",
+        "openai-large",
+        "openai-reasoning",
+        "qwen-coder",
+        "llama",
+        "llamascout",
+        "mistral",
+        "unity",
+        "midijourney",
+        "rtist",
+        "searchgpt",
+        "evil",
+        "deepseek-reasoning",
+        "deepseek-reasoning-large",
+        "llamalight",
+        "phi",
+        "llama-vision",
+        "pixtral",
+        "gemini",
+        "hormoz",
+        "hypnosis-tracy",
+        "mistral-roblox",
+        "roblox-rp",
+        "deepseek",
+        "sur",
+        "llama-scaleway",
+        "openai-audio",
     ]
 
     def __init__(

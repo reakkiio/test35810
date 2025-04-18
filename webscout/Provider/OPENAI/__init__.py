@@ -21,3 +21,4 @@ from .toolbaz import *
 from .uncovrAI import *
 from .opkfc import *
 from .chatgpt import *
+from .textpollinations import *

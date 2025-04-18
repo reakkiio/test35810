@@ -22,7 +22,8 @@ class DirectoryCleaner:
         "build",
         "dist",
         "webscout.egg-info",
-        ".qodo"
+        ".qodo",
+        ".pytest_cache",
     })
 
     def __init__(self, base_dir: str | Path) -> None:

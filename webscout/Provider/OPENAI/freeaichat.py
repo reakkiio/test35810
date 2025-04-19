@@ -15,10 +15,7 @@ from .utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    # Define a dummy LitAgent if webscout is not installed or accessible
-    class LitAgent:
-        def random(self) -> str:
-            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+    pass
 
 # --- FreeAIChat Client ---
 

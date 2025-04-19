@@ -15,16 +15,13 @@ from .utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    class LitAgent:
-        def random(self) -> str:
-            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+    print("Warning: LitAgent not found. Using default user agent.")
 
 class Completions(BaseCompletions):
     def __init__(self, client: 'Writecream'):
         self._client = client
 
     def create(
-        self,
         *,
         model: str = None,  # Not used by Writecream, for compatibility
         messages: List[Dict[str, str]],

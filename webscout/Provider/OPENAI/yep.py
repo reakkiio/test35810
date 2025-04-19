@@ -317,13 +317,11 @@ if __name__ == '__main__':
             stream=True
         )
         print("Streaming Response:")
-        full_stream_response = ""
         for chunk in stream:
             content = chunk.choices[0].delta.content
             if content:
                 print(content, end="", flush=True)
-                full_stream_response += content
-        print("\n--- End of Stream ---")
-        print("Full streamed text:", full_stream_response)
+        print()  # Add a newline at the end
+
     except Exception as e:
         print(f"Streaming Test Failed: {e}")

@@ -15,19 +15,7 @@ from .utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    # Define a dummy LitAgent if webscout is not installed or accessible
-    class LitAgent:
-        def generate_fingerprint(self, browser: str = "chrome") -> Dict[str, Any]:
-            # Return minimal default headers if LitAgent is unavailable
-            print("Warning: LitAgent not found. Using default minimal headers.")
-            return {
-                "accept": "*/*",
-                "accept_language": "en-US,en;q=0.9",
-                "platform": "Windows",
-                "sec_ch_ua": '"Not/A)Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-                "browser_type": browser,
-            }
+    pass
 
 # --- DeepInfra Client ---
 

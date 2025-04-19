@@ -22,3 +22,4 @@ from .uncovrAI import *
 from .opkfc import *
 from .chatgpt import *
 from .textpollinations import *
+from .e2b import *

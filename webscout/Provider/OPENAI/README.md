@@ -51,6 +51,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - UncovrAI
 - OPKFC
 - TextPollinations
+- E2B
 ---
 
 ### <img src="https://img.shields.io/badge/DeepInfra-0A0A0A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1OGE2ZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjAgMTFhOCA4IDAgMCAwLTE2IDAiPjwvcGF0aD48cGF0aCBkPSJtMTIgMTEgOS0xIj48L3BhdGg+PHBhdGggZD0iTTEyIDExIDMgMTAiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFWMiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxMXY5Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> DeepInfra
@@ -158,7 +159,7 @@ Access TypeGPT.net's models through an OpenAI-compatible interface.
 
 ---
 
-### <img src="https://img.shields.io/badge/SciraChat-FF5700?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTVhMiAyIDAgMCAxLTIgMmgtOWE2IDYgMCAwIDEtNi02VjdoMTBhMiAyIDAgMCAxIDIgMnYyaDRhMiAyIDAgMCAxIDIgMnoiPjwvcGF0aD48cGF0aCBkPSJNMTQgMTFhMiAyIDAgMCAxLTIgMkg0YTIgMiAwIDAgMS0yLTJWN2EyIDIgMCAwIDEgMi0yaDEwYTIgMiAwIDAgMSAyIDJ6Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> SciraChat
+### <img src="https://img.shields.io/badge/SciraChat-FF5700?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTVhMiAyIDAgMCAxLTIgMmgtOWE2IDYgMCAwIDEtNi02VjhoMTBhMiAyIDAgMCAxIDIgMnYyaDRhMiAyIDAgMCAxIDIgMnoiPjwvcGF0aD48cGF0aCBkPSJNMTQgMTFhMiAyIDAgMCAxLTIgMkg0YTIgMiAwIDAgMS0yLTJWN2EyIDIgMCAwIDEgMi0yaDEwYTIgMiAwIDAgMSAyIDJ6Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> SciraChat
 
 Access Scira.ai's models through an OpenAI-compatible interface.
 
@@ -218,7 +219,7 @@ Access FreeAIChat's wide range of models through an OpenAI-compatible interface.
 *   `Mistral Nemo`
 *   `Mixtral 8x22B`
 
-**<img src="https://img.shields.io/badge/Other-34D399?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHR0cD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDktOSA5IDkgMCAwIDEgOSA5IDkgOSAwIDAgMS05IDkgOSA5IDAgMCAxLTkgOSA5IDkgMCAwIDEtOS05eiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAyYTkgOSAwIDAgMC05IDkgOSA5IDAgMCAwIDkgOSA5IDkgMCAwIDAgOS05IDkgOSAwIDAgMC05LTl6Ij48L3BhdGg+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDAgMTggOSA5IDAgMCAxIDAtMTh6Ij48L3BhdGg+PC9zdmc+" alt="" height="16" style="vertical-align: middle; margin-right: 5px;"> Other Models**
+**<img src="https://img.shields.io/badge/Other-34D399?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmE5IDkgMCAwIDEgOSA5IDkgOSAwIDAgMS05IDkgOSA5IDAgMCAxLTkgOSA5IDkgMCAwIDEtOS05eiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAyYTkgOSAwIDAgMC05IDkgOSA5IDAgMCAwIDkgOSA5IDkgMCAwIDAgOS05IDkgOSAwIDAgMC05LTl6Ij48L3BhdGg+PHBhdGggZD0iTTEyIDJhOSA5IDAgMCAxIDAgMTggOSA5IDAgMCAxIDAtMTh6Ij48L3BhdGg+PC9zdmc+" alt="" height="16" style="vertical-align: middle; margin-right: 5px;"> Other Models**
 *   `Deepseek R1`
 *   `Qwen Max`
 *   `Grok 3`
@@ -299,6 +300,33 @@ Access Standard Input's chat models through an OpenAI-compatible interface.
 
 *   `standard-quick`: Standard Input's quick response model
 *   `standard-reasoning`: Standard Input's model with reasoning capabilities
+
+---
+
+### <img src="https://img.shields.io/badge/E2B-FFA500?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMmExMCAxMCAwIDEgMCAwIDIwIDEwIDEwIDAgMCAwIDAtMjB6Ij48L3BhdGg+PHBhdGggZD0iTTggMTJoOCI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiA4djgiPjwvcGF0aD48L3N2Zz4=" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> E2B
+
+Access various models via the E2B Fragments API (fragments.e2b.dev) through an OpenAI-compatible interface. Uses `cloudscraper` to handle potential Cloudflare protection.
+
+**Available Models:**
+
+*   `claude-3.7-sonnet`
+*   `claude-3.5-sonnet`
+*   `claude-3.5-haiku`
+*   `o1-mini`, `o3-mini`, `o1`, `o3`
+*   `gpt-4.5-preview`, `gpt-4o`
+*   `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`
+*   `gemini-1.5-pro-002`
+*   `gemini-2.5-pro-exp-03-25`
+*   `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-thinking-exp-01-21`
+*   `qwen-qwq-32b-preview`
+*   `grok-beta`
+*   `deepseek-chat`
+*   `codestral-2501`
+*   `mistral-large-latest`
+*   `llama4-maverick-instruct-basic`, `llama4-scout-instruct-basic`
+*   `llama-v3p1-405b-instruct`
+
+> **Note:** The underlying API does not support true streaming. `stream=True` simulates streaming by returning the full response.
 
 ---
 
@@ -1004,34 +1032,6 @@ gemini_response = client.chat.completions.create(
 groq_response = client.chat.completions.create(
     model="llama-3.1-8b-instant",
     messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Write a short story about AI."}
-    ]
-)
-
-# Use an OpenRouter model
-openrouter_response = client.chat.completions.create(
-    model="deepseek/deepseek-r1:free",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Explain the concept of recursion."}
-    ]
-)
-```
-
-### Basic Usage with Netwrck
-
-```python
-from webscout.Provider.OPENAI import Netwrck
-
-# Initialize the client
-client = Netwrck()
-
-# Create a completion (non-streaming)
-response = client.chat.completions.create(
-    model="anthropic/claude-3-7-sonnet-20250219",  # Choose from many available models
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Tell me about Python programming."}
     ]
 )

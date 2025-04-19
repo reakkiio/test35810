@@ -99,7 +99,7 @@ def get_provider(provider_name: str = "mailtm", async_provider: bool = False) ->
     Get a temporary email provider instance
 
     Args:
-        provider_name: Name of the provider to use ("mailtm" or "tempmailio")
+        provider_name: Name of the provider to use ("mailtm", "tempmailio", or "emailnator")
         async_provider: Whether to return an async provider
 
     Returns:
@@ -109,6 +109,8 @@ def get_provider(provider_name: str = "mailtm", async_provider: bool = False) ->
         if provider_name.lower() == "tempmailio":
             from .temp_mail_io import TempMailIOAsync
             return TempMailIOAsync()
+        elif provider_name.lower() == "emailnator":
+            raise NotImplementedError("Emailnator async provider not implemented.")
         else:
             from .mail_tm import MailTMAsync
             return MailTMAsync()
@@ -116,6 +118,9 @@ def get_provider(provider_name: str = "mailtm", async_provider: bool = False) ->
         if provider_name.lower() == "tempmailio":
             from .temp_mail_io import TempMailIO
             return TempMailIO()
+        elif provider_name.lower() == "emailnator":
+            from .emailnator import EmailnatorProvider
+            return EmailnatorProvider()
         else:
             from .mail_tm import MailTM
             return MailTM()

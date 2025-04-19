@@ -12,6 +12,7 @@ from .base import (
 )
 from .mail_tm import MailTM, MailTMAsync
 from .temp_mail_io import TempMailIO, TempMailIOAsync
+from .emailnator import EmailnatorProvider
 
 __all__ = [
     'TempMailProvider',
@@ -20,6 +21,7 @@ __all__ = [
     'MailTMAsync',
     'TempMailIO',
     'TempMailIOAsync',
+    'EmailnatorProvider',
     'get_random_email',
     'get_disposable_email',
     'get_provider'

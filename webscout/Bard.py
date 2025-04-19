@@ -76,6 +76,11 @@ class Model(Enum):
         {"x-goog-ext-525001261-jspb": '[null,null,null,null,"203e6bb81620bcfe"]'},
         True,
     )
+    G_2_5_FLASH = (
+        "gemini-2.5-flash",
+        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"35609594dbe934d8"]'},
+        False,
+    )
 
     def __init__(self, name, header, advanced_only):
         self.model_name = name

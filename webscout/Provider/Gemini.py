@@ -18,8 +18,10 @@ MODEL_ALIASES: Dict[str, Model] = {
     "gemini-2.5-pro": Model.G_2_5_PRO,
     "gemini-2.0-exp-advanced": Model.G_2_0_EXP_ADVANCED,
     "gemini-2.5-exp-advanced": Model.G_2_5_EXP_ADVANCED,
+    "gemini-2.5-flash": Model.G_2_5_FLASH,
     # Add shorter aliases for convenience
     "flash": Model.G_2_0_FLASH,
+    "flash-2.5": Model.G_2_5_FLASH,
     "thinking": Model.G_2_0_FLASH_THINKING,
     "pro": Model.G_2_5_PRO,
     "advanced": Model.G_2_0_EXP_ADVANCED,

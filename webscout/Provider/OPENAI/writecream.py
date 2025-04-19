@@ -23,6 +23,7 @@ class Completions(BaseCompletions):
 
     def create(
         *,
+        self,
         model: str = None,  # Not used by Writecream, for compatibility
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,  # Not used by Writecream

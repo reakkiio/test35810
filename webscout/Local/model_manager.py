@@ -203,3 +203,51 @@ class ModelManager:
                     return model_info.get("path")
             return None
         return info["path"]
+
+    def copy_model(self, source_model: str, destination_model: str) -> bool:
+        """
+        Copy a model to a new name.
+        Args:
+            source_model (str): Name of the source model.
+            destination_model (str): Name for the destination model.
+        Returns:
+            bool: True if copied successfully, False otherwise.
+        """
+        # Get source model info
+        source_info = self.get_model_info(source_model)
+        if not source_info or "path" not in source_info:
+            console.print(f"[bold red]Source model {source_model} not found[/bold red]")
+            return False
+
+        # Create destination directory
+        dest_dir = config.get_model_path(destination_model)
+        dest_dir.mkdir(exist_ok=True, parents=True)
+
+        # Copy the model file
+        source_path = Path(source_info["path"])
+        dest_path = dest_dir / source_path.name
+
+        try:
+            console.print(f"[bold blue]Copying model from {source_path} to {dest_path}...[/bold blue]")
+            shutil.copy2(source_path, dest_path)
+
+            # Create info file for the destination model
+            dest_info = source_info.copy()
+            dest_info["name"] = destination_model
+            dest_info["path"] = str(dest_path)
+            dest_info["copied_from"] = source_model
+            dest_info["copied_at"] = datetime.datetime.now().isoformat()
+
+            with open(dest_dir / "info.json", "w") as f:
+                json.dump(dest_info, f, indent=2)
+
+            console.print(f"[bold green]Model copied successfully to {dest_path}[/bold green]")
+            return True
+        except Exception as e:
+            console.print(f"[bold red]Error copying model: {str(e)}[/bold red]")
+            # Clean up if there was an error
+            if dest_path.exists():
+                dest_path.unlink()
+            if dest_dir.exists():
+                shutil.rmtree(dest_dir)
+            return False

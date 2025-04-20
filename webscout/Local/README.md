@@ -43,11 +43,15 @@
 - **Hugging Face Integration:** Download models directly with interactive file selection
 - **Flexible Model Specification:** Support for `repo_id:filename` format for direct file targeting
 - **OpenAI-Compatible API:** Use with any client that supports the OpenAI API
+- **Ollama-Compatible API:** Use with any client that supports the Ollama API
 - **Interactive CLI:** Powerful command-line interface for model management
 - **Chat Interface:** Built-in interactive chat with system prompt customization
 - **Streaming Support:** Real-time streaming responses for chat and completions
 - **GPU Acceleration:** Utilize GPU for faster inference when available
 - **Context Window Control:** Adjust context size for different models and use cases
+- **Model Management:** Copy, show details, and list running models
+- **Embeddings Support:** Generate embeddings from models
+- **RAM Requirement Warnings:** Automatic warnings about RAM requirements for different model sizes
 
 ## ⚙️ Installation
 
@@ -80,6 +84,9 @@ python -m webscout.Local --help
 | `inferno serve <model>` | Start a model server |
 | `inferno run <model>` | Chat with a model interactively |
 | `inferno remove <model>` | Remove a downloaded model |
+| `inferno copy <source> <dest>` | Copy a model to a new name |
+| `inferno show <model>` | Show detailed model information |
+| `inferno ps` | List running models |
 | `inferno version` | Show version information |
 
 ## 📋 Usage Guide
@@ -141,7 +148,7 @@ inferno remove HAI3-raw-Q4_K_M-GGUF
 
 ## 🔌 API Usage
 
-Inferno provides an OpenAI-compatible API. You can use it with any client that supports the OpenAI API.
+Inferno provides both OpenAI-compatible and Ollama-compatible APIs. You can use it with any client that supports either API.
 
 ### Python Example
 
@@ -183,7 +190,7 @@ Inferno can be easily integrated with various applications that support the Open
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
 
-# Configure to use local Inferno server
+# Configure to use local Inferno server with OpenAI API
 chat = ChatOpenAI(
     model_name="HAI3-raw-Q4_K_M-GGUF",
     openai_api_key="dummy",
@@ -194,6 +201,37 @@ chat = ChatOpenAI(
 # Use the model
 response = chat([HumanMessage(content="Explain quantum computing in simple terms")])
 print(response.content)
+```
+
+### Ollama API Example
+
+```python
+import requests
+import json
+
+# Chat completion with Ollama API
+response = requests.post(
+    "http://localhost:8000/api/chat",
+    json={
+        "model": "HAI3-raw-Q4_K_M-GGUF",
+        "messages": [
+            {"role": "user", "content": "Hello, how are you?"}
+        ]
+    }
+)
+
+print(response.json()["message"]["content"])
+
+# Generate embeddings
+response = requests.post(
+    "http://localhost:8000/api/embed",
+    json={
+        "model": "HAI3-raw-Q4_K_M-GGUF",
+        "input": "Hello, world!"
+    }
+)
+
+print(response.json()["embeddings"])
 ```
 
 ## 📦 Requirements

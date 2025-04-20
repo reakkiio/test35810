@@ -17,6 +17,16 @@ console: Console = Console()
 
 model_manager: ModelManager = ModelManager()
 
+# RAM requirements for different model sizes
+RAM_REQUIREMENTS = {
+    "1B": "2 GB",
+    "3B": "4 GB",
+    "7B": "8 GB",
+    "13B": "16 GB",
+    "33B": "32 GB",
+    "70B": "64 GB",
+}
+
 @app.command("serve")
 def run_model(
     model_string: str = typer.Argument(..., help="Model to run (format: 'name', 'repo_id' or 'repo_id:filename')"),
@@ -54,6 +64,16 @@ def run_model(
             except Exception as e:
                 console.print(f"[bold red]Error downloading model: {str(e)}[/bold red]")
                 return
+
+    # Check RAM requirements
+    ram_requirement = "Unknown"
+    for size, ram in RAM_REQUIREMENTS.items():
+        if size in model_name:
+            ram_requirement = ram
+            break
+
+    if ram_requirement != "Unknown":
+        console.print(f"[yellow]This model requires approximately {ram_requirement} of RAM[/yellow]")
 
     # Try to load the model to verify it works
     try:
@@ -96,12 +116,42 @@ def list_models() -> None:
     table.add_column("Name", style="cyan")
     table.add_column("Repository", style="green")
     table.add_column("Filename", style="blue")
+    table.add_column("Size", style="magenta")
+    table.add_column("Downloaded", style="yellow")
 
     for model in models:
+        # Get file size in human-readable format
+        file_path = model.get("path")
+        file_size = "Unknown"
+        if file_path:
+            try:
+                import os
+                size_bytes = os.path.getsize(file_path)
+                # Convert to human-readable format
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if size_bytes < 1024.0 or unit == 'TB':
+                        file_size = f"{size_bytes:.2f} {unit}"
+                        break
+                    size_bytes /= 1024.0
+            except Exception:
+                pass
+
+        # Format downloaded date
+        downloaded_at = model.get("downloaded_at", "Unknown")
+        if downloaded_at != "Unknown":
+            try:
+                import datetime
+                dt = datetime.datetime.fromisoformat(downloaded_at)
+                downloaded_at = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+
         table.add_row(
             model["name"],
             model.get("repo_id", "Unknown"),
             model.get("filename", "Unknown"),
+            file_size,
+            downloaded_at,
         )
 
     console.print(table)
@@ -180,6 +230,16 @@ def chat(
             except Exception as e:
                 console.print(f"[bold red]Error downloading model: {str(e)}[/bold red]")
                 return
+
+    # Check RAM requirements
+    ram_requirement = "Unknown"
+    for size, ram in RAM_REQUIREMENTS.items():
+        if size in model_name:
+            ram_requirement = ram
+            break
+
+    if ram_requirement != "Unknown":
+        console.print(f"[yellow]This model requires approximately {ram_requirement} of RAM[/yellow]")
 
     # Load the model
     try:
@@ -324,6 +384,124 @@ def chat(
 
         # Add extra spacing after the response
         console.print("")
+
+@app.command("copy")
+def copy_model(
+    source: str = typer.Argument(..., help="Name of the source model"),
+    destination: str = typer.Argument(..., help="Name for the destination model"),
+) -> None:
+    """
+    Copy a model to a new name.
+    """
+    try:
+        if model_manager.copy_model(source, destination):
+            console.print(f"[bold green]Model {source} copied to {destination} successfully[/bold green]")
+        else:
+            console.print(f"[bold red]Failed to copy model {source} to {destination}[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]Error copying model: {str(e)}[/bold red]")
+
+@app.command("show")
+def show_model(
+    model_name: str = typer.Argument(..., help="Name of the model to show information for"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information"),
+) -> None:
+    """
+    Show detailed information about a model.
+    """
+    model_info = model_manager.get_model_info(model_name)
+
+    if not model_info:
+        console.print(f"[yellow]Model {model_name} not found.[/yellow]")
+        return
+
+    # Create a table for basic information
+    table = Table(title=f"Model Information: {model_name}")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value", style="green")
+
+    # Add basic properties
+    table.add_row("Name", model_info["name"])
+    table.add_row("Repository", model_info.get("repo_id", "Unknown"))
+    table.add_row("Filename", model_info.get("filename", "Unknown"))
+
+    # Get file size in human-readable format
+    file_path = model_info.get("path")
+    if file_path:
+        try:
+            import os
+            size_bytes = os.path.getsize(file_path)
+            # Convert to human-readable format
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if size_bytes < 1024.0 or unit == 'TB':
+                    file_size = f"{size_bytes:.2f} {unit}"
+                    break
+                size_bytes /= 1024.0
+            table.add_row("Size", file_size)
+        except Exception:
+            table.add_row("Size", "Unknown")
+
+    # Format downloaded date
+    downloaded_at = model_info.get("downloaded_at", "Unknown")
+    if downloaded_at != "Unknown":
+        try:
+            import datetime
+            dt = datetime.datetime.fromisoformat(downloaded_at)
+            downloaded_at = dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            pass
+    table.add_row("Downloaded", downloaded_at)
+
+    # Add copied information if available
+    if "copied_from" in model_info:
+        table.add_row("Copied From", model_info["copied_from"])
+        copied_at = model_info.get("copied_at", "Unknown")
+        if copied_at != "Unknown":
+            try:
+                import datetime
+                dt = datetime.datetime.fromisoformat(copied_at)
+                copied_at = dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+        table.add_row("Copied At", copied_at)
+
+    # Estimate RAM requirements based on model name
+    ram_requirement = "Unknown"
+    for size, ram in RAM_REQUIREMENTS.items():
+        if size in model_name:
+            ram_requirement = ram
+            break
+    table.add_row("Estimated RAM", ram_requirement)
+
+    # Print the table
+    console.print(table)
+
+    # If verbose, show all properties
+    if verbose:
+        console.print("\n[bold]Detailed Information:[/bold]")
+        for key, value in model_info.items():
+            if key not in ["name", "repo_id", "filename", "path", "downloaded_at", "copied_from", "copied_at"]:
+                console.print(f"[cyan]{key}:[/cyan] {value}")
+
+@app.command("ps")
+def list_running_models() -> None:
+    """
+    List running models.
+    """
+    from .server import loaded_models
+
+    if not loaded_models:
+        console.print("[yellow]No models currently running.[/yellow]")
+        return
+
+    table = Table(title="Running Models")
+    table.add_column("Name", style="cyan")
+    table.add_column("Status", style="green")
+
+    for name in loaded_models.keys():
+        table.add_row(name, "Running")
+
+    console.print(table)
 
 @app.command("version")
 def version() -> None:

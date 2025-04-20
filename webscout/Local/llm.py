@@ -37,29 +37,75 @@ class LLMInterface:
             raise ValueError(f"Model {model_name} not found. Please download it first.")
         self.llm = None
 
-    def load_model(self, n_gpu_layers: Optional[int] = None, n_ctx: Optional[int] = None, verbose: bool = False) -> None:
+    def load_model(
+        self,
+        n_gpu_layers: Optional[int] = None,
+        n_ctx: Optional[int] = None,
+        verbose: bool = False,
+        n_threads: Optional[int] = None,
+        n_batch: Optional[int] = None,
+        use_mlock: bool = False,
+        use_mmap: bool = True,
+        rope_freq_base: Optional[float] = None,
+        rope_freq_scale: Optional[float] = None,
+        low_vram: bool = False,
+    ) -> None:
         """
         Load the model into memory.
         Args:
             n_gpu_layers (Optional[int]): Number of layers to offload to GPU (-1 for all).
             n_ctx (Optional[int]): Context size.
             verbose (bool): Whether to show verbose output.
+            n_threads (Optional[int]): Number of threads to use.
+            n_batch (Optional[int]): Batch size for prompt processing.
+            use_mlock (bool): Whether to use mlock to keep model in memory.
+            use_mmap (bool): Whether to use memory mapping for the model.
+            rope_freq_base (Optional[float]): RoPE base frequency.
+            rope_freq_scale (Optional[float]): RoPE frequency scaling factor.
+            low_vram (bool): Whether to optimize for low VRAM usage.
         Raises:
             ValueError: If model loading fails.
         """
+        # If model is already loaded, check if we need to reload with different parameters
+        if self.llm is not None:
+            if n_ctx is not None and hasattr(self.llm, 'n_ctx') and self.llm.n_ctx != n_ctx:
+                # Need to reload with new context size
+                self.llm = None
+            else:
+                # Model already loaded with compatible parameters
+                return
+
         if n_gpu_layers is None:
             n_gpu_layers = config.get("default_gpu_layers", -1)
         if n_ctx is None:
             n_ctx = config.get("default_context_length", 4096)
+
+        # Determine number of threads if not specified
+        if n_threads is None:
+            import multiprocessing
+            n_threads = max(1, multiprocessing.cpu_count() // 2)
+
         console.print(f"[bold blue]Loading model {self.model_name}...[/bold blue]")
         try:
             self.llm = Llama(
                 model_path=self.model_path,
                 n_gpu_layers=n_gpu_layers,
                 n_ctx=n_ctx,
-                verbose=verbose
+                verbose=verbose,
+                n_threads=n_threads,
+                n_batch=n_batch or 512,
+                use_mlock=use_mlock,
+                use_mmap=use_mmap,
+                rope_freq_base=rope_freq_base,
+                rope_freq_scale=rope_freq_scale,
+                low_vram=low_vram,
             )
+
             console.print(f"[bold green]Model {self.model_name} loaded successfully[/bold green]")
+            if verbose:
+                console.print(f"[dim]Using {n_threads} threads, context size: {n_ctx}[/dim]")
+                if n_gpu_layers and n_gpu_layers > 0:
+                    console.print(f"[dim]GPU acceleration: {n_gpu_layers} layers offloaded to GPU[/dim]")
         except Exception as e:
             raise ValueError(f"Failed to load model from file: {self.model_path}\n{str(e)}")
 
@@ -71,6 +117,13 @@ class LLMInterface:
         top_p: float = 0.95,
         stream: bool = False,
         stop: Optional[List[str]] = None,
+        suffix: Optional[str] = None,
+        images: Optional[List[str]] = None,
+        system: Optional[str] = None,
+        template: Optional[str] = None,
+        context: Optional[List[int]] = None,
+        raw: bool = False,
+        format: Optional[Union[str, Dict[str, Any]]] = None,
     ) -> Union[Dict[str, Any], Generator[Dict[str, Any], None, None]]:
         """
         Create a completion for the given prompt.
@@ -107,12 +160,14 @@ class LLMInterface:
 
     def create_chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.95,
         stream: bool = False,
         stop: Optional[List[str]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        format: Optional[Union[str, Dict[str, Any]]] = None,
     ) -> Union[Dict[str, Any], Generator[Dict[str, Any], None, None]]:
         """
         Create a chat completion for the given messages.
@@ -156,22 +211,26 @@ class LLMInterface:
 
     def stream_chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         callback: Callable[[str], None],
         max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.95,
         stop: Optional[List[str]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        format: Optional[Union[str, Dict[str, Any]]] = None,
     ) -> None:
         """
         Stream a chat completion with a callback for each token.
         Args:
-            messages (List[Dict[str, str]]): List of chat messages.
+            messages (List[Dict[str, Any]]): List of chat messages.
             callback (Callable[[str], None]): Function to call with each token.
             max_tokens (int): Maximum number of tokens to generate.
             temperature (float): Sampling temperature.
             top_p (float): Top-p sampling.
             stop (Optional[List[str]]): List of strings to stop generation when encountered.
+            tools (Optional[List[Dict[str, Any]]]): List of tools for function calling.
+            format (Optional[Union[str, Dict[str, Any]]]): Format for structured output.
         """
         stream = self.create_chat_completion(
             messages=messages,
@@ -186,3 +245,43 @@ class LLMInterface:
                 if "delta" in chunk["choices"][0] and "content" in chunk["choices"][0]["delta"]:
                     content = chunk["choices"][0]["delta"]["content"]
                     callback(content)
+
+    def create_embeddings(
+        self,
+        input: Union[str, List[str]],
+        truncate: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Generate embeddings for the given input.
+        Args:
+            input (Union[str, List[str]]): Text or list of texts to generate embeddings for.
+            truncate (bool): Whether to truncate the input to fit within context length.
+        Returns:
+            Dict[str, Any]: Embeddings response.
+        """
+        if self.llm is None:
+            self.load_model()
+
+        # Convert input to list if it's a string
+        if isinstance(input, str):
+            input_texts = [input]
+        else:
+            input_texts = input
+
+        # Generate embeddings for each input text
+        embeddings = []
+        for text in input_texts:
+            # Use llama-cpp-python's embedding method
+            embedding = self.llm.embed(text)
+            embeddings.append(embedding)
+
+        # Create response
+        response = {
+            "model": self.model_name,
+            "embeddings": embeddings,
+            "total_duration": 0,  # Could be improved with actual timing
+            "load_duration": 0,   # Could be improved with actual timing
+            "prompt_eval_count": len(input_texts)
+        }
+
+        return response

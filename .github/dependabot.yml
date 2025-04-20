@@ -10,7 +10,7 @@ updates:
       - "dependencies"
       - "python"
     reviewers:
-      - "OE-LUCIFER"  # Updated with your correct GitHub username
+      - "OEvortex"  # Updated with your correct GitHub username
     commit-message:
       prefix: "pip"
       include: "scope"

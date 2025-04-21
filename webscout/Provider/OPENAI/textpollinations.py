@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletionMessage, CompletionUsage, ToolCall, ToolFunction
 )
 
 # Import LitAgent for browser fingerprinting
@@ -32,6 +32,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -49,6 +51,10 @@ class Completions(BaseCompletions):
             payload["temperature"] = temperature
         if top_p is not None:
             payload["top_p"] = top_p
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
 
         payload.update(kwargs)
 
@@ -95,16 +101,39 @@ class Completions(BaseCompletions):
                             json_data = json.loads(line[6:])
                             if 'choices' in json_data and len(json_data['choices']) > 0:
                                 choice = json_data['choices'][0]
-                                if 'delta' in choice and 'content' in choice['delta']:
-                                    content = choice['delta']['content']
-                                    full_response += content
+                                if 'delta' in choice:
+                                    delta_obj = ChoiceDelta()
+
+                                    # Handle content in delta
+                                    if 'content' in choice['delta']:
+                                        content = choice['delta']['content']
+                                        full_response += content
+                                        delta_obj.content = content
+
+                                    # Handle tool calls in delta
+                                    if 'tool_calls' in choice['delta']:
+                                        tool_calls = []
+                                        for tool_call_data in choice['delta']['tool_calls']:
+                                            if 'function' in tool_call_data:
+                                                function = ToolFunction(
+                                                    name=tool_call_data['function'].get('name', ''),
+                                                    arguments=tool_call_data['function'].get('arguments', '')
+                                                )
+                                                tool_call = ToolCall(
+                                                    id=tool_call_data.get('id', str(uuid.uuid4())),
+                                                    type=tool_call_data.get('type', 'function'),
+                                                    function=function
+                                                )
+                                                tool_calls.append(tool_call)
+
+                                        if tool_calls:
+                                            delta_obj.tool_calls = tool_calls
 
                                     # Create and yield a chunk
-                                    delta = ChoiceDelta(content=content)
-                                    choice = Choice(index=0, delta=delta, finish_reason=None)
+                                    choice_obj = Choice(index=0, delta=delta_obj, finish_reason=None)
                                     chunk = ChatCompletionChunk(
                                         id=request_id,
-                                        choices=[choice],
+                                        choices=[choice_obj],
                                         created=created_time,
                                         model=model
                                     )
@@ -155,18 +184,40 @@ class Completions(BaseCompletions):
 
             # Extract the content
             if 'choices' in response_json and len(response_json['choices']) > 0:
-                if 'message' in response_json['choices'][0]:
-                    full_content = response_json['choices'][0]['message']['content']
-                else:
-                    full_content = ""
-            else:
-                full_content = ""
+                choice_data = response_json['choices'][0]
+                if 'message' in choice_data:
+                    message_data = choice_data['message']
 
-            # Create the completion message
-            message = ChatCompletionMessage(
-                role="assistant",
-                content=full_content
-            )
+                    # Extract content
+                    full_content = message_data.get('content', '')
+
+                    # Create the completion message with potential tool calls
+                    message = ChatCompletionMessage(role="assistant", content=full_content)
+
+                    # Handle tool calls if present
+                    if 'tool_calls' in message_data:
+                        tool_calls = []
+                        for tool_call_data in message_data['tool_calls']:
+                            if 'function' in tool_call_data:
+                                function = ToolFunction(
+                                    name=tool_call_data['function'].get('name', ''),
+                                    arguments=tool_call_data['function'].get('arguments', '')
+                                )
+                                tool_call = ToolCall(
+                                    id=tool_call_data.get('id', str(uuid.uuid4())),
+                                    type=tool_call_data.get('type', 'function'),
+                                    function=function
+                                )
+                                tool_calls.append(tool_call)
+
+                        if tool_calls:
+                            message.tool_calls = tool_calls
+                else:
+                    # Fallback if no message is present
+                    message = ChatCompletionMessage(role="assistant", content="")
+            else:
+                # Fallback if no choices are present
+                message = ChatCompletionMessage(role="assistant", content="")
 
             # Create the choice
             choice = Choice(
@@ -217,33 +268,28 @@ class TextPollinations(OpenAICompatibleProvider):
     """
 
     AVAILABLE_MODELS = [
-        "openai",
-        "openai-large",
-        "openai-reasoning",
-        "qwen-coder",
-        "llama",
-        "llamascout",
-        "mistral",
-        "unity",
-        "midijourney",
-        "rtist",
-        "searchgpt",
-        "evil",
-        "deepseek-reasoning",
-        "deepseek-reasoning-large",
-        "llamalight",
-        "phi",
-        "llama-vision",
-        "pixtral",
-        "gemini",
-        "hormoz",
-        "hypnosis-tracy",
-        "mistral-roblox",
-        "roblox-rp",
-        "deepseek",
-        "sur",
-        "llama-scaleway",
-        "openai-audio",
+        "openai",              # OpenAI GPT-4.1-nano (Azure) - vision capable
+        "openai-large",        # OpenAI GPT-4.1 mini (Azure) - vision capable
+        "openai-reasoning",    # OpenAI o4-mini (Azure) - vision capable, reasoning
+        "qwen-coder",          # Qwen 2.5 Coder 32B (Scaleway)
+        "llama",               # Llama 3.3 70B (Cloudflare)
+        "llamascout",          # Llama 4 Scout 17B (Cloudflare)
+        "mistral",             # Mistral Small 3 (Scaleway) - vision capable
+        "unity",               # Unity Mistral Large (Scaleway) - vision capable, uncensored
+        "midijourney",         # Midijourney (Azure)
+        "rtist",               # Rtist (Azure)
+        "searchgpt",           # SearchGPT (Azure) - vision capable
+        "evil",                # Evil (Scaleway) - vision capable, uncensored
+        "deepseek-reasoning",  # DeepSeek-R1 Distill Qwen 32B (Cloudflare) - reasoning
+        "deepseek-reasoning-large", # DeepSeek R1 - Llama 70B (Scaleway) - reasoning
+        "phi",                 # Phi-4 Instruct (Cloudflare) - vision and audio capable
+        "llama-vision",        # Llama 3.2 11B Vision (Cloudflare) - vision capable
+        "gemini",              # gemini-2.5-flash-preview-04-17 (Azure) - vision and audio capable
+        "hormoz",              # Hormoz 8b (Modal)
+        "hypnosis-tracy",      # Hypnosis Tracy 7B (Azure) - audio capable
+        "deepseek",            # DeepSeek-V3 (DeepSeek)
+        "sur",                 # Sur AI Assistant (Mistral) (Scaleway) - vision capable
+        "openai-audio",        # OpenAI GPT-4o-audio-preview (Azure) - vision and audio capable
     ]
 
     def __init__(

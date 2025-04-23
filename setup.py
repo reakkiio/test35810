@@ -67,7 +67,6 @@ setup(
         "aiofiles",
         "openai",
         "prompt-toolkit",
-        "primp",
         "pyreqwest_impersonate",
         "gradio_client",
         "psutil",

@@ -11,7 +11,7 @@ from time import time
 from types import TracebackType
 from typing import Any, Dict, List, Optional, Type, Union, cast, AsyncIterator
 
-import httpx
+import curl_cffi.requests
 from lxml.etree import _Element
 from lxml.html import HTMLParser as LHTMLParser
 from lxml.html import document_fromstring
@@ -31,18 +31,14 @@ from .utils import (
 class AsyncWEBS:
     """Asynchronous webscout class to get search results."""
 
+    # curl_cffi supports different browser versions than httpx
     _impersonates = (
-        "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106", "chrome_107",
-        "chrome_108", "chrome_109", "chrome_114", "chrome_116", "chrome_117", "chrome_118",
-        "chrome_119", "chrome_120", "chrome_123", "chrome_124", "chrome_126", "chrome_127",
-        "chrome_128", "chrome_129", "chrome_130", "chrome_131", "chrome_133",
-        "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
-        "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16", "safari_16.5",
-        "safari_17.0", "safari_17.2.1", "safari_17.4.1", "safari_17.5",
-        "safari_18", "safari_18.2",
-        "safari_ipad_18",
-        "edge_101", "edge_122", "edge_127", "edge_131",
-        "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135",
+        "chrome99", "chrome100", "chrome101", "chrome104", "chrome107", "chrome110",
+        "chrome116", "chrome119", "chrome120", "chrome123", "chrome124", "chrome131", "chrome133a",
+        "chrome99_android", "chrome131_android",
+        "safari15_3", "safari15_5", "safari17_0", "safari17_2_ios", "safari18_0", "safari18_0_ios",
+        "edge99", "edge101",
+        "firefox133", "firefox135",
     )
     _impersonates_os = ("android", "ios", "linux", "macos", "windows")
     _chat_models = {
@@ -94,11 +90,14 @@ class AsyncWEBS:
         self.headers = headers if headers else {}
         self.headers.update(default_headers)
 
-        self.client = httpx.AsyncClient(
+        # Use curl_cffi AsyncSession instead of httpx.AsyncClient
+        impersonate_browser = choice(self._impersonates)
+        self.timeout = timeout
+        self.client = curl_cffi.requests.AsyncSession(
             headers=self.headers,
-            proxies=self.proxy,
+            proxies={'http': self.proxy, 'https': self.proxy} if self.proxy else None,
             timeout=timeout,
-            follow_redirects=False,
+            impersonate=impersonate_browser,
             verify=verify,
         )
         self.sleep_timestamp = 0.0
@@ -147,17 +146,33 @@ class AsyncWEBS:
         """Make HTTP request with proper rate limiting."""
         await self._sleep()
         try:
-            resp = await self.client.request(
-                method,
-                url,
-                params=params,
-                content=content,
-                data=data,
-                headers=headers,
-                cookies=cookies,
-                json=json,
-                timeout=timeout or self.timeout,
-            )
+            # curl_cffi doesn't accept cookies=True in request methods
+            request_kwargs = {
+                "params": params,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout or self.timeout,
+            }
+
+            # Add cookies if they're a dict, not a bool
+            if isinstance(cookies, dict):
+                request_kwargs["cookies"] = cookies
+
+            if method == "GET":
+                # curl_cffi uses data instead of content
+                if content:
+                    request_kwargs["data"] = content
+                resp = await self.client.get(url, **request_kwargs)
+            elif method == "POST":
+                # handle both data and content
+                if data or content:
+                    request_kwargs["data"] = data or content
+                resp = await self.client.post(url, **request_kwargs)
+            else:
+                # handle both data and content
+                if data or content:
+                    request_kwargs["data"] = data or content
+                resp = await self.client.request(method, url, **request_kwargs)
         except Exception as ex:
             if "time" in str(ex).lower():
                 raise TimeoutE(f"{url} {type(ex).__name__}: {ex}") from ex
@@ -278,7 +293,8 @@ class AsyncWEBS:
                 self._chat_vqd_hash = resp.headers.get("x-vqd-hash-1", "")
                 chunks = []
 
-                async for chunk in resp.aiter_bytes():
+                # curl_cffi uses aiter_content instead of aiter_bytes
+                async for chunk in resp.aiter_content(chunk_size=1024):
                     lines = chunk.split(b"data:")
                     for line in lines:
                         if line := line.strip():
@@ -286,20 +302,24 @@ class AsyncWEBS:
                                 break
                             if line == b"[DONE][LIMIT_CONVERSATION]":
                                 raise ConversationLimitException("ERR_CONVERSATION_LIMIT")
-                            x = json_loads(line)
-                            if isinstance(x, dict):
-                                if x.get("action") == "error":
-                                    err_message = x.get("type", "")
-                                    if x.get("status") == 429:
-                                        raise (
-                                            ConversationLimitException(err_message)
-                                            if err_message == "ERR_CONVERSATION_LIMIT"
-                                            else RatelimitE(err_message)
-                                        )
-                                    raise WebscoutE(err_message)
-                                elif message := x.get("message"):
-                                    chunks.append(message)
-                                    yield message
+                            try:
+                                x = json_loads(line)
+                                if isinstance(x, dict):
+                                    if x.get("action") == "error":
+                                        err_message = x.get("type", "")
+                                        if x.get("status") == 429:
+                                            raise (
+                                                ConversationLimitException(err_message)
+                                                if err_message == "ERR_CONVERSATION_LIMIT"
+                                                else RatelimitE(err_message)
+                                            )
+                                        raise WebscoutE(err_message)
+                                    elif message := x.get("message"):
+                                        chunks.append(message)
+                                        yield message
+                            except Exception:
+                                # Skip invalid JSON data
+                                continue
 
                 # If we get here, the request was successful
                 result = "".join(chunks)
@@ -421,7 +441,8 @@ class AsyncWEBS:
             if b"No  results." in resp_content:
                 return results
 
-            tree = document_fromstring(resp_content, self.parser)
+            # curl_cffi returns bytes, not a file-like object
+            tree = document_fromstring(resp_content)
             elements = tree.xpath("//div[h2]")
             if not isinstance(elements, list):
                 return results
@@ -494,7 +515,8 @@ class AsyncWEBS:
             if b"No more results." in resp_content:
                 return results
 
-            tree = document_fromstring(resp_content, self.parser)
+            # curl_cffi returns bytes, not a file-like object
+            tree = document_fromstring(resp_content)
             elements = tree.xpath("//table[last()]//tr")
             if not isinstance(elements, list):
                 return results
@@ -583,21 +605,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().images,
-            keywords,
-            region,
-            safesearch,
-            timelimit,
-            size,
-            color,
-            type_image,
-            layout,
-            license_image,
-            max_results,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("aimages method is not implemented yet")
 
     async def avideos(
         self,
@@ -630,19 +639,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().videos,
-            keywords,
-            region,
-            safesearch,
-            timelimit,
-            resolution,
-            duration,
-            license_videos,
-            max_results,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("avideos method is not implemented yet")
 
     async def anews(
         self,
@@ -669,16 +667,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().news,
-            keywords,
-            region,
-            safesearch,
-            timelimit,
-            max_results,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("anews method is not implemented yet")
 
     async def aanswers(
         self,
@@ -697,12 +687,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().answers,
-            keywords,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("aanswers method is not implemented yet")
 
     async def asuggestions(
         self,
@@ -723,13 +709,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().suggestions,
-            keywords,
-            region,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("asuggestions method is not implemented yet")
 
     async def amaps(
         self,
@@ -771,23 +752,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().maps,
-            keywords,
-            place,
-            street,
-            city,
-            county,
-            state,
-            country,
-            postalcode,
-            latitude,
-            longitude,
-            radius,
-            max_results,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("amaps method is not implemented yet")
 
     async def atranslate(
         self,
@@ -810,14 +776,8 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().translate,
-            keywords,
-            from_,
-            to,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("atranslate method is not implemented yet")
 
     async def aweather(
         self,
@@ -868,10 +828,5 @@ class AsyncWEBS:
             RatelimitE: Inherits from WebscoutE, raised for exceeding API request rate limits.
             TimeoutE: Inherits from WebscoutE, raised for API request timeouts.
         """
-        result = await self._loop.run_in_executor(
-            self._executor,
-            super().weather,
-            location,
-            language,
-        )
-        return result
+        # These methods are not implemented in the async version yet
+        raise NotImplementedError("aweather method is not implemented yet")

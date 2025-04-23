@@ -4,12 +4,12 @@ import pathlib
 import tempfile
 from io import BytesIO
 from webscout import exceptions
-from webscout.AIbase import TTSProvider
 from webscout.litagent import LitAgent
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import utils
+from .base import BaseTTSProvider
 
-class ElevenlabsTTS(TTSProvider): 
+class ElevenlabsTTS(BaseTTSProvider):
     """
     Text-to-speech provider using the ElevenlabsTTS API.
     """
@@ -21,13 +21,13 @@ class ElevenlabsTTS(TTSProvider):
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the ElevenlabsTTS TTS client."""
+        super().__init__()
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         if proxies:
             self.session.proxies.update(proxies)
         self.timeout = timeout
         self.params = {'allow_unauthenticated': '1'}
-        self.temp_dir = tempfile.mkdtemp(prefix="webscout_tts_")
 
     def tts(self, text: str, voice: str = "Brian", verbose:bool = True) -> str:
         """
@@ -65,9 +65,9 @@ class ElevenlabsTTS(TTSProvider):
         try:
             # Using ThreadPoolExecutor to handle requests concurrently
             with ThreadPoolExecutor() as executor:
-                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num 
+                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num
                         for chunk_num, sentence in enumerate(sentences, start=1)}
-                
+
                 # Dictionary to store results with order preserved
                 audio_chunks = {}
 

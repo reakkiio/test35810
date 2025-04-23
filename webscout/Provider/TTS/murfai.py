@@ -5,12 +5,12 @@ import tempfile
 from io import BytesIO
 from urllib.parse import urlencode
 from webscout import exceptions
-from webscout.AIbase import TTSProvider
 from webscout.litagent import LitAgent
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import utils
+from .base import BaseTTSProvider
 
-class MurfAITTS(TTSProvider):
+class MurfAITTS(BaseTTSProvider):
     """Text-to-speech provider using the MurfAITTS API."""
     # Request headers
     headers: dict[str, str] = {
@@ -20,12 +20,12 @@ class MurfAITTS(TTSProvider):
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the MurfAITTS TTS client."""
+        super().__init__()
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         if proxies:
             self.session.proxies.update(proxies)
         self.timeout = timeout
-        self.temp_dir = tempfile.mkdtemp(prefix="webscout_tts_")
 
     def tts(self, text: str, voice: str = "Hazel", verbose:bool = True) -> str:
         """Converts text to speech using the MurfAITTS API and saves it to a file."""
@@ -45,7 +45,7 @@ class MurfAITTS(TTSProvider):
             while True:
                 try:
                     params: dict[str, str] = {
-                    "name": voice_id, 
+                    "name": voice_id,
                     "text": part_text
                     }
                     encode_param: str = urlencode(params)
@@ -67,9 +67,9 @@ class MurfAITTS(TTSProvider):
         try:
             # Using ThreadPoolExecutor to handle requests concurrently
             with ThreadPoolExecutor() as executor:
-                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num 
+                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num
                         for chunk_num, sentence in enumerate(sentences, start=1)}
-                
+
                 # Dictionary to store results with order preserved
                 audio_chunks = {}
 
@@ -109,5 +109,5 @@ if __name__ == "__main__":
     text = "This is a test of the MurfAITTS text-to-speech API. It supports multiple sentences and advanced logging."
 
     print("[debug] Generating audio...")
-    audio_file = murfai.tts(text, voice="Hazel") 
+    audio_file = murfai.tts(text, voice="Hazel")
     print(f"Audio saved to: {audio_file}")

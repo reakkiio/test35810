@@ -2,22 +2,22 @@ import time
 import tempfile
 from pathlib import Path
 from webscout import exceptions
-from webscout.AIbase import TTSProvider
 from gradio_client import Client
 import os
+from .base import BaseTTSProvider
 
 
-class ParlerTTS(TTSProvider):
+class ParlerTTS(BaseTTSProvider):
     """
     A class to interact with the Parler TTS API through Gradio Client.
     """
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the Parler TTS client."""
+        super().__init__()
         self.api_endpoint = "/gen_tts"
         self.client = Client("parler-tts/parler_tts")  # Initialize the Gradio client
         self.timeout = timeout
-        self.temp_dir = tempfile.mkdtemp(prefix="webscout_tts_")
 
     def tts(self, text: str, description: str = "", use_large: bool = False, verbose: bool = True) -> str:
         """
@@ -40,7 +40,7 @@ class ParlerTTS(TTSProvider):
         try:
             if verbose:
                 print(f"[debug] Generating TTS with description: {description}")
-            
+
             result = self.client.predict(
                 text=text,
                 description=description,
@@ -57,10 +57,10 @@ class ParlerTTS(TTSProvider):
                 raise ValueError(f"Unexpected response from API: {result}")
 
             self._save_audio(audio_bytes, filename, verbose)
-            
+
             if verbose:
                 print(f"[debug] Audio generated successfully: {filename}")
-            
+
             return filename.as_posix()
 
         except Exception as e:

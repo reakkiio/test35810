@@ -1,3 +1,4 @@
+from .base import BaseTTSProvider, AsyncBaseTTSProvider
 from .streamElements import *
 from .parler import *
 from .deepgram import *

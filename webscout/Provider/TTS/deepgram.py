@@ -5,12 +5,12 @@ import base64
 import tempfile
 from io import BytesIO
 from webscout import exceptions
-from webscout.AIbase import TTSProvider
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from webscout.litagent import LitAgent
-from . import utils 
+from . import utils
+from .base import BaseTTSProvider
 
-class DeepgramTTS(TTSProvider): 
+class DeepgramTTS(BaseTTSProvider):
     """
     Text-to-speech provider using the DeepgramTTS API.
     """
@@ -27,12 +27,12 @@ class DeepgramTTS(TTSProvider):
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the DeepgramTTS TTS client."""
+        super().__init__()
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         if proxies:
             self.session.proxies.update(proxies)
         self.timeout = timeout
-        self.temp_dir = tempfile.mkdtemp(prefix="webscout_tts_")
 
     def tts(self, text: str, voice: str = "Brian", verbose: bool = True) -> str:
         """
@@ -80,15 +80,15 @@ class DeepgramTTS(TTSProvider):
             """
             max_retries = 3
             retry_count = 0
-            
+
             while retry_count < max_retries:
                 try:
                     payload = {"text": part_text, "model": self.all_voices[voice]}
                     response = self.session.post(
-                        url=url, 
-                        headers=self.headers, 
-                        json=payload, 
-                        stream=True, 
+                        url=url,
+                        headers=self.headers,
+                        json=payload,
+                        stream=True,
                         timeout=self.timeout
                     )
                     response.raise_for_status()
@@ -99,29 +99,29 @@ class DeepgramTTS(TTSProvider):
                         if verbose:
                             print(f"[debug] Chunk {part_number} processed successfully")
                         return part_number, audio_data
-                    
+
                     if verbose:
                         print(f"[debug] No data received for chunk {part_number}. Attempt {retry_count + 1}/{max_retries}")
-                    
+
                 except requests.RequestException as e:
                     if verbose:
                         print(f"[debug] Error processing chunk {part_number}: {str(e)}. Attempt {retry_count + 1}/{max_retries}")
                     if retry_count == max_retries - 1:
                         raise
-                
+
                 retry_count += 1
                 time.sleep(1)
-            
+
             raise RuntimeError(f"Failed to generate audio for chunk {part_number} after {max_retries} attempts")
 
         try:
             # Using ThreadPoolExecutor to handle requests concurrently
             with ThreadPoolExecutor() as executor:
                 futures = {
-                    executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num 
+                    executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num
                     for chunk_num, sentence in enumerate(sentences, start=1)
                 }
-                
+
                 # Dictionary to store results with order preserved
                 audio_chunks = {}
 
@@ -152,5 +152,5 @@ if __name__ == "__main__":
     text = "This is a test of the DeepgramTTS text-to-speech API. It supports multiple sentences. Let's see how it works!"
 
     print("[debug] Generating audio...")
-    audio_file = deepgram.tts(text, voice="Asteria") 
+    audio_file = deepgram.tts(text, voice="Asteria")
     print(f"Audio saved to: {audio_file}")

@@ -4,12 +4,12 @@ import pathlib
 import base64
 from io import BytesIO
 from webscout import exceptions
-from webscout.AIbase import TTSProvider
 from webscout.litagent import LitAgent
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import utils
+from .base import BaseTTSProvider
 
-class GesseritTTS(TTSProvider): 
+class GesseritTTS(BaseTTSProvider):
     """Text-to-speech provider using the GesseritTTS API."""
     # Request headers
     headers: dict[str, str] = {
@@ -30,6 +30,7 @@ class GesseritTTS(TTSProvider):
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the GesseritTTS TTS client."""
+        super().__init__()
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         if proxies:
@@ -61,7 +62,7 @@ class GesseritTTS(TTSProvider):
                     response.raise_for_status()
 
                     # Create the audio_cache directory if it doesn't exist
-                    self.cache_dir.mkdir(parents=True, exist_ok=True) 
+                    self.cache_dir.mkdir(parents=True, exist_ok=True)
 
                     # Check if the request was successful
                     if response.ok and response.status_code == 200:
@@ -81,9 +82,9 @@ class GesseritTTS(TTSProvider):
         try:
             # Using ThreadPoolExecutor to handle requests concurrently
             with ThreadPoolExecutor() as executor:
-                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num 
+                futures = {executor.submit(generate_audio_for_chunk, sentence.strip(), chunk_num): chunk_num
                         for chunk_num, sentence in enumerate(sentences, start=1)}
-                
+
                 # Dictionary to store results with order preserved
                 audio_chunks = {}
 

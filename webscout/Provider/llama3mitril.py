@@ -1,13 +1,13 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
-import re
-from typing import Union, Any, Dict, Optional, Generator
+from typing import Union, Any, Dict, Generator
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout.litagent import LitAgent as Lit
+
 
 class Llama3Mitril(Provider):
     """
@@ -29,7 +29,7 @@ class Llama3Mitril(Provider):
         temperature: float = 0.8,
     ):
         """Initializes the Llama3Mitril API."""
-        self.session = requests.Session()
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -40,7 +40,6 @@ class Llama3Mitril(Provider):
         self.headers = {
             "Content-Type": "application/json",
             "DNT": "1",
-            "User-Agent": Lit().random(),
         }
         self.__available_optimizers = (
             method
@@ -58,6 +57,8 @@ class Llama3Mitril(Provider):
             is_conversation, self.max_tokens, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
         self.session.proxies = proxies
 
     def _format_prompt(self, prompt: str) -> str:
@@ -73,7 +74,7 @@ class Llama3Mitril(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = True,
+        stream: bool = True,  # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -100,66 +101,99 @@ class Llama3Mitril(Provider):
         }
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint,
-                headers=self.headers,
-                json=data,
-                stream=True,
-                timeout=self.timeout
-            )
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            streaming_response = ""  # Initialize outside try block
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint,
+                    # headers are set on the session
+                    json=data,
+                    stream=True,
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110"  # Use a common impersonation profile
+                )
+                response.raise_for_status()  # Check for HTTP errors
+
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8')
+                            if line.startswith('data: '):
+                                chunk_str = line.split('data: ', 1)[1]
+                                chunk = json.loads(chunk_str)
+                                if token_text := chunk.get('token', {}).get('text'):
+                                    if '<|eot_id|>' not in token_text:
+                                        streaming_response += token_text
+                                        resp = {"text": token_text}
+                                        # Yield dict or raw string chunk
+                                        yield resp if not raw else token_text
+                        except (json.JSONDecodeError, IndexError, UnicodeDecodeError) as e:
+                            # Ignore errors in parsing specific lines
+                            continue
+
+                # Update history after stream finishes
+                self.last_response = {"text": streaming_response}
+                self.conversation.update_chat_history(
+                    prompt, streaming_response
                 )
 
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    try:
-                        chunk = json.loads(line.split('data: ')[1])
-                        if token_text := chunk.get('token', {}).get('text'):
-                            if '<|eot_id|>' not in token_text:
-                                streaming_response += token_text
-                                yield token_text if raw else {"text": token_text}
-                    except (json.JSONDecodeError, IndexError) as e:
-                        continue
-
-            self.last_response.update({"text": streaming_response})
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+            except CurlError as e:  # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:  # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
 
         def for_non_stream():
-            full_response = ""
-            for chunk in for_stream():
-                full_response += chunk if raw else chunk['text']
-            return {"text": full_response}
+            # Aggregate the stream using the updated for_stream logic
+            full_response_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_response_text if raw else self.last_response
 
         return for_stream() if stream else for_non_stream()
 
     def chat(
         self,
         prompt: str,
-        stream: bool = True,
+        stream: bool = True,  # Default to True as API supports it
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generates a response from the Llama3 Mitril API."""
 
-        def for_stream():
-            for response in self.ask(
-                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, stream=False, optimizer=optimizer, conversationally=conversationally
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False,  # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict)  # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False,  # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data)  # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Extracts the message from the API response."""
@@ -168,8 +202,9 @@ class Llama3Mitril(Provider):
 
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
-    
+
     ai = Llama3Mitril(
         max_tokens=2048,
         temperature=0.8,

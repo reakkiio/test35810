@@ -1,6 +1,5 @@
 # webscout/providers/__init__.py
 from .PI import *
-from .Llama import LLAMA
 from .Cohere import Cohere
 from .Reka import REKA
 from .Groq import GROQ
@@ -10,8 +9,6 @@ from .Openai import AsyncOPENAI
 from .Koboldai import KOBOLDAI
 from .Koboldai import AsyncKOBOLDAI
 from .Blackboxai import BLACKBOXAI
-from .Phind import PhindSearch
-from .Phind import Phindv2
 from .ai4chat import *
 from .Gemini import GEMINI
 from .Deepinfra import DeepInfra
@@ -34,12 +31,10 @@ from .AI21 import *
 from .Chatify import *
 from .x0gpt import *
 from .cerebras import *
-from .lepton import *
 from .geminiapi import *
 from .elmo import *
 from .GPTWeb import *
 from .Netwrck import Netwrck
-from .llamatutor import *
 from .promptrefine import *
 from .tutorai import *
 from .ChatGPTES import *
@@ -64,7 +59,6 @@ from .ChatGPTGratis import *
 from .QwenLM import *
 from .granite import *
 from .WiseCat import *
-from .DeepSeek import *
 from .freeaichat import FreeAIChat
 from .akashgpt import *
 from .Perplexitylabs import *
@@ -79,8 +73,6 @@ from .copilot import *
 from .C4ai import *
 from .sonus import *
 from .uncovr import *
-from .labyrinth import *
-from .WebSim import *
 from .LambdaChat import *
 from .ChatGPTClone import *
 from .VercelAI import *
@@ -97,11 +89,10 @@ from .toolbaz import Toolbaz
 from .scnet import SCNet
 from .WritingMate import WritingMate
 __all__ = [
-    'LLAMA',
+
     'SCNet',
     'SciraAI',
     'StandardInputAI',
-    'LabyrinthAI',
     'OpenGPT',
     'C4ai',
     'Venice',
@@ -113,7 +104,6 @@ __all__ = [
     'AllenAI',
     'PerplexityLabs',
     'AkashGPT',
-    'DeepSeek',
     'WritingMate',
     'WiseCat',
     'IBMGranite',
@@ -131,11 +121,9 @@ __all__ = [
     'KOBOLDAI',
     'AsyncKOBOLDAI',
     'BLACKBOXAI',
-    'PhindSearch',
     'GEMINI',
     'DeepInfra',
     'AI4Chat',
-    'Phindv2',
     'OLLAMA',
     'AndiSearch',
     'PIZZAGPT',
@@ -154,7 +142,6 @@ __all__ = [
     'Chatify',
     'X0GPT',
     'Cerebras',
-    'Lepton',
     'GEMINIAPI',
     'SonusAI',
     'Cleeai',
@@ -164,7 +151,6 @@ __all__ = [
     'Free2GPT',
     'GPTWeb',
     'Netwrck',
-    'LlamaTutor',
     'PromptRefine',
     'TutorAI',
     'ChatGPTES',
@@ -187,7 +173,6 @@ __all__ = [
     'ElectronHub',
     'GithubChat',
     'UncovrAI',
-    'WebSim',
     'VercelAI',
     'ExaChat',
     'AskSteve',

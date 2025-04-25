@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import time
 import random
@@ -31,42 +32,41 @@ class LambdaChat(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2000,
+        max_tokens: int = 2000, # Note: max_tokens is not used by this API
         timeout: int = 60,
         filepath: str = None,
         update_file: bool = True,
         proxies: dict = {},
         model: str = "deepseek-llama3.3-70b",
-        assistantId: str = None,
-        system_prompt: str = "You are a helpful assistant. Please answer the following question.",
+        assistantId: str = None, # Note: assistantId is not used by this API
+        system_prompt: str = "You are a helpful assistant. Please answer the following question.", # Note: system_prompt is not used by this API
     ):
         """Initialize the LambdaChat client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
         self.model = model
-        self.session = requests.Session()
-        self.session.proxies.update(proxies)
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.assistantId = assistantId
         self.system_prompt = system_prompt
         
         # Set up headers for all requests
         self.headers = {
-            "Content-Type": "application/json",
-            "User-Agent": LitAgent().random(),
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": self.url,
-            "Referer": f"{self.url}/",
-            "Sec-Ch-Ua": "\"Chromium\";v=\"120\"",
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": "\"Windows\"",
-            "Sec-Fetch-Dest": "empty",
+            "Content-Type": "application/json", # Keep Content-Type for JSON posts
+            "Accept": "*/*", # Keep Accept
+            # "User-Agent": LitAgent().random(), # Removed, handled by impersonate
+            "Accept-Language": "en-US,en;q=0.9", # Keep Accept-Language
+            "Origin": self.url, # Keep Origin
+            "Referer": f"{self.url}/", # Keep Referer (will be updated per request)
+            # "Sec-Ch-Ua": "\"Chromium\";v=\"120\"", # Removed, handled by impersonate
+            # "Sec-Ch-Ua-Mobile": "?0", # Removed, handled by impersonate
+            # "Sec-Ch-Ua-Platform": "\"Windows\"", # Removed, handled by impersonate
+            "Sec-Fetch-Dest": "empty", # Keep Sec-Fetch-* headers
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "DNT": "1",
-            "Priority": "u=1, i"
+            "DNT": "1", # Keep DNT
+            "Priority": "u=1, i" # Keep Priority
         }
         
         # Provider settings
@@ -81,11 +81,17 @@ class LambdaChat(Provider):
         # Store conversation data for different models
         self._conversation_data = {}
 
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
+
     def create_conversation(self, model: str):
         """Create a new conversation with the specified model."""
         url = f"{self.url}/conversation"
         payload = {
-            "model": model
+            "model": model,
+            "preprompt": self.system_prompt,
+
         }
         
         # Update referer for this specific request
@@ -93,7 +99,13 @@ class LambdaChat(Provider):
         headers["Referer"] = f"{self.url}/models/{model}"
         
         try:
-            response = self.session.post(url, json=payload, headers=headers)
+            # Use curl_cffi session post with impersonate
+            response = self.session.post(
+                url, 
+                json=payload, 
+                headers=headers, # Use updated headers with specific Referer
+                impersonate="chrome110" # Use a common impersonation profile
+            )
             
             if response.status_code == 401:
                 raise exceptions.AuthenticationError("Authentication failed.")
@@ -113,14 +125,21 @@ class LambdaChat(Provider):
                 }
                 
             return conversation_id
-        except requests.exceptions.RequestException:
+        except CurlError as e: # Catch CurlError
+            # Log or handle CurlError specifically if needed
+            return None
+        except Exception: # Catch other potential exceptions (like JSONDecodeError, HTTPError)
             return None
     
     def fetch_message_id(self, conversation_id: str) -> str:
         """Fetch the latest message ID for a conversation."""
         try:
             url = f"{self.url}/conversation/{conversation_id}/__data.json?x-sveltekit-invalidated=11"
-            response = self.session.get(url, headers=self.headers)
+            response = self.session.get(
+                url, 
+                headers=self.headers, # Use base headers
+                impersonate="chrome110" # Use a common impersonation profile
+            )
             response.raise_for_status()
             
             # Parse the JSON data from the response
@@ -150,7 +169,9 @@ class LambdaChat(Provider):
             
             return message_id
             
-        except Exception:
+        except CurlError: # Catch CurlError
+            return str(uuid.uuid4()) # Fallback on CurlError
+        except Exception: # Catch other potential exceptions
             # Fall back to a UUID if there's an error
             return str(uuid.uuid4())
     
@@ -221,10 +242,10 @@ class LambdaChat(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
-        optimizer: str = None,
-        conversationally: bool = False,
+        optimizer: str = None, # Note: optimizer is not used by this API
+        conversationally: bool = False, # Note: conversationally is not used by this API
         web_search: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
         """Send a message to the Lambda Chat API"""
@@ -279,39 +300,41 @@ class LambdaChat(Provider):
                 # Try with multipart/form-data first
                 response = None
                 try:
+                    # Use curl_cffi session post with impersonate
                     response = self.session.post(
                         url, 
                         data=body,
-                        headers=multipart_headers,
+                        headers=multipart_headers, # Use multipart headers
                         stream=True,
-                        timeout=self.timeout
+                        timeout=self.timeout,
+                        impersonate="chrome110" # Use a common impersonation profile
                     )
-                except requests.exceptions.RequestException:
-                    pass
-                
+                    response.raise_for_status() # Check status after potential error
+                except (CurlError, exceptions.FailedToGenerateResponseError, Exception): # Catch potential errors
+                    response = None # Ensure response is None if multipart fails
+
                 # If multipart fails or returns error, try with regular JSON
                 if not response or response.status_code != 200:
+                    # Use curl_cffi session post with impersonate
                     response = self.session.post(
                         url, 
-                        json=request_data,
-                        headers=headers,
+                        json=request_data, # Use JSON payload
+                        headers=headers, # Use regular headers
                         stream=True,
-                        timeout=self.timeout
+                        timeout=self.timeout,
+                        impersonate="chrome110" # Use a common impersonation profile
                     )
                 
-                # If both methods fail, raise exception
-                if response.status_code != 200:
-                    raise exceptions.FailedToGenerateResponseError(f"Request failed with status code {response.status_code}")
+                response.raise_for_status() # Check status after potential fallback
                 
                 # Process the streaming response
                 yield from self.process_response(response, prompt)
                 
-            except Exception as e:
-                if isinstance(e, requests.exceptions.RequestException):
-                    if hasattr(e, 'response') and e.response is not None:
-                        status_code = e.response.status_code 
-                        if status_code == 401:
-                            raise exceptions.AuthenticationError("Authentication failed.")
+            except (CurlError, exceptions.FailedToGenerateResponseError, Exception) as e: # Catch errors from both attempts
+                # Handle specific exceptions if needed
+                if isinstance(e, CurlError):
+                     # Log or handle CurlError specifically
+                     pass
                 
                 # Try another model if current one fails
                 if len(self.AVAILABLE_MODELS) > 1:
@@ -328,15 +351,29 @@ class LambdaChat(Provider):
                         return
                 
                 # If we get here, all models failed
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+                raise exceptions.FailedToGenerateResponseError(f"Request failed after trying fallback: {str(e)}") from e
+
 
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
             response_text = ""
-            for response in for_stream():
-                if "text" in response:
-                    response_text += response["text"]
-            self.last_response = {"text": response_text}
-            return self.last_response
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within process_response called by for_stream
+            # Return the final aggregated response dict or raw string
+            return response_text if raw else {"text": response_text} # Return dict for consistency
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -344,25 +381,29 @@ class LambdaChat(Provider):
         self,
         prompt: str,
         stream: bool = False,
-        optimizer: str = None,
-        conversationally: bool = False,
+        optimizer: str = None, # Note: optimizer is not used by this API
+        conversationally: bool = False, # Note: conversationally is not used by this API
         web_search: bool = False
     ) -> Union[str, Generator]:
         """Generate a response to a prompt"""
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally, web_search=web_search
-            ):
-                yield self.get_message(response)
-                
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, False, optimizer=optimizer, conversationally=conversationally, web_search=web_search
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally, web_search=web_search
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+                
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally, web_search=web_search
+            )
+            return self.get_message(response_data) # get_message expects dict
             
-        return for_stream() if stream else for_non_stream()
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """Extract message text from response"""
@@ -370,6 +411,7 @@ class LambdaChat(Provider):
         return response.get("text", "")
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
@@ -389,4 +431,4 @@ if __name__ == "__main__":
                 display_text = "Empty or invalid response"
             print(f"{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}") 
+            print(f"{model:<50} {'✗':<10} {str(e)}")

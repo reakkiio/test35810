@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import re
 from typing import Any, Dict, Optional, Union, Generator
@@ -17,7 +18,7 @@ class PIZZAGPT(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -31,7 +32,8 @@ class PIZZAGPT(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://www.pizzagpt.it/api/chatx-completion"
@@ -48,8 +50,6 @@ class PIZZAGPT(Provider):
             "referer": "https://www.pizzagpt.it/en",
             "user-agent": Lit().random(),
             "x-secret": "Marinara",
-            "sec-ch-ua": '"Chromium";v="134", "Not:A-Brand";v="24"',
-            "sec-ch-ua-platform": '"Windows"'
         }
 
         self.__available_optimizers = (
@@ -57,7 +57,10 @@ class PIZZAGPT(Provider):
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
         
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
+
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -70,7 +73,6 @@ class PIZZAGPT(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def _extract_content(self, text: str) -> Dict[str, Any]:
         """
@@ -104,8 +106,8 @@ class PIZZAGPT(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
-        raw: bool = False,
+        stream: bool = False, # Note: API does not support streaming
+        raw: bool = False, # Keep raw param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
         web_search: bool = False,
@@ -116,9 +118,7 @@ class PIZZAGPT(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
@@ -129,16 +129,17 @@ class PIZZAGPT(Provider):
         }
 
         try:
+            # Use curl_cffi session post with impersonate
             response = self.session.post(
                 self.api_endpoint,
+                # headers are set on the session
                 json=payload,
-                timeout=self.timeout
+                timeout=self.timeout,
+                # proxies are set on the session
+                impersonate="chrome110" # Use a common impersonation profile
             )
             
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason})"
-                )
+            response.raise_for_status() # Check for HTTP errors
 
             response_text = response.text
             if not response_text:
@@ -147,52 +148,81 @@ class PIZZAGPT(Provider):
             try:
                 resp = self._extract_content(response_text)
                     
-                self.last_response.update(dict(text=resp['content']))
+                self.last_response = {"text": resp['content']} # Store only text in last_response
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)
                 )
-                return self.last_response
+                # Return the full extracted data (content + citations) or raw text
+                return response_text if raw else resp 
 
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Failed to parse response: {str(e)}")
 
-        except requests.exceptions.RequestException as e:
-            raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+        except Exception as e: # Catch other potential exceptions (like HTTPError)
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
 
     def chat(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # Keep stream param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
         web_search: bool = False,
+        # Add raw parameter for consistency
+        raw: bool = False
     ) -> str:
         """
         Chat with PizzaGPT with optional web search capability.
         """
-        try:
-            response = self.ask(
-                prompt,
-                optimizer=optimizer,
-                conversationally=conversationally,
-                web_search=web_search
-            )
-            return self.get_message(response)
-        except Exception as e:
-            raise
+        # API doesn't stream, call ask directly
+        response_data = self.ask(
+            prompt,
+            stream=False, # Call ask in non-stream mode
+            raw=raw, # Pass raw flag to ask
+            optimizer=optimizer,
+            conversationally=conversationally,
+            web_search=web_search
+        )
+        # If raw=True, ask returns string, otherwise dict
+        return response_data if raw else self.get_message(response_data)
+
 
     def get_message(self, response: dict) -> str:
         """Extract message from response dictionary."""
-        assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response.get("text", "")
+        # Handle case where raw response (string) might be passed mistakenly
+        if isinstance(response, str):
+             # Attempt to parse if it looks like the expected structure, otherwise return as is
+             try:
+                 extracted = self._extract_content(response)
+                 return extracted.get("content", "")
+             except:
+                 return response # Return raw string if parsing fails
+        elif isinstance(response, dict):
+             # If it's already the extracted dict from ask(raw=False)
+             if "content" in response:
+                 return response.get("content", "")
+             # If it's the last_response format
+             elif "text" in response:
+                 return response.get("text", "")
+        return "" # Default empty string
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     
     # Example usage with web search enabled
-    ai = PIZZAGPT()
+    ai = PIZZAGPT(timeout=60)
     try:
-        response = ai.chat("hi")
+        print("[bold blue]Testing Chat (Web Search Disabled):[/bold blue]")
+        response = ai.chat("hi", web_search=False)
         print(response)
+        
+        # print("\n[bold blue]Testing Chat (Web Search Enabled):[/bold blue]")
+        # response_web = ai.chat("What's the weather in Rome?", web_search=True)
+        # print(response_web)
+
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"[bold red]Error:[/bold red] {str(e)}")

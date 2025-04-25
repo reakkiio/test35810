@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import os
 from typing import Union, List, Optional
 from string import punctuation
@@ -28,8 +29,6 @@ class TutorAI(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        system_prompt: str = "You are a helpful AI assistant.",
-        model: str = "gpt-4o"
     ):
         """
         Initializes the TutorAI.me API with given parameters.
@@ -47,26 +46,19 @@ class TutorAI(Provider):
             system_prompt (str, optional): System prompt for TutorAI.
                                    Defaults to "You are a helpful AI assistant.".
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://ai-tutor.ai/api/generate-homeworkify-response"
         self.stream_chunk_size = 1024
         self.timeout = timeout
         self.last_response = {}
-        self.system_prompt = system_prompt
+        # Remove Cookie header, curl_cffi doesn't use it directly like this
         self.headers = {
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "Cookie": (
-                "ARRAffinity=5ef5a1afbc0178c19fc7bc85047a2309cb69de3271923483302c69744e2b1d24; "
-                "ARRAffinitySameSite=5ef5a1afbc0178c19fc7bc85047a2309cb69de3271923483302c69744e2b1d24; "
-                "_ga=GA1.1.412867530.1726937399; "
-                "_clck=1kwy10j%7C2%7Cfpd%7C0%7C1725; "
-                "_clsk=1cqd2q1%7C1726937402133%7C1%7C1%7Cm.clarity.ms%2Fcollect; "
-                "_ga_0WF5W33HD7=GS1.1.1726937399.1.1.1726937459.0.0.0"
-            ),
             "DNT": "1",
             "Origin": "https://tutorai.me",
             "Priority": "u=1, i",
@@ -85,7 +77,9 @@ class TutorAI(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -97,12 +91,11 @@ class TutorAI(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # Note: API doesn't seem to truly stream text chunks
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -140,68 +133,67 @@ class TutorAI(Provider):
             "attachmentsCount": "1" if attachment_path else "0"
         }
         files = {}
+        file_handle = None # To ensure file is closed
         if attachment_path:
             if not os.path.isfile(attachment_path):
                 raise FileNotFoundError(f"Error: The file '{attachment_path}' does not exist.")
             try:
-                files["attachment0"] = (os.path.basename(attachment_path), open(attachment_path, 'rb'), 'image/png')
+                # Open file handle to pass to curl_cffi
+                file_handle = open(attachment_path, 'rb')
+                files["attachment0"] = (os.path.basename(attachment_path), file_handle, 'image/png') # Adjust mime type if needed
             except Exception as e:
+                if file_handle: file_handle.close() # Close if opened
                 raise exceptions.FailedToGenerateResponseError(f"Error opening the file: {e}")
 
-        def for_stream():
-            try:
-                with requests.post(self.api_endpoint, headers=self.headers, data=form_data, files=files, stream=True, timeout=self.timeout) as response:
-                    response.raise_for_status()
-                    response_chunks = []
-                    json_str = ''
-                    for chunk in response.iter_content(chunk_size=self.stream_chunk_size, decode_unicode=True):
-                        if chunk:
-                            response_chunks.append(chunk)
-                            yield chunk if raw else dict(text=chunk)
-                    json_str = ''.join(response_chunks)
-                    try:
-                        response_data = json.loads(json_str)
-                    except json.JSONDecodeError as json_err:
-                        raise exceptions.FailedToGenerateResponseError(f"\nError decoding JSON: {json_err}")
-                    homeworkify_html = response_data.get("homeworkifyResponse", "")
-                    if not homeworkify_html:
-                        raise exceptions.FailedToGenerateResponseError("\nNo 'homeworkifyResponse' found in the response.")
-                    clean_text = homeworkify_html  # Removed html_to_terminal call
-                    self.last_response.update(dict(text=clean_text))
-                    self.conversation.update_chat_history(
-                        prompt, self.get_message(self.last_response)
-                    )
-            except requests.exceptions.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"An error occurred: {e}")
-        
-        def for_non_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, data=form_data, files=files, timeout=self.timeout)
-            if not response.ok:
-                raise Exception(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
+        # The API doesn't seem to support streaming text chunks based on the original code.
+        # Both stream=True and stream=False resulted in processing the full response.
+        # We will implement the non-stream logic for both cases.
+        try:
+            # Use curl_cffi session post with impersonate
+            # Pass data and files for multipart/form-data
+            response = self.session.post(
+                self.api_endpoint, 
+                # headers are set on the session
+                data=form_data, 
+                files=files, 
+                timeout=self.timeout,
+                impersonate="chrome120", # Try a different impersonation profile
+            )
+            response.raise_for_status() # Check for HTTP errors
 
-            # Parse the entire JSON response
-            response_data = response.json()
+            try:
+                response_data = response.json()
+            except json.JSONDecodeError as json_err:
+                raise exceptions.FailedToGenerateResponseError(f"Error decoding JSON: {json_err} - Response text: {response.text}")
+
             homeworkify_html = response_data.get("homeworkifyResponse", "")
             if not homeworkify_html:
-                return {"text": "No content found in the response"}  # Default in case content not found
-            clean_text = homeworkify_html  # Removed html_to_terminal call
+                 # Return empty if no content, consistent with original non-stream logic
+                clean_text = ""
+            else:
+                # Assuming the response is HTML that needs cleaning/parsing
+                # For now, just return the raw HTML content as text
+                clean_text = homeworkify_html 
 
-            # Simulate streaming by yielding chunks of the content
-            chunk_size = self.stream_chunk_size
-            for i in range(0, len(clean_text), chunk_size):
-                chunk = clean_text[i:i + chunk_size]
-                self.last_response.update(dict(text=chunk))
-                yield chunk if raw else dict(text=chunk)
-            return self.last_response
+            self.last_response = {"text": clean_text}
+            self.conversation.update_chat_history(prompt, clean_text)
+            return self.last_response # Return the full response content
 
-        return for_stream() if stream else for_non_stream()
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+        except Exception as e: # Catch other potential exceptions
+            # Include response text if available in HTTP errors
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}")
+        finally:
+            if file_handle: # Ensure file is closed
+                file_handle.close()
+
 
     def chat(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # Keep stream param for interface consistency, though API might not support it
         optimizer: str = None,
         conversationally: bool = False,
         attachment_path: Optional[str] = None,
@@ -246,7 +238,33 @@ class TutorAI(Provider):
 if __name__ == "__main__":
     from rich import print
 
-    ai = TutorAI()
-    response = ai.chat("hello buddy", attachment_path=None)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    try: # Add try-except block for testing
+        ai = TutorAI(timeout=120) # Increased timeout for potential uploads
+        # Test without attachment first
+        print("[bold blue]Testing Text Prompt:[/bold blue]")
+        response_gen = ai.chat("hello buddy", stream=True) # Test stream interface
+        full_response = ""
+        for chunk in response_gen:
+            print(chunk, end="", flush=True)
+            full_response += chunk
+        print("\n[bold green]Text Test Complete.[/bold green]\n")
+
+        # Optional: Test with attachment (replace with a valid image path)
+        # attachment_file = "path/to/your/image.png" 
+        # if os.path.exists(attachment_file):
+        #     print(f"[bold blue]Testing with Attachment ({attachment_file}):[/bold blue]")
+        #     response_gen_attach = ai.chat("Describe this image", stream=True, attachment_path=attachment_file)
+        #     full_response_attach = ""
+        #     for chunk in response_gen_attach:
+        #         print(chunk, end="", flush=True)
+        #         full_response_attach += chunk
+        #     print("\n[bold green]Attachment Test Complete.[/bold green]")
+        # else:
+        #      print(f"[bold yellow]Skipping attachment test: File not found at {attachment_file}[/bold yellow]")
+
+    except exceptions.FailedToGenerateResponseError as e:
+        print(f"\n[bold red]API Error:[/bold red] {e}")
+    except FileNotFoundError as e:
+         print(f"\n[bold red]File Error:[/bold red] {e}")
+    except Exception as e:
+        print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")

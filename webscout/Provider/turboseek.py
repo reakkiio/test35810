@@ -1,10 +1,11 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream
-from webscout.AIbase import Provider, AsyncProvider
+from webscout.AIbase import Provider
 from webscout import exceptions
 from typing import Union, Any, AsyncGenerator, Dict
 from webscout.litagent import LitAgent
@@ -26,7 +27,7 @@ class TurboSeek(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "Llama 3.1 70B"
+        model: str = "Llama 3.1 70B" # Note: model parameter is not used by the API endpoint
     ):
         """Instantiates TurboSeek
 
@@ -41,7 +42,8 @@ class TurboSeek(Provider):
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.chat_endpoint = "https://www.turboseek.io/api/getAnswer"
@@ -49,14 +51,9 @@ class TurboSeek(Provider):
         self.timeout = timeout
         self.last_response = {}
         self.headers = {
-            "authority": "www.turboseek.io",
-            "method": "POST",
-            "path": "/api/getAnswer",
-            "scheme": "https",
             "accept": "*/*",
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "content-length": "63",
             "content-type": "application/json",
             "dnt": "1",
             "origin": "https://www.turboseek.io",
@@ -76,7 +73,9 @@ class TurboSeek(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -88,7 +87,6 @@ class TurboSeek(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
@@ -125,41 +123,75 @@ class TurboSeek(Provider):
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
 
-        self.session.headers.update(self.headers)
         payload = {
             "question": conversation_prompt,
             "sources": []
         }
 
         def for_stream():
-            response = self.session.post(
-                self.chat_endpoint, json=payload, stream=True, timeout=self.timeout
-            )
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try: # Add try block for CurlError
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.chat_endpoint, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome120", # Try a different impersonation profile
                 )
-            streaming_text = ""
-            for value in response.iter_lines(
-                chunk_size=self.stream_chunk_size,
-            ):
-                try:
-                    if value and value.startswith(b"data: "): #Check for bytes and decode
-                        data = json.loads(value[6:].decode('utf-8')) # Decode manually
-                        if "text" in data:
-                            streaming_text += data["text"]
-                            resp = dict(text=data["text"])
-                            self.last_response.update(resp)
-                            yield value if raw else resp
-                except json.decoder.JSONDecodeError:
-                    pass
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for value_bytes in response.iter_lines():
+                    try:
+                        if value_bytes and value_bytes.startswith(b"data: "): # Check for bytes
+                            # Decode bytes to string
+                            line = value_bytes[6:].decode('utf-8') 
+                            data = json.loads(line) 
+                            if "text" in data:
+                                # Decode potential unicode escapes
+                                content = data["text"].encode().decode('unicode_escape') 
+                                streaming_text += content
+                                resp = dict(text=content)
+                                self.last_response.update(resp) # Update last_response incrementally
+                                # Yield raw bytes or dict based on flag
+                                yield value_bytes if raw else resp 
+                    except (json.decoder.JSONDecodeError, UnicodeDecodeError):
+                        pass # Ignore lines that are not valid JSON or cannot be decoded
+                # Update conversation history after stream finishes
+                if streaming_text: # Only update if content was received
+                    self.conversation.update_chat_history(
+                        prompt, streaming_text # Use the fully aggregated text
+                    )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
+
 
         def for_non_stream():
-            for _ in for_stream():
-                pass
+            # Aggregate the stream using the updated for_stream logic
+            full_text = ""
+            for chunk_data in for_stream():
+                 # Ensure chunk_data is a dict (not raw) and has 'text'
+                if isinstance(chunk_data, dict) and "text" in chunk_data:
+                    full_text += chunk_data["text"]
+                # If raw=True, chunk_data is bytes, decode and process if needed (though raw non-stream is less common)
+                elif isinstance(chunk_data, bytes):
+                     try:
+                         if chunk_data.startswith(b"data: "):
+                             line = chunk_data[6:].decode('utf-8')
+                             data = json.loads(line)
+                             if "text" in data:
+                                 content = data["text"].encode().decode('unicode_escape')
+                                 full_text += content
+                     except (json.decoder.JSONDecodeError, UnicodeDecodeError):
+                         pass
+            # last_response and history are updated within for_stream
+            # Ensure last_response reflects the complete aggregated text
+            self.last_response = {"text": full_text} 
             return self.last_response
 
         return for_stream() if stream else for_non_stream()
@@ -209,11 +241,30 @@ class TurboSeek(Provider):
             str: Message extracted
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        # Text is already decoded in ask method
+        return response.get("text", "") 
+
 if __name__ == '__main__':
+    # Ensure curl_cffi is installed
     from rich import print
-    ai = TurboSeek()
-    response = ai.chat("hello buddy", stream=True)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    try: # Add try-except block for testing
+        ai = TurboSeek(timeout=60)
+        print("[bold blue]Testing Stream:[/bold blue]")
+        response_stream = ai.chat("hello buddy", stream=True)
+        full_stream_response = ""
+        for chunk in response_stream:
+            print(chunk, end="", flush=True)
+            full_stream_response += chunk
+        print("\n[bold green]Stream Test Complete.[/bold green]\n")
+
+        # Optional: Test non-stream
+        # print("[bold blue]Testing Non-Stream:[/bold blue]")
+        # response_non_stream = ai.chat("What is the capital of France?", stream=False)
+        # print(response_non_stream)
+        # print("[bold green]Non-Stream Test Complete.[/bold green]")
+
+    except exceptions.FailedToGenerateResponseError as e:
+        print(f"\n[bold red]API Error:[/bold red] {e}")
+    except Exception as e:
+        print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")
 

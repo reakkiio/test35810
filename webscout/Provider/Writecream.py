@@ -1,4 +1,5 @@
-import requests
+from curl_cffi import CurlError 
+from curl_cffi.requests import Session # Keep Session import
 import json
 from typing import Any, Dict, Optional, Generator, Union
 
@@ -29,7 +30,6 @@ class Writecream(Provider):
         act: str = None,
         system_prompt: str = "You are a helpful and informative AI assistant.",
         base_url: str = "https://8pe3nv3qha.execute-api.us-east-1.amazonaws.com/default/llm_chat",
-        user_agent: str = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
         referer: str = "https://www.writecream.com/chatgpt-chat/",
         link: str = "writecream.com",
         model: str = "writecream-gpt"
@@ -40,7 +40,8 @@ class Writecream(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.base_url = base_url
@@ -48,13 +49,16 @@ class Writecream(Provider):
         self.last_response = {}
         self.system_prompt = system_prompt
         self.model = model
-        self.user_agent = user_agent
+        # Initialize LitAgent
+        self.agent = LitAgent()
         self.referer = referer
         self.link = link
 
         self.headers = {
-            "User-Agent": self.user_agent,
+            # Use LitAgent for User-Agent
+            "User-Agent": self.agent.random(),
             "Referer": self.referer
+            # Add other headers if needed by curl_cffi impersonation or API
         }
 
         self.__available_optimizers = (
@@ -63,6 +67,7 @@ class Writecream(Provider):
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
 
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
         self.session.proxies.update(proxies)
 
@@ -123,7 +128,13 @@ class Writecream(Provider):
 
         def for_non_stream():
             try:
-                response = self.session.get(self.base_url, params=params, timeout=self.timeout)
+                # Use curl_cffi session.get with impersonate
+                response = self.session.get(
+                    self.base_url,
+                    params=params,
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
                 response.raise_for_status()
                 data = response.json()
 
@@ -135,8 +146,11 @@ class Writecream(Provider):
                 self.conversation.update_chat_history(prompt, response_content)
 
                 return {"text": response_content}
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Failed to get response from the chat API: {e}")
+                # Include original exception type
+                raise exceptions.FailedToGenerateResponseError(f"Failed to get response ({type(e).__name__}): {e}")
 
         # Currently, Writecream API doesn't support streaming, so we always return non-streaming response
         return for_non_stream()
@@ -188,6 +202,7 @@ class Writecream(Provider):
 
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<30} {'Status':<10} {'Response'}")
     print("-" * 80)

@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import os
 from typing import Any, Dict, Optional, Generator, Union
@@ -26,7 +27,7 @@ class Hunyuan(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int = 2048, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -35,7 +36,7 @@ class Hunyuan(Provider):
         history_offset: int = 10250,
         act: str = None,
         model: str = "hunyuan-t1-latest",
-        browser: str = "chrome",
+        browser: str = "chrome", # Note: browser fingerprinting might be less effective with impersonate
         api_key: str = None,
         system_prompt: str = "You are a helpful assistant.",
     ):
@@ -46,28 +47,23 @@ class Hunyuan(Provider):
             
         self.url = "https://llm.hunyuan.tencent.com/aide/api/v2/triton_image/demo_text_chat/"
         
-        # Initialize LitAgent for user agent generation
+        # Initialize LitAgent (keep if needed for other headers or logic)
         self.agent = LitAgent()
-        # Use fingerprinting to create a consistent browser identity
-        self.fingerprint = self.agent.generate_fingerprint(browser)
+        # Fingerprint generation might be less relevant with impersonate
+        self.fingerprint = self.agent.generate_fingerprint(browser) 
         
-        # Use the fingerprint for headers
+        # Use the fingerprint for headers (keep relevant ones)
         self.headers = {
             "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": self.fingerprint["accept_language"],
+            "Accept-Language": self.fingerprint["accept_language"], # Keep Accept-Language
             "Content-Type": "application/json",
-            "DNT": "1",
-            "Origin": "https://llm.hunyuan.tencent.com",
-            "Referer": "https://llm.hunyuan.tencent.com/",
-            "Sec-CH-UA": f'"{self.fingerprint["sec_ch_ua"]}"' or '"Chromium";v="134", "Not:A-Brand";v="24", "Microsoft Edge";v="134"',
-            "Sec-CH-UA-Mobile": "?0",
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "Sec-Fetch-Dest": "empty",
+            "DNT": "1", # Keep DNT
+            "Origin": "https://llm.hunyuan.tencent.com", # Keep Origin
+            "Referer": "https://llm.hunyuan.tencent.com/", # Keep Referer
+            "Sec-Fetch-Dest": "empty", # Keep Sec-Fetch-*
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "Sec-GPC": "1",
-            "User-Agent": self.fingerprint["user_agent"],
+            "Sec-GPC": "1", # Keep Sec-GPC
         }
         
         # Add authorization if API key is provided
@@ -77,9 +73,11 @@ class Hunyuan(Provider):
             # Default test key (may not work long-term)
             self.headers["Authorization"] = "Bearer 7auGXNATFSKl7dF"
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
         self.system_message = system_prompt
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -115,24 +113,20 @@ class Hunyuan(Provider):
         browser = browser or self.fingerprint.get("browser_type", "chrome")
         self.fingerprint = self.agent.generate_fingerprint(browser)
         
-        # Update headers with new fingerprint
+        # Update headers with new fingerprint (only relevant ones)
         self.headers.update({
             "Accept-Language": self.fingerprint["accept_language"],
-            "Sec-CH-UA": f'"{self.fingerprint["sec_ch_ua"]}"' or self.headers["Sec-CH-UA"],
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "User-Agent": self.fingerprint["user_agent"],
         })
         
         # Update session headers
-        for header, value in self.headers.items():
-            self.session.headers[header] = value
+        self.session.headers.update(self.headers) # Update only relevant headers
         
         return self.fingerprint
 
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -140,9 +134,7 @@ class Hunyuan(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
@@ -152,7 +144,7 @@ class Hunyuan(Provider):
 
         # Payload construction
         payload = {
-            "stream": stream,
+            "stream": True, # API seems to require stream=True based on response format
             "model": self.model,
             "query_id": query_id,
             "messages": [
@@ -164,66 +156,74 @@ class Hunyuan(Provider):
         }
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
             try:
-                with self.session.post(self.url, data=json.dumps(payload), stream=True, timeout=self.timeout, verify=False) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    data=json.dumps(payload), 
+                    stream=True, 
+                    timeout=self.timeout, 
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status() # Check for HTTP errors
                     
-                    streaming_text = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            line = line.strip()
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8').strip()
                             if line.startswith("data: "):
                                 json_str = line[6:]
                                 if json_str == "[DONE]":
                                     break
-                                try:
-                                    json_data = json.loads(json_str)
-                                    if 'choices' in json_data:
-                                        choice = json_data['choices'][0]
-                                        if 'delta' in choice and 'content' in choice['delta']:
-                                            content = choice['delta']['content']
+                                json_data = json.loads(json_str)
+                                if 'choices' in json_data:
+                                    choice = json_data['choices'][0]
+                                    if 'delta' in choice and 'content' in choice['delta']:
+                                        content = choice['delta']['content']
+                                        if content: # Ensure content is not None or empty
                                             streaming_text += content
                                             resp = dict(text=content)
-                                            yield resp if raw else resp
-                                except json.JSONDecodeError:
-                                    continue
+                                            # Yield dict or raw string chunk
+                                            yield resp if not raw else content
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue # Ignore lines that are not valid JSON or cannot be decoded
                     
-                    self.last_response = {"text": streaming_text}
-                    self.conversation.update_chat_history(prompt, streaming_text)
+                # Update history after stream finishes
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
                     
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)} - {err_text}") from e
+
 
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
+            full_text = ""
             try:
-                response = self.session.post(self.url, data=json.dumps(payload), timeout=self.timeout, verify=False)
-                if response.status_code != 200:
-                    raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed with status code {response.status_code}"
-                    )
-
-                # Process non-streaming response (need to parse all lines)
-                full_text = ""
-                for line in response.text.split('\n'):
-                    if line.startswith("data: ") and line[6:] != "[DONE]":
-                        try:
-                            json_data = json.loads(line[6:])
-                            if 'choices' in json_data:
-                                choice = json_data['choices'][0]
-                                if 'delta' in choice and 'content' in choice['delta']:
-                                    full_text += choice['delta']['content']
-                        except json.JSONDecodeError:
-                            continue
-                
-                self.last_response = {"text": full_text}
-                self.conversation.update_chat_history(prompt, full_text)
-                return {"text": full_text}
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                     if isinstance(chunk_data, dict) and "text" in chunk_data:
+                         full_text += chunk_data["text"]
+                     # Handle raw string case if raw=True was passed
+                     elif raw and isinstance(chunk_data, str):
+                          full_text += chunk_data
             except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_text if raw else self.last_response
+
+
+        # Since the API endpoint suggests streaming, always call the stream generator.
+        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -233,20 +233,31 @@ class Hunyuan(Provider):
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
-        def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, conversationally=conversationally):
-                yield self.get_message(response)
-        def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, False, optimizer=optimizer, conversationally=conversationally)
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
-        return for_stream() if stream else for_non_stream()
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

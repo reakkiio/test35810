@@ -1,6 +1,7 @@
 import uuid
-import cloudscraper
 import json
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 
 from typing import Any, Dict, Optional, Generator, Union, List, TypeVar
 
@@ -62,7 +63,8 @@ class YEPCHAT(Provider):
                 f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}"
             )
 
-        self.session = cloudscraper.create_scraper()
+        # Initialize curl_cffi Session instead of cloudscraper
+        self.session = Session() 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.chat_endpoint = "https://api.yep.com/v1/chat/completions"
@@ -111,11 +113,10 @@ class YEPCHAT(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file, tools=tools
         )
         self.conversation.history_offset = history_offset
+        # Set consistent headers and proxies for the curl_cffi session
+        self.session.headers.update(self.headers)
         self.session.proxies = proxies
-        
-        # Set consistent headers for the scraper session
-        for header, value in self.headers.items():
-            self.session.headers[header] = value
+        # Note: curl_cffi handles cookies differently, passed directly in requests
 
     def refresh_identity(self, browser: str = None):
         """
@@ -137,10 +138,9 @@ class YEPCHAT(Provider):
         })
         
         # Update session headers
-        for header, value in self.headers.items():
-            self.session.headers[header] = value
+        self.session.headers.update(self.headers)
         
-        # Generate new cookies
+        # Generate new cookies (will be passed in requests)
         self.cookies = {"__Host-session": uuid.uuid4().hex, '__cf_bm': uuid.uuid4().hex}
         
         return self.fingerprint
@@ -192,13 +192,15 @@ class YEPCHAT(Provider):
 
         def for_stream():
             try:
-                with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout) as response:
+                # Use curl_cffi session post, pass cookies explicitly
+                with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110")) as response:
                     if not response.ok:
                         # If we get a non-200 response, try refreshing our identity once
                         if response.status_code in [403, 429]:
                             self.refresh_identity()
                             # Retry with new identity
-                            with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout) as retry_response:
+                            # Use curl_cffi session post, pass cookies explicitly
+                            with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110")) as retry_response:
                                 if not retry_response.ok:
                                     raise exceptions.FailedToGenerateResponseError(
                                         f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
@@ -210,6 +212,7 @@ class YEPCHAT(Provider):
                             )
 
                     streaming_text = ""
+                    # Use response.iter_lines for curl_cffi
                     for line in response.iter_lines(decode_unicode=True):
                         if line:
                             line = line.strip()
@@ -249,16 +252,20 @@ class YEPCHAT(Provider):
                         # Normal response handling
                         self.conversation.update_chat_history(prompt, streaming_text)
                         
+            except CurlError as e: # Catch CurlError
+                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
         def for_non_stream():
             try:
-                response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout)
+                # Use curl_cffi session post, pass cookies explicitly
+                response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
                 if not response.ok:
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout)
+                        # Use curl_cffi session post, pass cookies explicitly
+                        response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
                         if not response.ok:
                             raise exceptions.FailedToGenerateResponseError(
                                 f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {response.text}"
@@ -268,6 +275,7 @@ class YEPCHAT(Provider):
                             f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                         )
 
+                # ... existing non-stream response handling code ...
                 response_data = response.json()
                 if 'choices' in response_data and len(response_data['choices']) > 0:
                     content = response_data['choices'][0].get('message', {}).get('content', '')
@@ -298,8 +306,10 @@ class YEPCHAT(Provider):
                         return {"text": content}
                 else:
                     raise exceptions.FailedToGenerateResponseError("No response content found")
+            except CurlError as e: # Catch CurlError
+                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: e")
+                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
         return for_stream() if stream else for_non_stream()
 

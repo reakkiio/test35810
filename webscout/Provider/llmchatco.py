@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import uuid
 import re
@@ -37,7 +38,7 @@ class LLMChatCo(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int = 2048, # Note: max_tokens is not used by this API
         timeout: int = 60,
         intro: str = None,
         filepath: str = None,
@@ -55,7 +56,8 @@ class LLMChatCo(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://llmchat.co/api/completion"
@@ -65,21 +67,22 @@ class LLMChatCo(Provider):
         self.system_prompt = system_prompt
         self.thread_id = str(uuid.uuid4())  # Generate a unique thread ID for conversations
         
-        # Create LitAgent instance for user agent generation
+        # Create LitAgent instance (keep if needed for other headers)
         lit_agent = Lit()
         
         # Headers based on the provided request
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
-            "User-Agent": lit_agent.random(),
+            "User-Agent": lit_agent.random(), 
             "Accept-Language": "en-US,en;q=0.9",
             "Origin": "https://llmchat.co",
             "Referer": f"https://llmchat.co/chat/{self.thread_id}",
             "DNT": "1",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin"
+            "Sec-Fetch-Site": "same-origin",
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
 
         self.__available_optimizers = (
@@ -100,7 +103,9 @@ class LLMChatCo(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
         # Store message history for conversation context
         self.last_assistant_response = ""
 
@@ -167,29 +172,31 @@ class LLMChatCo(Provider):
         }
 
         def for_stream():
+            full_response = "" # Initialize outside try block
             try:
-                # Set up the streaming request
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint, 
                     json=payload, 
-                    headers=self.headers, 
+                    # headers are set on the session
                     stream=True, 
-                    timeout=self.timeout
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
-                response.raise_for_status()
+                response.raise_for_status() # Check for HTTP errors
                 
                 # Process the SSE stream
-                full_response = ""
                 current_event = None
                 buffer = ""
                 
-                # Use a raw read approach to handle SSE
-                for chunk in response.iter_content(chunk_size=1024, decode_unicode=False):
+                # Iterate over bytes and decode manually
+                for chunk in response.iter_content(chunk_size=None, decode_unicode=False): # Use chunk_size=None for better SSE handling
                     if not chunk:
                         continue
                     
                     # Decode the chunk and add to buffer
-                    buffer += chunk.decode('utf-8')
+                    buffer += chunk.decode('utf-8', errors='replace') # Use replace for potential errors
                     
                     # Process complete lines in the buffer
                     while '\n' in buffer:
@@ -215,37 +222,50 @@ class LLMChatCo(Provider):
                                         # Extract only new content since last chunk
                                         new_text = text_chunk[len(full_response):]
                                         if new_text:
-                                            full_response = text_chunk
-                                            yield new_text if raw else dict(text=new_text)
+                                            full_response = text_chunk # Update full response tracker
+                                            resp = dict(text=new_text)
+                                            # Yield dict or raw string chunk
+                                            yield resp if not raw else new_text
                                 except json.JSONDecodeError:
-                                    continue
+                                    continue # Ignore invalid JSON data
                             elif data_content and current_event == 'done':
-                                break
+                                # Handle potential final data before done event if needed
+                                break # Exit loop on 'done' event
                 
-                self.last_response.update(dict(text=full_response))
+                # Update history after stream finishes
+                self.last_response = dict(text=full_response)
                 self.last_assistant_response = full_response
                 self.conversation.update_chat_history(
-                    prompt, self.get_message(self.last_response)
+                    prompt, full_response
                 )
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Unexpected error: {str(e)}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
         
         def for_non_stream():
-            full_response = ""
+            # Aggregate the stream using the updated for_stream logic
+            full_response_text = ""
             try:
-                for chunk in for_stream():
-                    if not raw:
-                        full_response += chunk.get('text', '')
-                    else:
-                        full_response += chunk
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_response_text += chunk_data
+
             except Exception as e:
-                if not full_response:
-                    raise exceptions.FailedToGenerateResponseError(f"Failed to get response: {str(e)}")
+                # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                if not full_response_text:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
             
-            return dict(text=full_response)
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_response_text if raw else self.last_response
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -259,25 +279,29 @@ class LLMChatCo(Provider):
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response with streaming capabilities"""
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally,
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally,
                 web_search=web_search
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                    web_search=web_search
-                )
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False, # Ensure ask returns dict
+                optimizer=optimizer,
+                conversationally=conversationally,
+                web_search=web_search
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Retrieves message from response with validation"""
@@ -285,6 +309,7 @@ class LLMChatCo(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

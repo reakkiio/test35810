@@ -6,7 +6,8 @@ import uuid
 from typing import Dict, Generator, Iterator, List, Union
 
 import random
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 from webscout.scout import Scout
 
 from webscout.AIutel import Optimizers
@@ -105,12 +106,17 @@ def get_fb_session(email, password, proxies=None):
         "upgrade-insecure-requests": "1",
         "user-agent": Lit().random(),
     }
+    # Create a session
+    session = Session()
+    if proxies:
+        session.proxies = proxies
+
     # Send the GET request
-    response = requests.get(login_url, headers=headers, proxies=proxies)
-    
+    response = session.get(login_url, headers=headers)
+
     # Use Scout for parsing instead of BeautifulSoup
     scout = Scout(response.text)
-    
+
     # Parse necessary parameters from the login form
     lsd = scout.find_first('input[name="lsd"]').get('value')
     jazoest = scout.find_first('input[name="jazoest"]').get('value')
@@ -151,9 +157,6 @@ def get_fb_session(email, password, proxies=None):
     }
 
     # Send the POST request
-    session = requests.session()
-    session.proxies = proxies
-
     result = session.post(post_url, headers=headers, data=data)
     if "sb" not in session.cookies:
         raise exceptions.FacebookInvalidCredentialsException(
@@ -195,7 +198,12 @@ def get_fb_session(email, password, proxies=None):
         "viewport-width": "1728",
     }
 
-    response = requests.request("POST", url, headers=headers, data=payload, proxies=proxies)
+    # Create a new session for this request
+    req_session = Session()
+    if proxies:
+        req_session.proxies = proxies
+
+    response = req_session.post(url, headers=headers, data=payload)
 
     state = extract_value(response.text, start_str='"state":"', end_str='"')
 
@@ -214,9 +222,13 @@ def get_fb_session(email, password, proxies=None):
         "upgrade-insecure-requests": "1",
         "user-agent": Lit().random(),
     }
-    session = requests.session()
-    session.proxies = proxies
-    response = session.get(url, headers=headers, data=payload, allow_redirects=False)
+
+    # Create a new session for Facebook
+    fb_session = Session()
+    if proxies:
+        fb_session.proxies = proxies
+
+    response = fb_session.get(url, headers=headers, data=payload, allow_redirects=False)
 
     next_url = response.headers["Location"]
 
@@ -238,8 +250,8 @@ def get_fb_session(email, password, proxies=None):
         "Sec-Fetch-User": "?1",
         "TE": "trailers",
     }
-    session.get(url, headers=headers, data=payload)
-    cookies = session.cookies.get_dict()
+    fb_session.get(url, headers=headers, data=payload)
+    cookies = fb_session.cookies.get_dict()
     if "abra_sess" not in cookies:
         raise exceptions.FacebookInvalidCredentialsException(
             "Was not able to login to Facebook. Please check your credentials. "
@@ -249,24 +261,20 @@ def get_fb_session(email, password, proxies=None):
     return cookies
 
 
-def get_cookies(self) -> dict:
+def get_cookies() -> dict:
     """
     Extracts necessary cookies from the Meta AI main page.
 
     Returns:
         dict: A dictionary containing essential cookies.
     """
-    headers = {}
-    if self.fb_email is not None and self.fb_password is not None:
-        fb_session = get_fb_session(self.fb_email, self.fb_password, self.proxy)
-        headers = {"cookie": f"abra_sess={fb_session['abra_sess']}"}
-    
-    response = requests.get(
+    # Create a session
+    session = Session()
+
+    response = session.get(
         "https://www.meta.ai/",
-        headers=headers,
-        proxies=self.proxy,
     )
-    
+
     cookies = {
         "_js_datr": extract_value(
             response.text, start_str='_js_datr":{"value":"', end_str='",'
@@ -280,14 +288,10 @@ def get_cookies(self) -> dict:
         "fb_dtsg": extract_value(
             response.text, start_str='DTSGInitData",[],{"token":"', end_str='"'
         ),
-    }
-
-    if len(headers) > 0:
-        cookies["abra_sess"] = fb_session["abra_sess"]
-    else:
-        cookies["abra_csrf"] = extract_value(
+        "abra_csrf": extract_value(
             response.text, start_str='abra_csrf":{"value":"', end_str='",'
         )
+    }
     return cookies
 
 class Meta(Provider):
@@ -328,7 +332,7 @@ class Meta(Provider):
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
         """
-        self.session = requests.Session()
+        self.session = Session()
         self.session.headers.update(
             {
                 "user-agent": Lit().random(),
@@ -385,7 +389,7 @@ class Meta(Provider):
                 self.session.proxies = self.proxy
                 return True
             return False
-        except requests.RequestException:
+        except CurlError:
             return False
 
     def get_access_token(self) -> str:
@@ -513,7 +517,7 @@ class Meta(Provider):
         if self.is_authed:
             headers["cookie"] = f'abra_sess={self.cookies["abra_sess"]}'
             # Recreate the session to avoid cookie leakage when user is authenticated
-            self.session = requests.Session()
+            self.session = Session()
             self.session.proxies = self.proxy
 
         if stream:
@@ -700,13 +704,13 @@ class Meta(Provider):
         if self.fb_email is not None and self.fb_password is not None:
             fb_session = get_fb_session(self.fb_email, self.fb_password, self.proxy)
             headers = {"cookie": f"abra_sess={fb_session['abra_sess']}"}
-        
-        response = requests.get(
-            "https://www.meta.ai/",
+
+        response = self.session.get(
+            url="https://www.meta.ai/",
             headers=headers,
             proxies=self.proxy,
         )
-        
+
         cookies = {
             "_js_datr": extract_value(
                 response.text, start_str='_js_datr":{"value":"', end_str='",'
@@ -786,7 +790,7 @@ class Meta(Provider):
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["message"]
-    
+
 if __name__ == "__main__":
     Meta = Meta()
     ai = Meta.chat("hi")

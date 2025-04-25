@@ -1,12 +1,13 @@
-import cloudscraper
+from curl_cffi.requests import Session
 from urllib.parse import urlencode
 from webscout.litagent import LitAgent
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import json
+
 class YepSearch:
     """Yep.com search class to get search results."""
-    
+
     _executor: ThreadPoolExecutor = ThreadPoolExecutor()
 
     def __init__(
@@ -14,47 +15,54 @@ class YepSearch:
         timeout: int = 20,
         proxies: Dict[str, str] | None = None,
         verify: bool = True,
+        impersonate: str = "chrome110"
     ):
         """Initialize YepSearch.
-        
+
         Args:
             timeout: Timeout value for the HTTP client. Defaults to 20.
             proxies: Proxy configuration for requests. Defaults to None.
             verify: Verify SSL certificates. Defaults to True.
+            impersonate: Browser profile to impersonate for curl_cffi. Defaults to "chrome110".
         """
         self.base_url = "https://api.yep.com/fs/2/search"
         self.timeout = timeout
-        self.session = cloudscraper.create_scraper()
+        # Initialize curl_cffi session
+        self.session = Session(
+            proxies=proxies,
+            verify=verify,
+            impersonate=impersonate,
+            timeout=timeout # Set timeout directly in session
+        )
         self.session.headers.update({
             "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
             "DNT": "1",
             "Origin": "https://yep.com",
             "Referer": "https://yep.com/",
+            # Sec-Ch-Ua headers are often handled by impersonate, but keeping them might be safer
             "Sec-Ch-Ua": '"Not(A:Brand";v="99", "Microsoft Edge";v="133", "Chromium";v="133"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"Windows"',
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site",
-            "User-Agent": LitAgent().random()
+            "User-Agent": LitAgent().random() # Keep custom User-Agent or rely on impersonate
         })
-        if proxies:
-            self.session.proxies.update(proxies)
-        self.session.verify = verify
+        # Proxies and verify are handled by the Session constructor now
 
     def _remove_html_tags(self, text: str) -> str:
         """Remove HTML tags from text using simple string manipulation.
-        
+
         Args:
             text: String containing HTML tags
-            
+
         Returns:
             Clean text without HTML tags
         """
         result = ""
         in_tag = False
-        
+
         for char in text:
             if char == '<':
                 in_tag = True
@@ -62,7 +70,7 @@ class YepSearch:
                 in_tag = False
             elif not in_tag:
                 result += char
-                
+
         # Replace common HTML entities
         replacements = {
             '&nbsp;': ' ',
@@ -72,21 +80,21 @@ class YepSearch:
             '&quot;': '"',
             '&apos;': "'",
         }
-        
+
         for entity, replacement in replacements.items():
             result = result.replace(entity, replacement)
-            
+
         return result.strip()
 
     def format_results(self, raw_results: dict) -> List[Dict]:
         """Format raw API results into a consistent structure."""
         formatted_results = []
-        
+
         if not raw_results or len(raw_results) < 2:
             return formatted_results
 
         results = raw_results[1].get('results', [])
-        
+
         for result in results:
             formatted_result = {
                 "title": self._remove_html_tags(result.get("title", "")),
@@ -97,7 +105,7 @@ class YepSearch:
                 "type": result.get("type", "organic"),
                 "first_seen": result.get("first_seen", None)
             }
-            
+
             # Add sitelinks if they exist
             if "sitelinks" in result:
                 sitelinks = []
@@ -105,7 +113,7 @@ class YepSearch:
                     sitelinks.extend(result["sitelinks"]["full"])
                 if "short" in result["sitelinks"]:
                     sitelinks.extend(result["sitelinks"]["short"])
-                
+
                 if sitelinks:
                     formatted_result["sitelinks"] = [
                         {
@@ -114,9 +122,9 @@ class YepSearch:
                         }
                         for link in sitelinks
                     ]
-            
+
             formatted_results.append(formatted_result)
-        
+
         return formatted_results
 
     def text(
@@ -154,20 +162,25 @@ class YepSearch:
             "safeSearch": safe_setting,
             "type": "web"
         }
-        
+
         url = f"{self.base_url}?{urlencode(params)}"
         try:
-            response = self.session.get(url, timeout=self.timeout)
+            # Use the session timeout defined in __init__
+            response = self.session.get(url)
             response.raise_for_status()
             raw_results = response.json()
-            
+
             formatted_results = self.format_results(raw_results)
-            
+
             if max_results:
                 return formatted_results[:max_results]
             return formatted_results
         except Exception as e:
-            raise Exception(f"Yep search failed: {str(e)}")
+            # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 raise Exception(f"Yep search failed with status {e.response.status_code}: {str(e)}")
+            else:
+                 raise Exception(f"Yep search failed: {str(e)}")
 
     def images(
         self,
@@ -210,23 +223,24 @@ class YepSearch:
             "safeSearch": safe_setting,
             "type": "images"
         }
-        
+
         url = f"{self.base_url}?{urlencode(params)}"
         try:
-            response = self.session.get(url, timeout=self.timeout)
+            # Use the session timeout defined in __init__
+            response = self.session.get(url)
             response.raise_for_status()
             raw_results = response.json()
-            
+
             if not raw_results or len(raw_results) < 2:
                 return []
 
             formatted_results = []
             results = raw_results[1].get('results', [])
-            
+
             for result in results:
                 if result.get("type") != "Image":
                     continue
-                
+
                 formatted_result = {
                     "title": self._remove_html_tags(result.get("title", "")),
                     "image": result.get("image_id", ""),
@@ -236,19 +250,23 @@ class YepSearch:
                     "width": result.get("width", 0),
                     "source": result.get("visual_url", "")
                 }
-                
+
                 # Add high-res thumbnail if available
                 if "srcset" in result:
                     formatted_result["thumbnail_hd"] = result["srcset"].split(",")[1].strip().split(" ")[0]
-                
+
                 formatted_results.append(formatted_result)
-            
+
             if max_results:
                 return formatted_results[:max_results]
             return formatted_results
-        
+
         except Exception as e:
-            raise Exception(f"Yep image search failed: {str(e)}")
+             # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 raise Exception(f"Yep image search failed with status {e.response.status_code}: {str(e)}")
+            else:
+                 raise Exception(f"Yep image search failed: {str(e)}")
 
     def suggestions(
         self,
@@ -275,23 +293,55 @@ class YepSearch:
             "type": "web",
             "gl": region
         }
-        
+
         url = f"https://api.yep.com/ac/?{urlencode(params)}"
-        
+
         try:
-            response = self.session.get(url, timeout=self.timeout)
+             # Use the session timeout defined in __init__
+            response = self.session.get(url)
             response.raise_for_status()
             data = response.json()
             # Return suggestions list if response format is valid
             if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list):
                 return data[1]
             return []
-        
+
         except Exception as e:
-            raise Exception(f"Yep suggestions failed: {str(e)}")
+             # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 raise Exception(f"Yep suggestions failed with status {e.response.status_code}: {str(e)}")
+            else:
+                 raise Exception(f"Yep suggestions failed: {str(e)}")
 
 
 if __name__ == "__main__":
-    yep = YepSearch()
-    r = yep.suggestions("hi", region="all")
-    print(r)
+    from rich import print
+    yep = YepSearch(
+        timeout=20,  # Optional: Set custom timeout
+        proxies=None,  # Optional: Use proxies
+        verify=True   # Optional: SSL verification
+    )
+
+    # Text Search
+    text_results = yep.text(
+        keywords="artificial intelligence",
+        region="all",           # Optional: Region for results
+        safesearch="moderate",  # Optional: "on", "moderate", "off"
+        max_results=10          # Optional: Limit number of results
+    )
+
+    # Image Search
+    image_results = yep.images(
+        keywords="nature photography",
+        region="all",
+        safesearch="moderate",
+        max_results=10
+    )
+
+    # Get search suggestions
+    suggestions = yep.suggestions("hist")
+    print(text_results)
+    print("---" * 30)
+    print(image_results)
+    print("---" * 30)
+    print(suggestions)

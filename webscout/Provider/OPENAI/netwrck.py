@@ -203,12 +203,14 @@ class Netwrck(OpenAICompatibleProvider):
         "x-ai/grok-2",
         "anthropic/claude-3-7-sonnet-20250219",
         "sao10k/l3-euryale-70b",
-        "openai/gpt-4o-mini",
+        "openai/gpt-4.1-mini",
         "gryphe/mythomax-l2-13b",
         "google/gemini-pro-1.5",
+        "google/gemini-2.5-flash-preview-04-17",
         "nvidia/llama-3.1-nemotron-70b-instruct",
         "deepseek/deepseek-r1",
         "deepseek/deepseek-chat"
+
     ]
 
     # Default greeting used by Netwrck

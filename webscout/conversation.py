@@ -86,8 +86,10 @@ class Conversation:
         self.status = status
         self.max_tokens_to_sample = max_tokens
         self.chat_history = ""  # Initialize as empty string
-        self.history_format = "\nUser : %(user)s\nLLM :%(llm)s"
-        self.tool_history_format = "\nUser : %(user)s\nLLM : [Tool Call: %(tool)s]\nTool : %(result)s"
+        # Updated history formats
+        self.history_format = "\nUser: %(user)s\nAssistant: %(llm)s"
+        # Tool format: Assistant outputs the tool call, then Tool provides the result
+        self.tool_history_format = "\nUser: %(user)s\nAssistant: <tool_call>%(tool_json)s</tool_call>\nTool: %(result)s"
         self.file = filepath
         self.update_file = update_file
         self.history_offset = 10250
@@ -245,10 +247,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
 3. Avoid *all* prohibited explanations/text.
 ''')
         
-        incomplete_chat_history = self.chat_history + self.history_format % {
-            "user": prompt,
-            "llm": ""
-        }
+        incomplete_chat_history = self.chat_history + "\nUser: " + prompt + "\nAssistant:" # Ensure it ends correctly
         complete_prompt = intro + self.__trim_chat_history(incomplete_chat_history, intro)
         return complete_prompt
 
@@ -274,6 +273,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         if not self.status and not force:
             return
 
+        # Use the updated history_format
         new_history = self.history_format % {"user": prompt, "llm": response}
         
         if self.file and self.update_file:
@@ -290,31 +290,33 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         # logger.info(f"Chat history updated with prompt: {prompt}")
 
     def update_chat_history_with_tool(
-        self, prompt: str, tool_name: str, tool_result: str, force: bool = False
+        self, prompt: str, tool_call_json: str, tool_result: str, force: bool = False # Changed tool_name to tool_call_json
     ) -> None:
         """Update chat history with a tool call and its result.
 
         This method:
-        - Adds tool call interaction to the history
+        - Adds tool call interaction to the history using the new format
         - Updates the file if needed
         - Maintains the conversation flow with tools
 
         Args:
             prompt (str): The user's message that triggered the tool call
-            tool_name (str): Name of the tool that was called
+            tool_call_json (str): The JSON string representing the tool call made by the assistant
             tool_result (str): Result returned by the tool
             force (bool): Force update even if history is off. Default: False
 
         Examples:
             >>> chat = Conversation()
-            >>> chat.update_chat_history_with_tool("What's the weather?", "weather_tool", "It's sunny, 75°F")
+            >>> tool_json = '{"name": "weather_tool", "arguments": {"location": "London"}}'
+            >>> chat.update_chat_history_with_tool("What's the weather?", tool_json, "It's sunny, 75°F")
         """
         if not self.status and not force:
             return
 
+        # Use the updated tool_history_format
         new_history = self.tool_history_format % {
             "user": prompt,
-            "tool": tool_name,
+            "tool_json": tool_call_json, # Use the JSON string
             "result": tool_result
         }
 
@@ -350,25 +352,35 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         if not self.validate_message(role, content):
             raise ValueError("Invalid message role or content")
 
+        # Updated role formats to match User/Assistant
         role_formats = {
             "user": "User",
-            "llm": "LLM",
+            "assistant": "Assistant", # Changed from 'llm'
+            "llm": "Assistant", # Keep llm for backward compatibility? Or remove? Let's keep for now.
             "tool": "Tool",
-            "reasoning": "Reasoning"
+            "reasoning": "Reasoning" # Keep reasoning if used internally
         }
 
         if role in role_formats:
-            self.chat_history += f"\n{role_formats[role]} : {content}"
+            # Special handling for assistant's tool call output
+            if role == "assistant" and "<tool_call>" in content:
+                 # History format already includes the tags, just add the content
+                 self.chat_history += f"\n{role_formats[role]}: {content}"
+            elif role == "tool":
+                 # Tool results follow the Assistant's tool call
+                 self.chat_history += f"\n{role_formats[role]}: {content}"
+            else:
+                 # Standard user/assistant message
+                 self.chat_history += f"\n{role_formats[role]}: {content}"
         else:
             raise ValueError(f"Invalid role: {role}. Must be one of {list(role_formats.keys())}")
 
-    #     # Enhanced logging for message addition
-    #     logger.info(f"Added message from {role}: {content}")
-    #     logging.info(f"Message added: {role}: {content}")
+        # ... (logging remains the same) ...
 
     def validate_message(self, role: str, content: str) -> bool:
         """Validate the message role and content."""
-        valid_roles = {            'user', 'llm', 'tool', 'reasoning', 'function_call'        }
+        # Updated valid roles
+        valid_roles = {'user', 'assistant', 'llm', 'tool', 'reasoning'} # Changed 'llm' to 'assistant', kept 'llm' maybe?
         if role not in valid_roles:
             logging.error(f"Invalid role: {role}")
             return False
@@ -546,14 +558,16 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             result = self.execute_function(function_call_data)
 
             # Add the result to chat history as a tool message
-            self.add_message("tool", result)
+            # The assistant's response (the tool call itself) should have been added before calling this
+            # Now we add the tool's result
+            self.add_message("tool", result) # This will now correctly add "\nTool: <result>"
 
             return {
                 "is_tool_call": True,
                 "success": True,
-                "result": result,
+                "result": result, # This is the tool's execution result
                 "tool_calls": function_call_data.get("tool_calls", []),
-                "original_response": response
+                "original_response": response # This is the LLM's response containing the <tool_call>
             }
 
         return {

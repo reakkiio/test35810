@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import uuid
 from typing import Any, Dict, Union
@@ -108,7 +109,7 @@ class MultiChatAI(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 4000,
+        max_tokens: int = 4000, # Note: max_tokens is not directly used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -119,14 +120,15 @@ class MultiChatAI(Provider):
         model: str = "llama-3.3-70b-versatile",
         system_prompt: str = "You are a friendly, helpful AI assistant.",
         temperature: float = 0.5,
-        presence_penalty: int = 0,
-        frequency_penalty: int = 0,
-        top_p: float = 1
+        presence_penalty: int = 0, # Note: presence_penalty is not used by this API
+        frequency_penalty: int = 0, # Note: frequency_penalty is not used by this API
+        top_p: float = 1 # Note: top_p is not used by this API
     ):
         """Initializes the MultiChatAI API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -138,21 +140,24 @@ class MultiChatAI(Provider):
         self.frequency_penalty = frequency_penalty
         self.top_p = top_p
         
-        # Initialize LitAgent for user agent generation
+        # Initialize LitAgent for user agent generation (keep if needed for other headers)
         self.agent = LitAgent()
         
         self.headers = {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9",
-            "content-type": "text/plain;charset=UTF-8",
+            "content-type": "text/plain;charset=UTF-8", # Keep content-type
             "origin": "https://www.multichatai.com",
             "referer": "https://www.multichatai.com/",
             "user-agent": self.agent.random(),
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
         
+        # Update curl_cffi session headers, proxies, and cookies
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
-        self.session.cookies.update({"session": uuid.uuid4().hex})
+        self.session.proxies = proxies # Assign proxies directly
+        # Set cookies on the session object for curl_cffi
+        self.session.cookies.set("session", uuid.uuid4().hex)
 
         self.__available_optimizers = (
             method for method in dir(Optimizers)
@@ -225,34 +230,41 @@ class MultiChatAI(Provider):
         error_msg = f"Invalid model: {model}\nAvailable models: {', '.join(available_models)}"
         raise ValueError(error_msg)
 
-    def _make_request(self, payload: Dict[str, Any]) -> requests.Response:
+    def _make_request(self, payload: Dict[str, Any]) -> Any:
         """Make the API request with proper error handling."""
         try:
+            # Use curl_cffi session post with impersonate
+            # Cookies are handled by the session
             response = self.session.post(
                 self._get_endpoint(),
-                headers=self.headers,
+                # headers are set on the session
                 json=payload,
                 timeout=self.timeout,
+                # proxies are set on the session
+                impersonate="chrome110" # Use a common impersonation profile
             )
-            response.raise_for_status()
+            response.raise_for_status() # Check for HTTP errors
             return response
-        except requests.exceptions.RequestException as e:
-            raise exceptions.FailedToGenerateResponseError(f"API request failed: {e}") from e
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"API request failed (CurlError): {e}") from e
+        except Exception as e: # Catch other potential exceptions (like HTTPError)
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"API request failed ({type(e).__name__}): {e} - {err_text}") from e
 
     def ask(
         self,
         prompt: str,
-        raw: bool = False,
+        raw: bool = False, # Keep raw param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
+        # Add stream parameter for consistency, though API doesn't stream
+        stream: bool = False 
     ) -> Dict[str, Any]:
         """Sends a prompt to the MultiChatAI API and returns the response."""
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 error_msg = f"Optimizer is not one of {self.__available_optimizers}"
                 raise exceptions.FailedToGenerateResponseError(error_msg)
@@ -263,26 +275,43 @@ class MultiChatAI(Provider):
             "customModelId": "",
         }
 
+        # API does not stream, implement non-stream logic directly
         response = self._make_request(payload)
         try:
+            # Use response.text which is already decoded
             full_response = response.text.strip()
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
-            return self.last_response
-        except json.JSONDecodeError as e:
-            raise exceptions.FailedToGenerateResponseError(f"Invalid JSON response: {e}") from e
+            # Return dict or raw string based on raw flag
+            return full_response if raw else self.last_response
+        except Exception as e: # Catch potential errors during text processing
+            raise exceptions.FailedToGenerateResponseError(f"Failed to process response: {e}") from e
 
     def chat(
         self,
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
+        # Add stream parameter for consistency
+        stream: bool = False
     ) -> str:
         """Generate response."""
-        response = self.ask(
-            prompt, optimizer=optimizer, conversationally=conversationally
+        # Since ask() now handles both stream=True/False by returning the full response dict/str:
+        response_data = self.ask(
+            prompt, 
+            stream=False, # Call ask in non-stream mode internally
+            raw=False, # Ensure ask returns dict
+            optimizer=optimizer, 
+            conversationally=conversationally
         )
-        return self.get_message(response)
+        # If stream=True was requested, simulate streaming by yielding the full message at once
+        if stream:
+            def stream_wrapper():
+                yield self.get_message(response_data)
+            return stream_wrapper()
+        else:
+            # If stream=False, return the full message directly
+            return self.get_message(response_data)
 
     def get_message(self, response: Union[Dict[str, Any], str]) -> str:
         """

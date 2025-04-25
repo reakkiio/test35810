@@ -4,7 +4,7 @@ DWEBS - A Google search library with advanced features
 import random
 from time import sleep
 from webscout.scout import Scout
-from requests import get
+from curl_cffi.requests import Session
 from urllib.parse import unquote, urlencode
 from typing import List, Dict, Optional, Union, Iterator, Any
 from concurrent.futures import ThreadPoolExecutor
@@ -35,34 +35,55 @@ class SearchResult:
 
 class GoogleSearch:
     """Google search implementation with configurable parameters and advanced features."""
-    
+
     _executor: ThreadPoolExecutor = ThreadPoolExecutor()
-    
+
     def __init__(
         self,
         timeout: int = 10,
         proxies: Optional[Dict[str, str]] = None,
         verify: bool = True,
         lang: str = "en",
-        sleep_interval: float = 0.0
+        sleep_interval: float = 0.0,
+        impersonate: str = "chrome110"
     ):
         """
         Initialize GoogleSearch with custom settings.
-        
+
         Args:
             timeout: Request timeout in seconds
             proxies: Proxy configuration for requests
             verify: Whether to verify SSL certificates
             lang: Search language
             sleep_interval: Sleep time between pagination requests
+            impersonate: Browser profile for curl_cffi. Defaults to "chrome110".
         """
-        self.timeout = timeout
+        self.timeout = timeout # Keep timeout for potential non-session uses or reference
         self.proxies = proxies if proxies else {}
         self.verify = verify
         self.lang = lang
         self.sleep_interval = sleep_interval
         self.base_url = "https://www.google.com/search"
-    
+        # Initialize curl_cffi session
+        self.session = Session(
+            proxies=self.proxies,
+            verify=self.verify,
+            timeout=self.timeout,
+            impersonate=impersonate
+        )
+        # Set common headers for the session
+        self.session.headers = {
+            "User-Agent": self._get_useragent(),
+            "Accept-Language": self.lang,
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        }
+        # Set default cookies for the session
+        self.session.cookies.update({
+            'CONSENT': 'PENDING+987',
+            'SOCS': 'CAESHAgBEhIaAB',
+        })
+
     def _get_useragent(self) -> str:
         """
         Generate a random user agent string.
@@ -99,29 +120,23 @@ class GoogleSearch:
         # Add search type if specified
         if search_type:
             params["tbm"] = search_type
-            
+        
         try:
-            resp = get(
+            # Use the curl_cffi session
+            resp = self.session.get(
                 url=self.base_url,
-                headers={
-                    "User-Agent": self._get_useragent(),
-                    "Accept-Language": self.lang,
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                },
                 params=params,
-                proxies=self.proxies if any(self.proxies) else None,
-                timeout=self.timeout,
-                verify=self.verify,
-                cookies={
-                    'CONSENT': 'PENDING+987',
-                    'SOCS': 'CAESHAgBEhIaAB',
-                }
+                # Headers and cookies are now part of the session
+                # proxies, timeout, verify are handled by the session
             )
             resp.raise_for_status()
             return resp.text
         except Exception as e:
-            raise RuntimeError(f"Search request failed: {str(e)}")
+            # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 raise RuntimeError(f"Search request failed with status {e.response.status_code}: {str(e)}")
+            else:
+                 raise RuntimeError(f"Search request failed: {str(e)}")
     
     def _extract_url(self, raw_link: str) -> Optional[str]:
         """
@@ -283,8 +298,15 @@ class GoogleSearch:
         start = start_num
         
         while len(fetched_results) < max_results:
+            # Add safe search parameter to the request
+            # Note: This modifies the session params for this specific request type
+            # It might be better to pass params directly to session.get if mixing search types
+            term_with_safe = f"{keywords} safe:{safe}"
+            if region and region.lower() != "all":
+                 term_with_safe += f" location:{region}" # Example of adding region, adjust as needed
+
             response_html = self._make_request(
-                term=keywords, 
+                term=term_with_safe, # Pass term with safe search
                 results=max_results - len(fetched_results), 
                 start=start
             )
@@ -304,7 +326,7 @@ class GoogleSearch:
             if len(fetched_results) >= max_results:
                 break
             
-            start += 10
+            start += 10 # Google typically uses increments of 10
             sleep(self.sleep_interval)
         
         return fetched_results[:max_results]
@@ -340,11 +362,15 @@ class GoogleSearch:
         safe = safe_map.get(safesearch.lower(), "moderate")
         
         # Keep track of unique results
-        fetched_results = []
         fetched_links = set()
-        
+
+        # Add safe search parameter
+        term_with_safe = f"{keywords} safe:{safe}"
+        if region and region.lower() != "all":
+             term_with_safe += f" location:{region}" # Example
+
         response_html = self._make_request(
-            term=keywords, 
+            term=term_with_safe, # Pass term with safe search
             results=max_results,
             search_type="nws"
         )
@@ -353,7 +379,7 @@ class GoogleSearch:
             html=response_html,
             num_results=max_results,
             fetched_links=fetched_links,
-            unique=True
+            unique=True # News results are generally unique per request
         )
         
         return results[:max_results]
@@ -384,17 +410,19 @@ class GoogleSearch:
             
             url = f"https://www.google.com/complete/search?{urlencode(params)}"
             
+            # Use a simpler header set for the suggestions API
             headers = {
                 "User-Agent": self._get_useragent(),
                 "Accept": "application/json, text/javascript, */*",
                 "Accept-Language": self.lang,
             }
             
-            response = get(
+            # Use session.get but override headers for this specific request
+            response = self.session.get(
                 url=url,
                 headers=headers,
-                timeout=self.timeout,
-                verify=self.verify
+                params=params # Pass params directly
+                # timeout and verify are handled by session
             )
             response.raise_for_status()
             
@@ -405,25 +433,40 @@ class GoogleSearch:
             return []
             
         except Exception as e:
+            # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 # Log error or handle differently if needed
+                 print(f"Suggestions request failed with status {e.response.status_code}: {str(e)}")
+            else:
+                 print(f"Suggestions request failed: {str(e)}")
             # Return empty list on error instead of raising exception
             return []
 
 
 # Legacy function support for backward compatibility
-def search(term, num_results=10, lang="en", proxy=None, advanced=False, sleep_interval=0, timeout=5, safe="active", ssl_verify=True, region=None, start_num=0, unique=False):
+def search(term, num_results=10, lang="en", proxy=None, advanced=False, sleep_interval=0, timeout=5, safe="active", ssl_verify=True, region=None, start_num=0, unique=False, impersonate="chrome110"): # Added impersonate
     """Legacy function for backward compatibility."""
     google_search = GoogleSearch(
         timeout=timeout,
         proxies={"https": proxy, "http": proxy} if proxy else None,
         verify=ssl_verify,
         lang=lang,
-        sleep_interval=sleep_interval
+        sleep_interval=sleep_interval,
+        impersonate=impersonate # Pass impersonate
     )
     
+    # Map legacy safe values
+    safe_search_map = {
+        "active": "on",
+        "moderate": "moderate",
+        "off": "off"
+    }
+    safesearch_val = safe_search_map.get(safe, "moderate")
+
     results = google_search.text(
         keywords=term,
         region=region,
-        safesearch="on" if safe == "active" else "moderate" if safe == "moderate" else "off",
+        safesearch=safesearch_val,
         max_results=num_results,
         start_num=start_num,
         unique=unique

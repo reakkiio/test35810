@@ -1,7 +1,9 @@
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session # Import Session
 import json
 from typing import Generator, Dict, Any, List, Union
 from uuid import uuid4
+import random
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -28,23 +30,26 @@ class Venice(Provider):
         is_conversation: bool = True,
         max_tokens: int = 2000,
         timeout: int = 30,
-        temperature: float = 0.8,
-        top_p: float = 0.9,
+        temperature: float = 0.8, # Keep temperature, user might want to adjust
+        top_p: float = 0.9, # Keep top_p
         intro: str = None,
         filepath: str = None,
         update_file: bool = True,
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "llama-3.3-70b",
-        system_prompt: str = "You are a helpful AI assistant."
+        model: str = "mistral-31-24b", 
+        # System prompt is empty in the example, but keep it configurable
+        system_prompt: str = "" 
     ):
         """Initialize Venice AI client"""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
-        self.api_endpoint = "https://venice.ai/api/inference/chat"
-        self.session = requests.Session()
+        # Update API endpoint
+        self.api_endpoint = "https://outerface.venice.ai/api/inference/chat" 
+        # Initialize curl_cffi Session
+        self.session = Session() 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.temperature = temperature
@@ -54,22 +59,29 @@ class Venice(Provider):
         self.system_prompt = system_prompt
         self.last_response = {}
         
-        # Headers for the request
+        # Update Headers based on successful request
         self.headers = {
-            "User-Agent": LitAgent().random(),
+            "User-Agent": LitAgent().random(), # Keep using LitAgent
             "accept": "*/*",
-            "accept-language": "en-US,en;q=0.9",
+            "accept-language": "en-US,en;q=0.9", # Keep existing
             "content-type": "application/json",
             "origin": "https://venice.ai",
-            "referer": "https://venice.ai/chat/",
-            "sec-ch-ua": '"Google Chrome";v="133", "Chromium";v="133", "Not?A_Brand";v="24"',
+            "referer": "https://venice.ai/", # Update referer
+            # Update sec-ch-ua to match example
+            "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"', 
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin"
+            # Update sec-fetch-site to match example
+            "sec-fetch-site": "same-site", 
+            # Add missing headers from example
+            "priority": "u=1, i", 
+            "sec-gpc": "1",
+            "x-venice-version": "interface@20250424.065523+50bac27" # Add version header
         }
-        
+
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
         self.session.proxies.update(proxies)
         
@@ -108,64 +120,87 @@ class Venice(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
-        # Payload construction
+        # Update Payload construction based on successful request
         payload = {
-            "requestId": str(uuid4())[:7],
+            "requestId": str(uuid4())[:7], # Keep generating request ID
             "modelId": self.model,
             "prompt": [{"content": conversation_prompt, "role": "user"}],
-            "systemPrompt": self.system_prompt,
+            "systemPrompt": self.system_prompt, # Use configured system prompt
             "conversationType": "text",
-            "temperature": self.temperature,
-            "webEnabled": True,
-            "topP": self.top_p,
-            "includeVeniceSystemPrompt": False,
-            "isCharacter": False,
-            "clientProcessingTime": 2000
+            "temperature": self.temperature, # Use configured temperature
+            "webEnabled": True, # Keep webEnabled
+            "topP": self.top_p, # Use configured topP
+            "includeVeniceSystemPrompt": True, # Set to True as per example
+            "isCharacter": False, # Keep as False
+            # Add missing fields from example payload
+            "userId": "user_anon_" + str(random.randint(1000000000, 9999999999)), # Generate anon user ID
+            "isDefault": True, 
+            "textToSpeech": {"voiceId": "af_sky", "speed": 1},
+            "clientProcessingTime": random.randint(10, 50) # Randomize slightly
         }
 
         def for_stream():
             try:
-                with self.session.post(
+                # Use curl_cffi session post
+                response = self.session.post(
                     self.api_endpoint, 
                     json=payload, 
                     stream=True, 
-                    timeout=self.timeout
-                ) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
+                    timeout=self.timeout,
+                    impersonate="edge101" # Match impersonation closer to headers
+                ) 
+                # Check response status after the call
+                if response.status_code != 200:
+                    # Include response text in error
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Request failed with status code {response.status_code} - {response.text}"
+                    )
                     
-                    streaming_text = ""
-                    for line in response.iter_lines():
-                        if not line:
-                            continue
-                        
-                        try:
-                            # Decode bytes to string
-                            line_data = line.decode('utf-8').strip()
-                            if '"kind":"content"' in line_data:
-                                data = json.loads(line_data)
-                                if 'content' in data:
-                                    content = data['content']
-                                    streaming_text += content
-                                    resp = dict(text=content)
-                                    yield resp if raw else resp
-                        except json.JSONDecodeError:
-                            continue
-                        except UnicodeDecodeError:
-                            continue
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for line in response.iter_lines(): # Removed decode_unicode
+                    if not line:
+                        continue
                     
-                    self.conversation.update_chat_history(prompt, streaming_text)
+                    try:
+                        # Decode bytes to string
+                        line_data = line.decode('utf-8').strip()
+                        if '"kind":"content"' in line_data:
+                            data = json.loads(line_data)
+                            if 'content' in data:
+                                content = data['content']
+                                streaming_text += content
+                                resp = dict(text=content)
+                                # Yield content or dict based on raw flag
+                                yield content if raw else resp 
+                    except json.JSONDecodeError:
+                        continue
+                    except UnicodeDecodeError:
+                        continue
+                
+                # Update history and last response after stream finishes
+                self.conversation.update_chat_history(prompt, streaming_text)
+                self.last_response = {"text": streaming_text} 
                     
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            except CurlError as e: 
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            # Catch requests.exceptions.RequestException if needed, but CurlError is primary for curl_cffi
+            except Exception as e: 
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
             full_text = ""
-            for chunk in for_stream():
-                full_text += chunk["text"]
-            return {"text": full_text}
+            # Iterate through the generator provided by for_stream
+            for chunk_data in for_stream(): 
+                # Check if chunk_data is a dict (not raw) and has 'text'
+                if isinstance(chunk_data, dict) and "text" in chunk_data:
+                    full_text += chunk_data["text"]
+                # If raw=True, chunk_data is the string content itself
+                elif isinstance(chunk_data, str): 
+                     full_text += chunk_data
+            # Update last_response after aggregation
+            self.last_response = {"text": full_text} 
+            return self.last_response 
 
         return for_stream() if stream else for_non_stream()
 
@@ -190,6 +225,7 @@ class Venice(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

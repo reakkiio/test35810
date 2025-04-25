@@ -1,7 +1,8 @@
 import re
-import requests
 import json
 from typing import Union, Any, Dict, Generator, Optional
+from curl_cffi import CurlError 
+from curl_cffi.requests import Session
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -22,8 +23,7 @@ class WiseCat(Provider):
         "chat-model-reasoning",
     ]
 
-    def __init__(
-        self,
+    def __init__(self,
         is_conversation: bool = True,
         max_tokens: int = 600,
         timeout: int = 30,
@@ -41,17 +41,21 @@ class WiseCat(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://wise-cat-groq.vercel.app/api/chat"
-        self.stream_chunk_size = 64
+        # stream_chunk_size is not directly applicable to curl_cffi iter_lines
+        # self.stream_chunk_size = 64 
         self.timeout = timeout
         self.last_response = {}
         self.model = model
         self.system_prompt = system_prompt
         self.litagent = LitAgent()
-        self.headers = self.litagent.generate_fingerprint()
+        # Generate headers using LitAgent, but apply them to the curl_cffi session
+        self.headers = self.litagent.generate_fingerprint() 
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
         self.session.proxies = proxies
 
@@ -108,27 +112,43 @@ class WiseCat(Provider):
         }
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout
-            )
-            if not response.ok:
-                error_msg = f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                raise exceptions.FailedToGenerateResponseError(error_msg)
+            try: # Add try block for CurlError
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    headers=self.headers, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                if not response.ok:
+                    error_msg = f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    raise exceptions.FailedToGenerateResponseError(error_msg)
 
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    match = re.search(r'0:"(.*?)"', line)
-                    if match:
-                        content = match.group(1)
-                        streaming_response += content
-                        yield content if raw else dict(text=content)
-            self.last_response.update(dict(text=streaming_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                streaming_response = ""
+                # Iterate over bytes and decode manually
+                for byte_line in response.iter_lines(): # Remove decode_unicode=True
+                    if byte_line:
+                        line = byte_line.decode('utf-8') # Decode bytes to string
+                        match = re.search(r'0:"(.*?)"', line)
+                        if match:
+                            # Decode potential unicode escapes
+                            content = match.group(1).encode().decode('unicode_escape') 
+                            streaming_response += content
+                            yield content if raw else dict(text=content)
+                self.last_response.update(dict(text=streaming_response))
+                self.conversation.update_chat_history(
+                    prompt, self.get_message(self.last_response)
+                )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
+
 
         def for_non_stream():
+            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
             return self.last_response
@@ -167,6 +187,7 @@ class WiseCat(Provider):
         return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

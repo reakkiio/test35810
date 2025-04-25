@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator
 
@@ -52,8 +53,8 @@ class Sambanova(Provider):
         self.model = model
         self.system_prompt = system_prompt
 
-        self.session = requests.Session()
-        self.session.proxies = proxies
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -80,8 +81,13 @@ class Sambanova(Provider):
         self.base_url = "https://api.sambanova.ai/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            # Add User-Agent or sec-ch-ua headers if needed, or rely on impersonate
         }
+        
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
 
     def ask(
         self,
@@ -105,36 +111,42 @@ class Sambanova(Provider):
 
         payload = {
             "model": self.model,
-            "stream": stream,
             "messages": [
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": conversation_prompt},
             ],
             "max_tokens": self.max_tokens_to_sample,
+            "stream": True # API seems to always stream based on endpoint name
         }
 
         def for_stream():
-            streaming_text = ""
+            streaming_text = "" # Initialize outside try block
             try:
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
-                    self.base_url, headers=self.headers, json=payload, stream=True, timeout=self.timeout
+                    self.base_url, 
+                    # headers are set on the session
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
-                if not response.ok:
-                    raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed: {response.status_code} - {response.text}"
-                    )
+                response.raise_for_status() # Check for HTTP errors
 
-                for line in response.iter_lines():
-                    if line:
-                        # Remove the "data:" prefix and extra whitespace if present
-                        line_str = line.decode('utf-8').strip() if isinstance(line, bytes) else line.strip()
-                        if line_str.startswith("data:"):
-                            data = line_str[5:].strip()
-                        else:
-                            data = line_str
-                        if data == "[DONE]":
-                            break
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
                         try:
+                            line_str = line_bytes.decode('utf-8').strip()
+                            if line_str.startswith("data:"):
+                                data = line_str[5:].strip()
+                            else:
+                                data = line_str # Handle cases where 'data:' prefix might be missing
+                            
+                            if data == "[DONE]":
+                                break
+                            
                             json_data = json.loads(data)
                             # Skip entries without valid choices
                             if not json_data.get("choices"):
@@ -143,26 +155,52 @@ class Sambanova(Provider):
                             delta = choice.get("delta", {})
                             if "content" in delta:
                                 content = delta["content"]
-                                streaming_text += content
-                                # Yield content directly as a string for consistency
-                                yield content
+                                if content: # Ensure content is not None or empty
+                                    streaming_text += content
+                                    resp = {"text": content}
+                                    # Yield dict or raw string chunk
+                                    yield resp if not raw else content
                             # If finish_reason is provided, consider the stream complete
                             if choice.get("finish_reason"):
                                 break
-                        except json.JSONDecodeError:
-                            continue
-                self.last_response = streaming_text
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue # Ignore lines that are not valid JSON or cannot be decoded
+                
+                # Update history after stream finishes
+                self.last_response = streaming_text # Store aggregated text
                 self.conversation.update_chat_history(
                     prompt, self.last_response
                 )
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Request failed: {e}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.ProviderConnectionError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.ProviderConnectionError(f"Request failed ({type(e).__name__}): {e} - {err_text}") from e
+
 
         def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            # Aggregate the stream using the updated for_stream logic
+            full_response_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_response_text if raw else {"text": self.last_response} # Return dict for consistency
+
+
+        # Since the API endpoint suggests streaming, always call the stream generator.
+        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -173,12 +211,28 @@ class Sambanova(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response `str`"""
-        if stream:
-            # For stream mode, yield the text chunks directly
-            return self.ask(prompt, stream=True, optimizer=optimizer, conversationally=conversationally)
-        else:
-            # For non-stream mode, return the complete text response
-            return self.ask(prompt, stream=False, optimizer=optimizer, conversationally=conversationally)
+        
+        def for_stream_chat():
+             # ask() yields dicts or strings when streaming
+             gen = self.ask(
+                 prompt, stream=True, raw=False, # Ensure ask yields dicts
+                 optimizer=optimizer, conversationally=conversationally
+             )
+             for response_dict in gen:
+                 yield self.get_message(response_dict) # get_message expects dict or string
+
+        def for_non_stream_chat():
+             # ask() returns dict or str when not streaming
+             response_data = self.ask(
+                 prompt,
+                 stream=False,
+                 raw=False, # Ensure ask returns dict
+                 optimizer=optimizer,
+                 conversationally=conversationally,
+             )
+             return self.get_message(response_data) # get_message expects dict or string
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Any) -> str:
         """
@@ -197,6 +251,7 @@ class Sambanova(Provider):
         return ""
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     ai = Sambanova(api_key='')
     response = ai.chat(input(">>> "), stream=True)

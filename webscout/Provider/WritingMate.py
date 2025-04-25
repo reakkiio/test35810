@@ -1,5 +1,7 @@
 import re
-import requests, json
+import json
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 from typing import Union, Any, Dict, Generator, Optional
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
@@ -29,27 +31,34 @@ class WritingMate(Provider):
         intro: str = None,
         filepath: str = None,
         update_file: bool = True,
+        proxies: dict = {}, # Added proxies parameter
+        history_offset: int = 10250, # Added history_offset parameter
         act: str = None,
         system_prompt: str = "You are a friendly, helpful AI assistant.",
         model: str = "gpt-4o-mini"
     ):
         self.cookies_path = cookies_path
-        self.cookies = self._load_cookies(cookies_path)
-        self.session = requests.Session()
+        # Load cookies into a dictionary for curl_cffi
+        self.cookies = self._load_cookies_dict(cookies_path) 
+        # Initialize curl_cffi Session
+        self.session = Session() 
         self.timeout = timeout
         self.system_prompt = system_prompt
         self.model = model
         if self.model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Unknown model: {self.model}. Choose from {self.AVAILABLE_MODELS}")
         self.last_response = {}
+        self.agent = LitAgent() # Initialize LitAgent
         self.headers = {
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "Content-Type": "text/plain;charset=UTF-8",
+            # Content-Type might be application/json based on body, but API expects text/plain? Keep for now.
+            "Content-Type": "text/plain;charset=UTF-8", 
             "Origin": "https://chat.writingmate.ai",
             "Referer": "https://chat.writingmate.ai/chat",
-            "Cookie": self.cookies,
+            # Remove Cookie header, pass cookies via parameter
+            # "Cookie": self.cookies, 
             "DNT": "1",
             "sec-ch-ua": "\"Microsoft Edge\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
             "sec-ch-ua-mobile": "?0",
@@ -58,9 +67,12 @@ class WritingMate(Provider):
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
             "Sec-GPC": "1",
-            "User-Agent": LitAgent().random()
+            "User-Agent": self.agent.random() # Use LitAgent
         }
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies 
+        
         self.__available_optimizers = (
             m for m in dir(Optimizers)
             if callable(getattr(Optimizers, m)) and not m.startswith("__")
@@ -70,25 +82,40 @@ class WritingMate(Provider):
             if act else intro or Conversation.intro
         )
         self.conversation = Conversation(is_conversation, max_tokens, filepath, update_file)
-        self.conversation.history_offset = 10250
+        # Apply history offset
+        self.conversation.history_offset = history_offset 
 
-    def _load_cookies(self, path: str) -> str:
+    # Keep original _load_cookies if needed elsewhere, or remove
+    # def _load_cookies(self, path: str) -> str:
+    #     try:
+    #         with open(path, 'r') as f:
+    #             data = json.load(f)
+    #         return '; '.join(f"{c['name']}={c['value']}" for c in data)
+    #     except (FileNotFoundError, json.JSONDecodeError):
+    #         raise RuntimeError(f"Failed to load cookies from {path}")
+
+    # New method to load cookies as a dictionary
+    def _load_cookies_dict(self, path: str) -> Dict[str, str]:
         try:
             with open(path, 'r') as f:
                 data = json.load(f)
-            return '; '.join(f"{c['name']}={c['value']}" for c in data)
-        except (FileNotFoundError, json.JSONDecodeError):
-            raise RuntimeError(f"Failed to load cookies from {path}")
+            # Ensure data is a list of cookie objects
+            if not isinstance(data, list):
+                 raise ValueError("Cookie file should contain a list of cookie objects.")
+            return {c['name']: c['value'] for c in data if 'name' in c and 'value' in c}
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            raise RuntimeError(f"Failed to load cookies from {path}: {e}")
 
 
     def ask(
         self,
         prompt: str,
-        stream: bool = True,
+        stream: bool = True, # Defaulting stream to True as per original
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False
     ) -> Union[Dict[str,Any], Generator[Any,None,None]]:
+        # ... existing prompt generation and optimizer logic ...
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -96,8 +123,10 @@ class WritingMate(Provider):
                     conversation_prompt if conversationally else prompt
                 )
             else:
+                # Use the correct exception type
                 raise exceptions.FailedToGenerateResponseError(f"Unknown optimizer: {optimizer}")
 
+        # Body seems to be JSON, let curl_cffi handle serialization
         body = {
             "chatSettings": {
                 "model": self.model,
@@ -116,82 +145,110 @@ class WritingMate(Provider):
         }
 
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=body, stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try:
+                # Use curl_cffi session post, pass cookies dict
+                response = self.session.post(
+                    self.api_endpoint, 
+                    headers=self.headers, 
+                    cookies=self.cookies, # Pass cookies dict
+                    json=body, # Pass body as json
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                    # http_version=CurlHttpVersion.V1_1 # Add if HTTP/2 errors occur
                 )
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    match = re.search(r'0:"(.*?)"', line)
-                    if match:
-                        content = match.group(1)
-                        streaming_response += content
-                        yield content if raw else dict(text=content)
-            self.last_response.update(dict(text=streaming_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
+                streaming_response = ""
+                # Iterate over bytes and decode manually
+                for byte_line in response.iter_lines(): # Remove decode_unicode=True
+                    if byte_line:
+                        line = byte_line.decode('utf-8') # Decode bytes to string
+                        match = re.search(r'0:"(.*?)"', line)
+                        if match:
+                            # Decode potential unicode escapes
+                            content = match.group(1).encode().decode('unicode_escape') 
+                            streaming_response += content
+                            yield content if raw else dict(text=content)
+                self.last_response.update(dict(text=streaming_response))
+                self.conversation.update_chat_history(
+                    prompt, self.get_message(self.last_response)
+                )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
+            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
             return self.last_response
 
-        return for_stream() if stream else for_non_stream()
+        # Ensure stream defaults to True if not provided, matching original behavior
+        effective_stream = stream if stream is not None else True 
+        return for_stream() if effective_stream else for_non_stream()
 
     def chat(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # Default stream to False as per original chat method
         optimizer: str = None,
         conversationally: bool = False
     ) -> Union[str, Generator[str,None,None]]:
         if stream:
-            # yield raw SSE lines
-            def raw_stream():
-                for line in self.ask(
-                    prompt, stream=True, raw=True,
+            # yield decoded text chunks
+            def text_stream():
+                # Call ask with stream=True, raw=False to get dicts
+                for response_dict in self.ask(
+                    prompt, stream=True, raw=False,
                     optimizer=optimizer, conversationally=conversationally
                 ):
-                    yield line
-            return raw_stream()
-        # non‐stream: return aggregated text
-        return self.get_message(
-            self.ask(
+                    # Extract text from dict
+                    yield self.get_message(response_dict) 
+            return text_stream()
+        else: # non‐stream: return aggregated text
+            # Call ask with stream=False, raw=False
+            response_data = self.ask(
                 prompt,
-                False,
+                stream=False,
                 raw=False,
                 optimizer=optimizer,
                 conversationally=conversationally,
             )
-        )
+            # Ensure response_data is a dict before passing to get_message
+            if isinstance(response_data, dict):
+                 return self.get_message(response_data)
+            else:
+                 # Handle unexpected generator case if ask(stream=False) behaves differently
+                 # This part might need adjustment based on actual behavior
+                 full_text = "".join(self.get_message(chunk) for chunk in response_data if isinstance(chunk, dict))
+                 return full_text
+
 
     def get_message(self, response: dict) -> str:
-        """
-        Extracts the message from the API response.
-
-        Args:
-            response (dict): The API response.
-
-        Returns:
-            str: The message content.
-
-        Examples:
-            >>> ai = X0GPT()
-            >>> response = ai.ask("Tell me a joke!")
-            >>> message = ai.get_message(response)
-            >>> print(message)
-            'Why did the scarecrow win an award? Because he was outstanding in his field!'
-        """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        formatted_text = response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        # Ensure text exists before processing
+        text = response.get("text", "")
+        formatted_text = text.replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\') 
         return formatted_text
     
 if __name__ == "__main__":
     from rich import print
-    ai = WritingMate(cookies_path="cookies.json")
-    response = ai.chat(input(">>> "), stream=True)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    try:
+        ai = WritingMate(cookies_path="cookies.json", proxies={}, timeout=120) # Example with proxies and timeout
+        # Get input within the try block
+        user_input = input(">>> ") 
+        response = ai.chat(user_input, stream=True)
+        print("[bold green]Assistant:[/bold green]")
+        for chunk in response:
+            print(chunk, end="", flush=True)
+        print() # Add a newline at the end
+    except RuntimeError as e:
+        print(f"[bold red]Error initializing WritingMate:[/bold red] {e}")
+    except exceptions.FailedToGenerateResponseError as e:
+        print(f"[bold red]Error during chat:[/bold red] {e}")
+    except Exception as e:
+        print(f"[bold red]An unexpected error occurred:[/bold red] {e}")

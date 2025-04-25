@@ -1,12 +1,12 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
-import os
 from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream
-from webscout.AIbase import Provider, AsyncProvider
+from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
 class TwoAI(Provider):
@@ -47,9 +47,11 @@ class TwoAI(Provider):
             'Referer': 'https://api.two.app/'
         }
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -90,9 +92,7 @@ class TwoAI(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
@@ -111,39 +111,65 @@ class TwoAI(Provider):
 
         def for_stream():
             try:
-                with self.session.post(self.url, json=payload, stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Add impersonate
+                )
+                
+                if response.status_code != 200:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Request failed with status code {response.status_code} - {response.text}"
+                    )
                     
-                    streaming_text = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            try:
-                                chunk = json.loads(line)
-                                if chunk["typeName"] == "LLMChunk":
-                                    content = chunk["content"]
-                                    streaming_text += content
-                                    resp = dict(text=content)
-                                    yield resp if raw else resp
-                            except json.JSONDecodeError:
-                                continue
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8') # Decode bytes
+                            chunk = json.loads(line)
+                            if chunk.get("typeName") == "LLMChunk": # Use .get for safety
+                                content = chunk.get("content", "") # Use .get for safety
+                                streaming_text += content
+                                resp = dict(text=content)
+                                # Yield dict or raw string
+                                yield resp if raw else resp
+                        except json.JSONDecodeError:
+                            continue
+                        except UnicodeDecodeError:
+                            continue
+                
+                # Update history and last response after stream finishes
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
                     
-                    self.last_response = {"text": streaming_text}
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
+            # Non-stream requests might not work the same way if the API expects streaming.
+            # This implementation aggregates the stream.
             streaming_text = ""
-            for resp in for_stream():
-                streaming_text += resp["text"]
-            self.last_response = {"text": streaming_text}
-            return self.last_response
+            # Iterate through the generator provided by for_stream
+            for chunk_data in for_stream():
+                # Check if chunk_data is a dict (not raw) and has 'text'
+                if isinstance(chunk_data, dict) and "text" in chunk_data:
+                    streaming_text += chunk_data["text"]
+                # If raw=True, chunk_data is the string content itself
+                elif isinstance(chunk_data, str):
+                     streaming_text += chunk_data
+            # last_response and history are updated within for_stream
+            return self.last_response # Return the final aggregated response
 
-        return for_stream() if stream else for_non_stream()
+        # Ensure stream defaults to True if not provided, matching original behavior
+        effective_stream = stream if stream is not None else True
+        return for_stream() if effective_stream else for_non_stream()
 
     def chat(
         self,
@@ -154,30 +180,35 @@ class TwoAI(Provider):
         online_search: bool = True,
         reasoning_on: bool = False,
     ) -> str:
-        def for_stream():
-            for response in self.ask(
+        # Ensure stream defaults to True if not provided
+        effective_stream = stream if stream is not None else True
+
+        def for_stream_chat():
+            # ask() yields dicts when raw=False
+            for response_dict in self.ask(
                 prompt, 
-                True, 
+                stream=True, 
+                raw=False, # Ensure ask yields dicts
                 optimizer=optimizer, 
                 conversationally=conversationally,
                 online_search=online_search,
                 reasoning_on=reasoning_on
             ):
-                yield self.get_message(response)
+                yield self.get_message(response_dict)
         
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, 
-                    False, 
-                    optimizer=optimizer, 
-                    conversationally=conversationally,
-                    online_search=online_search,
-                    reasoning_on=reasoning_on
-                )
+        def for_non_stream_chat():
+            # ask() returns a dict when stream=False
+            response_dict = self.ask(
+                prompt, 
+                stream=False, 
+                optimizer=optimizer, 
+                conversationally=conversationally,
+                online_search=online_search,
+                reasoning_on=reasoning_on
             )
+            return self.get_message(response_dict)
         
-        return for_stream() if stream else for_non_stream()
+        return for_stream_chat() if effective_stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
@@ -186,14 +217,32 @@ class TwoAI(Provider):
 if __name__ == "__main__":
     from rich import print
 
-    api_key = ""
+    api_key = "" # Add your API key here or load from env
     
-    ai = TwoAI(
-        api_key=api_key,
-        timeout=60,
-        system_message="You are an intelligent AI assistant. Be concise and helpful."
-    )
-    
-    response = ai.chat("666+444=?", stream=True, reasoning_on=True)
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    try: # Add try-except block for testing
+        ai = TwoAI(
+            api_key=api_key,
+            timeout=60,
+            system_message="You are an intelligent AI assistant. Be concise and helpful."
+        )
+        
+        print("[bold blue]Testing Stream:[/bold blue]")
+        response_stream = ai.chat("666+444=?", stream=True, reasoning_on=True)
+        full_stream_response = ""
+        for chunk in response_stream:
+            print(chunk, end="", flush=True)
+            full_stream_response += chunk
+        print("\n[bold green]Stream Test Complete.[/bold green]\n")
+
+        # Optional: Test non-stream
+        # print("[bold blue]Testing Non-Stream:[/bold blue]")
+        # response_non_stream = ai.chat("What is the capital of France?", stream=False)
+        # print(response_non_stream)
+        # print("[bold green]Non-Stream Test Complete.[/bold green]")
+
+    except exceptions.FailedToGenerateResponseError as e:
+        print(f"\n[bold red]API Error:[/bold red] {e}")
+    except ValueError as e:
+         print(f"\n[bold red]Configuration Error:[/bold red] {e}")
+    except Exception as e:
+        print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")

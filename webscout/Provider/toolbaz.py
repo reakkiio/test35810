@@ -1,5 +1,6 @@
 import re
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import uuid
 import base64
 import json
@@ -9,11 +10,11 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional, Generator, Union, List
 
+from webscout import exceptions
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
-from webscout.AIbase import Provider, AsyncProvider
-from webscout import exceptions
+from webscout.AIbase import Provider
 
 class Toolbaz(Provider):
     """
@@ -47,7 +48,7 @@ class Toolbaz(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not directly used by the API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -56,7 +57,7 @@ class Toolbaz(Provider):
         history_offset: int = 10250,
         act: str = None,
         model: str = "gemini-2.0-flash",
-        system_prompt: str = "You are a helpful AI assistant."
+        system_prompt: str = "You are a helpful AI assistant." # Note: system_prompt is not directly used by the API
     ):
         """
         Initializes the Toolbaz API with given parameters.
@@ -64,28 +65,31 @@ class Toolbaz(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
         self.last_response = {}
         self.system_prompt = system_prompt
         self.model = model
-        self.proxies = proxies
+        self.proxies = proxies # Store proxies for later use in requests
 
-        # Set up headers
+        # Set up headers for the curl_cffi session
         self.session.headers.update({
-            "user-agent": "Mozilla/5.0 (Linux; Android 10)",
+            "user-agent": "Mozilla/5.0 (Linux; Android 10)", # Keep specific user-agent
             "accept": "*/*",
             "accept-language": "en-US",
             "cache-control": "no-cache",
-            "connection": "keep-alive",
             "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
             "origin": "https://toolbaz.com",
             "pragma": "no-cache",
             "referer": "https://toolbaz.com/",
             "sec-fetch-mode": "cors"
+            # Add sec-ch-ua headers if needed for impersonation consistency
         })
+        # Assign proxies directly to the session
+        self.session.proxies = proxies
 
         # Initialize conversation history
         self.__available_optimizers = (
@@ -139,20 +143,34 @@ class Toolbaz(Provider):
                 "session_id": session_id,
                 "token": token
             }
-            resp = self.session.post("https://data.toolbaz.com/token.php", data=data)
-            resp.raise_for_status()
+            # Use curl_cffi session post WITHOUT impersonate for token request
+            resp = self.session.post(
+                "https://data.toolbaz.com/token.php", 
+                data=data
+                # Removed impersonate="chrome110" for this specific request
+            )
+            resp.raise_for_status() # Check for HTTP errors
             result = resp.json()
             if result.get("success"):
                 return {"token": result["token"], "session_id": session_id}
-            return None
-        except Exception:
-            return None
+            # Raise error if success is not true
+            raise exceptions.FailedToGenerateResponseError(f"Authentication failed: API response indicates failure. Response: {result}")
+        except CurlError as e: # Catch CurlError specifically
+            # Raise a specific error indicating CurlError during auth
+            raise exceptions.FailedToGenerateResponseError(f"Authentication failed due to network error (CurlError): {e}") from e
+        except json.JSONDecodeError as e:
+             # Raise error for JSON decoding issues
+             raise exceptions.FailedToGenerateResponseError(f"Authentication failed: Could not decode JSON response. Error: {e}. Response text: {getattr(resp, 'text', 'N/A')}") from e
+        except Exception as e: # Catch other potential errors (like HTTPError from raise_for_status)
+            # Raise a specific error indicating a general failure during auth
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"Authentication failed due to an unexpected error ({type(e).__name__}): {e} - {err_text}") from e
 
     def ask(
         self,
         prompt: str,
         stream: bool = False,
-        raw: bool = False,  # Kept for compatibility with other providers
+        raw: bool = False,  # Kept for compatibility, but output is always dict/string
         optimizer: Optional[str] = None,
         conversationally: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
@@ -166,9 +184,9 @@ class Toolbaz(Provider):
                 conversation_prompt if conversationally else prompt
             )
 
-        auth = self.get_auth()
-        if not auth:
-            raise exceptions.ProviderConnectionError("Failed to authenticate with Toolbaz API")
+        # get_auth now raises exceptions on failure
+        auth = self.get_auth() 
+        # No need to check if auth is None, as an exception would have been raised
 
         data = {
             "text": conversation_prompt,
@@ -179,12 +197,13 @@ class Toolbaz(Provider):
 
         def for_stream():
             try:
+                # Use curl_cffi session post with impersonate for the main request
                 resp = self.session.post(
                     "https://data.toolbaz.com/writing.php",
                     data=data,
                     stream=True,
-                    proxies=self.proxies,
-                    timeout=self.timeout
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Keep impersonate here
                 )
                 resp.raise_for_status()
 
@@ -192,54 +211,71 @@ class Toolbaz(Provider):
                 tag_start = "[model:"
                 streaming_text = ""
 
-                for chunk in resp.iter_content(chunk_size=1):
-                    if chunk:
-                        text = chunk.decode(errors="ignore")
+                # Iterate over bytes and decode manually
+                for chunk_bytes in resp.iter_content(chunk_size=1024): # Read in larger chunks
+                    if chunk_bytes:
+                        text = chunk_bytes.decode(errors="ignore")
                         buffer += text
-                        # Remove all complete [model: ...] tags in buffer
-                        while True:
-                            match = re.search(r"\[model:.*?\]", buffer)
-                            if not match:
-                                break
-                            buffer = buffer[:match.start()] + buffer[match.end():]
-                        # Only yield up to the last possible start of a tag
-                        last_tag = buffer.rfind(tag_start)
-                        if last_tag == -1 or last_tag + len(tag_start) > len(buffer):
-                            if buffer:
-                                streaming_text += buffer
-                                yield {"text": buffer}
-                                buffer = ""
+                        
+                        processed_buffer = ""
+                        last_processed_index = 0
+                        # Find all complete tags and process text between them
+                        for match in re.finditer(r"\[model:.*?\]", buffer):
+                            # Add text before the tag
+                            segment = buffer[last_processed_index:match.start()]
+                            if segment:
+                                processed_buffer += segment
+                            last_processed_index = match.end()
+                        
+                        # Add remaining text after the last complete tag
+                        processed_buffer += buffer[last_processed_index:]
+                        
+                        # Now, check for incomplete tag at the end
+                        last_tag_start_index = processed_buffer.rfind(tag_start)
+                        
+                        if last_tag_start_index != -1:
+                            # Text before the potential incomplete tag
+                            text_to_yield = processed_buffer[:last_tag_start_index]
+                            # Keep the potential incomplete tag start for the next iteration
+                            buffer = processed_buffer[last_tag_start_index:] 
                         else:
-                            if buffer[:last_tag]:
-                                streaming_text += buffer[:last_tag]
-                                yield {"text": buffer[:last_tag]}
-                            buffer = buffer[last_tag:]
+                            # No potential incomplete tag found, yield everything processed
+                            text_to_yield = processed_buffer
+                            buffer = "" # Clear buffer as everything is processed
 
-                # Remove any remaining [model: ...] tag in the buffer
-                buffer = re.sub(r"\[model:.*?\]", "", buffer)
-                if buffer:
-                    streaming_text += buffer
-                    yield {"text": buffer}
+                        if text_to_yield:
+                            streaming_text += text_to_yield
+                            # Yield dict or raw string
+                            yield {"text": text_to_yield} if not raw else text_to_yield
+
+                # Process any remaining text in the buffer after the loop finishes
+                # Remove any potential tags (complete or incomplete)
+                final_text = re.sub(r"\[model:.*?\]", "", buffer)
+                if final_text:
+                    streaming_text += final_text
+                    yield {"text": final_text} if not raw else final_text
 
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Network error: {str(e)}") from e
-            except Exception as e:
-                raise exceptions.ProviderConnectionError(f"Unexpected error: {str(e)}") from e
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Network error (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other exceptions
+                raise exceptions.FailedToGenerateResponseError(f"Unexpected error during stream: {str(e)}") from e
 
         def for_non_stream():
             try:
+                # Use curl_cffi session post with impersonate for the main request
                 resp = self.session.post(
                     "https://data.toolbaz.com/writing.php",
                     data=data,
-                    proxies=self.proxies,
-                    timeout=self.timeout
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Keep impersonate here
                 )
                 resp.raise_for_status()
 
-                text = resp.text
+                # Use response.text which is already decoded
+                text = resp.text 
                 # Remove [model: ...] tags
                 text = re.sub(r"\[model:.*?\]", "", text)
 
@@ -248,9 +284,9 @@ class Toolbaz(Provider):
 
                 return self.last_response
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Network error: {str(e)}") from e
-            except Exception as e:
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Network error (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other exceptions
                 raise exceptions.FailedToGenerateResponseError(f"Unexpected error: {str(e)}") from e
 
         return for_stream() if stream else for_non_stream()
@@ -263,26 +299,28 @@ class Toolbaz(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generates a response from the Toolbaz API."""
-        def for_stream():
-            for response in self.ask(
+        def for_stream_chat():
+            # ask() yields dicts when raw=False
+            for response_dict in self.ask(
                 prompt,
                 stream=True,
+                raw=False, # Ensure ask yields dicts
                 optimizer=optimizer,
                 conversationally=conversationally
             ):
-                yield self.get_message(response)
+                yield self.get_message(response_dict)
 
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    stream=False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+        def for_non_stream_chat():
+            # ask() returns a dict when stream=False
+            response_dict = self.ask(
+                prompt,
+                stream=False,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
+            return self.get_message(response_dict)
 
-        return for_stream() if stream else for_non_stream()
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Extract the message from the response.
@@ -298,23 +336,40 @@ class Toolbaz(Provider):
 
 # Example usage
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
+    from rich import print # Use rich print if available
+    print("-" * 80)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 80)
     # Test the provider with different models
     for model in Toolbaz.AVAILABLE_MODELS:
         try:
             test_ai = Toolbaz(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
-            for chunk in response:
+            # print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
                 response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
+                # Optional: print chunks for visual feedback
+                # print(chunk, end="", flush=True)
 
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                # Clean and truncate response
+                clean_text = response_text.strip()
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
             print(f"\r{model:<50} {status:<10} {display_text}")
+
+            # Optional: Add non-stream test if needed
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}")
+            # Print full error for debugging
+            print(f"\r{model:<50} {'✗':<10} Error: {str(e)}")

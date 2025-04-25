@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import uuid
 import json
 import time
@@ -37,49 +38,48 @@ class HuggingFaceChat(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2000,
+        max_tokens: int = 2000, # Note: max_tokens is not used by this API
         timeout: int = 60,
         filepath: str = None,
         update_file: bool = True,
         proxies: dict = {},
         model: str = "Qwen/QwQ-32B",
         cookie_path: str = "cookies.json",
-        assistantId: str = None,
+        assistantId: str = None, # Note: assistantId is not used by this API
         system_prompt: str = "You are a helpful assistant. Please answer the following question.",
     ):
         """Initialize the HuggingFaceChat client."""
         self.url = "https://huggingface.co/chat"
         self.cookie_path = cookie_path
-        self.session = requests.Session()
-        self.session.proxies.update(proxies)
-        self.assistantId = assistantId
-        self.system_prompt = system_prompt
-        # Load cookies for authentication
-        self.cookies = self.load_cookies()
-        
-        # Set up headers for all requests
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Set up headers for all requests (remove those handled by impersonate)
         self.headers = {
-            "Content-Type": "application/json",
-            "User-Agent": LitAgent().random(),
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://huggingface.co",
-            "Referer": "https://huggingface.co/chat",
-            "Sec-Ch-Ua": "\"Chromium\";v=\"120\"",
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": "\"Windows\"",
-            "Sec-Fetch-Dest": "empty",
+            "Content-Type": "application/json", # Keep Content-Type for JSON posts
+            "Accept": "*/*", # Keep Accept
+            "Accept-Language": "en-US,en;q=0.9", # Keep Accept-Language
+            "Origin": "https://huggingface.co", # Keep Origin
+            "Referer": "https://huggingface.co/chat", # Keep Referer (will be updated)
+            "Sec-Fetch-Dest": "empty", # Keep Sec-Fetch-*
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "DNT": "1",
-            "Priority": "u=1, i"
+            "DNT": "1", # Keep DNT
+            "Priority": "u=1, i" # Keep Priority
         }
         
-        # Apply cookies to session
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
+        self.system_prompt = system_prompt
+        self.assistantId = assistantId or None # Generate a new UUID if not provided
+        # Load cookies for authentication
+        self.cookies = self.load_cookies()
+        # Apply cookies to curl_cffi session
         if self.cookies:
-            self.session.cookies.update(self.cookies)
-        
+            for name, value in self.cookies.items():
+                # Set cookies on the session object
+                self.session.cookies.set(name, value, domain="huggingface.co") # Specify domain if needed
+
         # Update available models
         self.update_available_models()
         
@@ -112,7 +112,13 @@ class HuggingFaceChat(Provider):
     def get_models(cls):
         """Fetch available models from HuggingFace."""
         try:
-            response = requests.get("https://huggingface.co/chat")
+            # Use a temporary curl_cffi session for this class method
+            temp_session = Session()
+            response = temp_session.get(
+                "https://huggingface.co/chat", 
+                impersonate="chrome110" # Use impersonate for fetching
+            )
+            response.raise_for_status()
             text = response.text
             models_match = re.search(r'models:(\[.+?\]),oldModels:', text)
             
@@ -131,7 +137,7 @@ class HuggingFaceChat(Provider):
             models_data = json.loads(models_text)
             # print([model["id"] for model in models_data])
             return [model["id"] for model in models_data]
-        except Exception:
+        except (CurlError, Exception): # Catch CurlError and other exceptions
             return cls.AVAILABLE_MODELS
 
     def load_cookies(self):
@@ -163,7 +169,13 @@ class HuggingFaceChat(Provider):
         headers["Referer"] = f"https://huggingface.co/chat/models/{model}"
         
         try:
-            response = self.session.post(url, json=payload, headers=headers)
+            # Use curl_cffi session post with impersonate
+            response = self.session.post(
+                url, 
+                json=payload, 
+                headers=headers, # Use updated headers with specific Referer
+                impersonate="chrome110" # Use a common impersonation profile
+            )
             
             if response.status_code == 401:
                 raise exceptions.AuthenticationError("Authentication failed. Please check your cookies.")
@@ -182,19 +194,22 @@ class HuggingFaceChat(Provider):
                     "messageId": str(uuid.uuid4())  # Initial message ID
                 }
             
-            # Update cookies if needed
-            if 'hf-chat' in response.cookies:
-                self.cookies["hf-chat"] = response.cookies['hf-chat']
-                
             return conversation_id
-        except requests.exceptions.RequestException:
+        except CurlError as e: # Catch CurlError
+            # Log or handle CurlError specifically if needed
+            return None
+        except Exception: # Catch other potential exceptions (like JSONDecodeError, HTTPError)
             return None
     
     def fetch_message_id(self, conversation_id: str) -> str:
         """Fetch the latest message ID for a conversation."""
         try:
             url = f"https://huggingface.co/chat/conversation/{conversation_id}/__data.json?x-sveltekit-invalidated=11"
-            response = self.session.get(url, headers=self.headers)
+            response = self.session.get(
+                url, 
+                headers=self.headers, # Use base headers
+                impersonate="chrome110" # Use a common impersonation profile
+            )
             response.raise_for_status()
             
             # Parse the JSON data from the response
@@ -224,7 +239,9 @@ class HuggingFaceChat(Provider):
             
             return message_id
             
-        except Exception:
+        except CurlError: # Catch CurlError
+            return str(uuid.uuid4()) # Fallback on CurlError
+        except Exception: # Catch other potential exceptions
             # Fall back to a UUID if there's an error
             return str(uuid.uuid4())
     
@@ -299,10 +316,10 @@ class HuggingFaceChat(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
-        optimizer: str = None,
-        conversationally: bool = False,
+        optimizer: str = None, # Note: optimizer is not used by this API
+        conversationally: bool = False, # Note: conversationally is not used by this API
         web_search: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
         """Send a message to the HuggingFace Chat API"""
@@ -332,13 +349,9 @@ class HuggingFaceChat(Provider):
             "tools": ["66e85bb396d054c5771bc6cb", "00000000000000000000000a"]
         }
         
-        # Update headers for this specific request
-        headers = self.headers.copy()
-        headers["Referer"] = f"https://huggingface.co/chat/conversation/{conversation_id}"
-        
         # Create multipart form data
         boundary = self.generate_boundary()
-        multipart_headers = headers.copy()
+        multipart_headers = self.headers.copy()
         multipart_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
         
         # Serialize the data to JSON
@@ -358,35 +371,38 @@ class HuggingFaceChat(Provider):
                 # Try with multipart/form-data first
                 response = None
                 try:
+                    # Use curl_cffi session post with impersonate
                     response = self.session.post(
                         url, 
                         data=body,
-                        headers=multipart_headers,
+                        headers=multipart_headers, # Use multipart headers
                         stream=True,
-                        timeout=self.timeout
+                        timeout=self.timeout,
+                        impersonate="chrome110" # Use a common impersonation profile
                     )
-                except requests.exceptions.RequestException:
-                    pass
-                
+                    response.raise_for_status() # Check status after potential error
+                except (CurlError, exceptions.FailedToGenerateResponseError, Exception): # Catch potential errors
+                    response = None # Ensure response is None if multipart fails
+
                 # If multipart fails or returns error, try with regular JSON
                 if not response or response.status_code != 200:
+                    # Use curl_cffi session post with impersonate
                     response = self.session.post(
                         url, 
-                        json=request_data,
-                        headers=headers,
+                        json=request_data, # Use JSON payload
+                        headers=self.headers, # Use class-defined headers
                         stream=True,
-                        timeout=self.timeout
+                        timeout=self.timeout,
+                        impersonate="chrome110" # Use a common impersonation profile
                     )
                 
-                # If both methods fail, raise exception
-                if response.status_code != 200:
-                    raise exceptions.FailedToGenerateResponseError(f"Request failed with status code {response.status_code}")
+                response.raise_for_status() # Check status after potential fallback
                 
-                # Process the streaming response
+                # Process the streaming response (iter_lines works with curl_cffi)
                 yield from self.process_response(response, prompt)
                 
-            except Exception as e:
-                if isinstance(e, requests.exceptions.RequestException):
+            except (CurlError, exceptions.FailedToGenerateResponseError, Exception) as e: # Catch errors from both attempts
+                if isinstance(e):
                     if hasattr(e, 'response') and e.response is not None:
                         status_code = e.response.status_code 
                         if status_code == 401:
@@ -407,15 +423,29 @@ class HuggingFaceChat(Provider):
                         return
                 
                 # If we get here, all models failed
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+                raise exceptions.FailedToGenerateResponseError(f"Request failed after trying fallback: {str(e)}") from e
+
 
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
             response_text = ""
-            for response in for_stream():
-                if "text" in response:
-                    response_text += response["text"]
-            self.last_response = {"text": response_text}
-            return self.last_response
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within process_response called by for_stream
+            # Return the final aggregated response dict or raw string
+            return response_text if raw else {"text": response_text} # Return dict for consistency
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -423,40 +453,31 @@ class HuggingFaceChat(Provider):
         self,
         prompt: str,
         stream: bool = False,
-        optimizer: str = None,
-        conversationally: bool = False,
+        optimizer: str = None, # Note: optimizer is not used by this API
+        conversationally: bool = False, # Note: conversationally is not used by this API
         web_search: bool = False
     ) -> Union[str, Generator]:
         """Generate a response to a prompt"""
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally, web_search=web_search
-            ):
-                yield self.get_message(response)
-                
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, False, optimizer=optimizer, conversationally=conversationally, web_search=web_search
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally, web_search=web_search
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+                
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally, web_search=web_search
+            )
+            return self.get_message(response_data) # get_message expects dict
             
-        return for_stream() if stream else for_non_stream()
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """Extract message text from response"""
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response.get("text", "")
-
-if __name__ == "__main__":
-    # Simple test code
-    from rich import print
-    
-    try:
-        ai = HuggingFaceChat(cookie_path="cookies.json", system_prompt="You are a helpful assistant. Please answer the following question.")
-        response = ai.chat("how many r in strawberry", stream=True, web_search=False)
-        for chunk in response:
-            print(chunk, end="", flush=True)
-        print()
-    except Exception as e:
-        print(f"An error occurred: {e}")

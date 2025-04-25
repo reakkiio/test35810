@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Optional, Generator
 
@@ -17,7 +18,7 @@ class Marcus(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int = 2048, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -27,7 +28,8 @@ class Marcus(Provider):
         act: str = None
     ):
         """Initializes the Marcus API."""
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://www.askmarcus.app/api/response"
@@ -39,8 +41,11 @@ class Marcus(Provider):
             'accept': '*/*',
             'origin': 'https://www.askmarcus.app',
             'referer': 'https://www.askmarcus.app/chat',
-            'user-agent': 'Mozilla/5.0',
         }
+        
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.__available_optimizers = (
             method
@@ -60,7 +65,6 @@ class Marcus(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
@@ -85,31 +89,70 @@ class Marcus(Provider):
         data = {"message": conversation_prompt}
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
             try:
-                with requests.post(
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
                     self.api_endpoint,
-                    headers=self.headers,
+                    # headers are set on the session
                     json=data,
                     stream=True,
-                    timeout=self.timeout
-                ) as response:
-                    response.raise_for_status()
-                    for line in response.iter_lines():
-                        if line:
-                            yield line.decode('utf-8')
-                    self.conversation.update_chat_history(
-                        prompt, self.get_message(self.last_response)
-                    )
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status() # Check for HTTP errors
+                
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            decoded_line = line_bytes.decode('utf-8')
+                            streaming_text += decoded_line # Aggregate text
+                            resp = {"text": decoded_line}
+                            # Yield dict or raw string chunk
+                            yield resp if not raw else decoded_line
+                        except UnicodeDecodeError:
+                            continue # Ignore decoding errors
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Error connecting to Marcus: {str(e)}")
+                # Update history after stream finishes
+                self.last_response = {"text": streaming_text} # Store aggregated text
+                self.conversation.update_chat_history(
+                    prompt, streaming_text
+                )
+
+            except CurlError as e: # Catch CurlError
+                raise exceptions.ProviderConnectionError(f"Error connecting to Marcus (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.ProviderConnectionError(f"Error connecting to Marcus ({type(e).__name__}): {str(e)} - {err_text}") from e
 
         def for_non_stream():
-            full_response = ""
-            for line in for_stream():
-                full_response += line
-            self.last_response = {"text": full_response}
-            return self.last_response
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint,
+                    # headers are set on the session
+                    json=data,
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status() # Check for HTTP errors
+                
+                # Use response.text which is already decoded
+                full_response = response.text
+                self.last_response = {"text": full_response}
+                self.conversation.update_chat_history(prompt, full_response)
+                # Return dict or raw string
+                return full_response if raw else self.last_response
+
+            except CurlError as e: # Catch CurlError
+                 raise exceptions.ProviderConnectionError(f"Error connecting to Marcus (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.ProviderConnectionError(f"Error connecting to Marcus ({type(e).__name__}): {str(e)} - {err_text}") from e
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -121,19 +164,24 @@ class Marcus(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generates a response from the AskMarcus API."""
-        def for_stream():
-            for response_chunk in self.ask(
-                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield response_chunk
-
-        def for_non_stream():
-            response = self.ask(
-                prompt, stream=False, optimizer=optimizer, conversationally=conversationally
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response)
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Extracts the message from the API response."""
@@ -141,8 +189,9 @@ class Marcus(Provider):
         return response.get("text", "")
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     ai = Marcus()
-    response = ai.chat(input(">>> "), stream=True)
+    response = ai.chat("hi", stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)

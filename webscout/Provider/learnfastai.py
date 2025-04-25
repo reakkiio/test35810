@@ -2,8 +2,8 @@ import os
 import json
 from typing import Optional, Union, Generator
 import uuid
-import requests
-import cloudscraper
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -20,7 +20,7 @@ class LearnFast(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -28,12 +28,13 @@ class LearnFast(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        system_prompt: str = "You are a helpful AI assistant.",
+        system_prompt: str = "You are a helpful AI assistant.", # Note: system_prompt is not used by this API
     ):
         """
         Initializes the LearnFast.ai API with given parameters.
         """
-        self.session = cloudscraper.create_scraper()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = 'https://autosite.erweima.ai/api/v1/chat'
@@ -44,21 +45,17 @@ class LearnFast(Provider):
         self.headers = {
             "authority": "autosite.erweima.ai",
             "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
             "authorization": "",  # Always empty
             "content-type": "application/json",
             "dnt": "1",
             "origin": "https://learnfast.ai",
-            "priority": "u=1, i",
+            "priority": "u=1, i", # Keep priority header if needed
             "referer": "https://learnfast.ai/",
-            "sec-ch-ua": '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "cross-site",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0",
+            # uniqueid will be added dynamically in ask()
         }
 
         self.__available_optimizers = (
@@ -66,7 +63,10 @@ class LearnFast(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
+
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -78,7 +78,6 @@ class LearnFast(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def generate_unique_id(self) -> str:
         """Generate a 32-character hexadecimal unique ID."""
@@ -98,14 +97,21 @@ class LearnFast(Provider):
         with open(image_path, "rb") as img_file:
             files = {"file": img_file}
             try:
-                response = requests.post("https://0x0.st", files=files)
+                response = self.session.post(
+                    "https://0x0.st", 
+                    files=files,
+                    # Add impersonate if using the main session
+                    impersonate="chrome110" 
+                )
                 response.raise_for_status()
                 image_url = response.text.strip()
                 if not image_url.startswith("http"):
                     raise ValueError("Received an invalid URL from 0x0.st.")
                 return image_url
-            except requests.exceptions.RequestException as e:
-                raise Exception(f"Failed to upload image to 0x0.st: {e}") from e
+            except CurlError as e: # Catch CurlError
+                raise Exception(f"Failed to upload image to 0x0.st (CurlError): {e}") from e
+            except Exception as e: # Catch other potential errors
+                 raise Exception(f"Failed to upload image to 0x0.st: {e}") from e
 
     def create_payload(
         self,
@@ -135,7 +141,7 @@ class LearnFast(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -170,8 +176,9 @@ class LearnFast(Provider):
         unique_id = self.generate_unique_id()
         session_id = self.generate_session_id()
 
-        # Update headers with the unique ID
-        self.headers["uniqueid"] = unique_id
+        # Update headers with the unique ID for this request
+        current_headers = self.headers.copy()
+        current_headers["uniqueid"] = unique_id
 
         # Upload image and get URL if image_path is provided
         image_url = None
@@ -187,35 +194,72 @@ class LearnFast(Provider):
         # Convert the payload to a JSON string
         data = json.dumps(payload)
 
-        try:
-            # Send the POST request with streaming enabled
-            response = self.session.post(self.api_endpoint, headers=self.headers, data=data, stream=True, timeout=self.timeout)
-            response.raise_for_status()  # Check for HTTP errors
+        def for_stream():
+            full_response = "" # Initialize outside try block
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    headers=current_headers, # Use headers with uniqueid
+                    data=data, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status()  # Check for HTTP errors
 
-            # Process the streamed response
-            full_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    line = line.strip()
-                    if line == "[DONE]":
-                        break
-                    try:
-                        json_response = json.loads(line)
-                        if json_response.get('code') == 200 and json_response.get('data'):
-                            message = json_response['data'].get('message', '')
-                            if message:
-                                full_response += message
-                                if stream:
-                                    yield {"text": message}
-                    except json.JSONDecodeError:
-                        pass
-            self.last_response.update({"text": full_response})
-            self.conversation.update_chat_history(prompt, full_response)
+                # Process the streamed response
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8').strip()
+                            if line == "[DONE]":
+                                break
+                            json_response = json.loads(line)
+                            if json_response.get('code') == 200 and json_response.get('data'):
+                                message = json_response['data'].get('message', '')
+                                if message:
+                                    full_response += message
+                                    resp = {"text": message}
+                                    # Yield dict or raw string chunk
+                                    yield resp if not raw else message
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass # Ignore lines that are not valid JSON or cannot be decoded
+                
+                # Update history after stream finishes
+                self.last_response = {"text": full_response}
+                self.conversation.update_chat_history(prompt, full_response)
 
-            if not stream:
-                return self.last_response
-        except requests.exceptions.RequestException as e:
-            raise exceptions.FailedToGenerateResponseError(f"An error occurred: {e}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"An error occurred (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"An error occurred ({type(e).__name__}): {e} - {err_text}") from e
+
+        def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
+            full_response_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_response_text if raw else self.last_response
+
+
+        return for_stream() if stream else for_non_stream()
 
     def chat(
         self,
@@ -237,14 +281,23 @@ class LearnFast(Provider):
             Union[str, Generator[str, None, None]]: Response generated
         """
         try:
-            response = self.ask(prompt, stream, optimizer=optimizer, conversationally=conversationally, image_path=image_path)
+            # ask() yields dicts or strings when streaming
+            response_gen = self.ask(
+                prompt, stream=stream, raw=False, # Ensure ask yields dicts/dict
+                optimizer=optimizer, conversationally=conversationally, 
+                image_path=image_path
+            )
             if stream:
-                for chunk in response:
-                    yield chunk["text"]
+                def stream_wrapper():
+                    for chunk_dict in response_gen:
+                        yield self.get_message(chunk_dict) # get_message expects dict
+                return stream_wrapper()
             else:
-                return str(response)
+                # response_gen is the final dict in non-stream mode
+                return self.get_message(response_gen) # get_message expects dict
         except Exception as e:
-            return f"Error: {str(e)}"
+            # Return error message directly, consider raising instead for better error handling upstream
+            return f"Error: {str(e)}" 
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -259,6 +312,7 @@ class LearnFast(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     ai = LearnFast()
     response = ai.chat(input(">>> "), stream=True)

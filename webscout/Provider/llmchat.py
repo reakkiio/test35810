@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Optional, Generator, List
 
@@ -44,7 +45,8 @@ class LLMChat(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://llmchat.in/inference/stream"
@@ -56,7 +58,6 @@ class LLMChat(Provider):
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "*/*",
-            "User-Agent": Lit().random(),
             "Origin": "https://llmchat.in",
             "Referer": "https://llmchat.in/"
         }
@@ -79,7 +80,10 @@ class LLMChat(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
+
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
 
     def ask(
         self,
@@ -88,7 +92,7 @@ class LLMChat(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> Union[Dict[str, Any], Generator[Any, None, None]]: # Corrected return type hint
         """Chat with LLMChat with logging capabilities"""
 
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
@@ -109,46 +113,79 @@ class LLMChat(Provider):
                 {"role": "user", "content": conversation_prompt}
             ],
             "max_tokens": self.max_tokens_to_sample,
-            "stream": stream
+            "stream": True # API seems to always stream based on endpoint name
         }
 
         def for_stream():
+            full_response = "" # Initialize outside try block
             try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    url, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status() # Check for HTTP errors
 
-                with requests.post(url, json=payload, headers=self.headers, stream=True, timeout=self.timeout) as response:
-                    response.raise_for_status()
-
-                    full_response = ""
-                    for line in response.iter_lines():
-                        if line:
-                            line = line.decode('utf-8')
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8')
                             if line.startswith('data: '):
+                                data_str = line[6:]
+                                if data_str == '[DONE]':
+                                    break
                                 try:
-                                    data = json.loads(line[6:])
+                                    data = json.loads(data_str)
                                     if data.get('response'):
                                         response_text = data['response']
                                         full_response += response_text
-                                        yield response_text if raw else dict(text=response_text)
+                                        resp = dict(text=response_text)
+                                        # Yield dict or raw string chunk
+                                        yield resp if not raw else response_text
                                 except json.JSONDecodeError:
-                                    if line.strip() != 'data: [DONE]':
-                                        continue
+                                    continue # Ignore invalid JSON data
+                        except UnicodeDecodeError:
+                            continue # Ignore decoding errors
 
-                    self.last_response.update(dict(text=full_response))
-                    self.conversation.update_chat_history(
-                        prompt, self.get_message(self.last_response)
-                    )
+                # Update history after stream finishes
+                self.last_response = dict(text=full_response)
+                self.conversation.update_chat_history(
+                    prompt, full_response
+                )
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {e} - {err_text}") from e
         
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
+            full_response_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_response_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_response_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_response_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
-            full_response = ""
-            for line in for_stream():
-                full_response += line['text'] if not raw else line
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_response_text if raw else self.last_response
 
-            return dict(text=full_response)
 
+        # Since the API endpoint suggests streaming, always call the stream generator.
+        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -160,23 +197,27 @@ class LLMChat(Provider):
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response with logging capabilities"""
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False, # Ensure ask returns dict
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Retrieves message from response with validation"""
@@ -184,6 +225,7 @@ class LLMChat(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

@@ -1,7 +1,7 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator
-import requests.exceptions
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -35,7 +35,7 @@ class TypeGPT(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini-2024-07-18",
         system_prompt: str = "You are a helpful assistant.",
         temperature: float = 0.5,
         presence_penalty: int = 0,
@@ -46,7 +46,8 @@ class TypeGPT(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {', '.join(self.AVAILABLE_MODELS)}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://chat.typegpt.net/api/openai/v1/chat/completions"
@@ -82,6 +83,8 @@ class TypeGPT(Provider):
         )
         self.conversation = Conversation(is_conversation, self.max_tokens_to_sample, filepath, update_file)
         self.conversation.history_offset = history_offset
+        # Update curl_cffi session headers and proxies
+        self.session.headers.update(self.headers)
         self.session.proxies = proxies
 
     def ask(
@@ -120,12 +123,18 @@ class TypeGPT(Provider):
 
         def for_stream():
             try:
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
-                    self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout
+                    self.api_endpoint, 
+                    headers=self.headers, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome120"
                 )
-            except requests.exceptions.ConnectionError as ce:
+            except CurlError as ce:
                 raise exceptions.FailedToGenerateResponseError(
-                    f"Network connection failed. Check your firewall or antivirus settings. Original error: {ce}"
+                    f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
 
             if not response.ok:
@@ -133,9 +142,10 @@ class TypeGPT(Provider):
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
             message_load = ""
-            for line in response.iter_lines():
-                if line:
-                    line = line.decode("utf-8")
+            # Iterate over bytes and decode manually
+            for line_bytes in response.iter_lines():
+                if line_bytes:
+                    line = line_bytes.decode("utf-8")
                     if line.startswith("data: "):
                         line = line[6:]  # Remove "data: " prefix
                         # Skip [DONE] message
@@ -151,26 +161,52 @@ class TypeGPT(Provider):
                                     message_load += new_content
                                     # Yield only the new content
                                     yield dict(text=new_content) if not raw else new_content
-                                    self.last_response = dict(text=message_load)
+                                    # Update last_response incrementally for potential non-stream use later
+                                    self.last_response = dict(text=message_load) 
                         except json.JSONDecodeError:
                             continue
-            self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
+            # Update conversation history after stream finishes
+            if message_load: # Only update if something was received
+                 self.conversation.update_chat_history(prompt, message_load)
+
 
         def for_non_stream():
             try:
-                response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, timeout=self.timeout)
-            except requests.exceptions.ConnectionError as ce:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    headers=self.headers, 
+                    json=payload, 
+                    timeout=self.timeout,
+                    impersonate="chrome120"
+                )
+            except CurlError as ce:
                 raise exceptions.FailedToGenerateResponseError(
-                    f"Network connection failed. Check your firewall or antivirus settings. Original error: {ce}"
+                    f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
 
             if not response.ok:
                 raise exceptions.FailedToGenerateResponseError(
                     f"Request failed - {response.status_code}: {response.text}"
                 )
-            self.last_response = response.json()
-            self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
-            return self.last_response
+            
+            try:
+                # curl_cffi response.json() handles decoding
+                response_data = response.json() 
+                # Extract the message content for history and return value
+                if 'choices' in response_data and len(response_data['choices']) > 0:
+                    message = response_data['choices'][0].get('message', {})
+                    content = message.get('content', '')
+                    self.last_response = {"text": content} # Store in expected format
+                    self.conversation.update_chat_history(prompt, content)
+                    return self.last_response
+                else:
+                     # Handle cases where response structure is unexpected
+                     self.last_response = {"text": ""} 
+                     return self.last_response
+            except json.JSONDecodeError as je:
+                 raise exceptions.FailedToGenerateResponseError(f"Failed to decode JSON response: {je} - Response text: {response.text}")
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -183,23 +219,36 @@ class TypeGPT(Provider):
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response string or stream."""
         if stream:
+            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
-            for chunk in gen:
-                yield self.get_message(chunk)  # Extract text from streamed chunks
+            for chunk_dict in gen:
+                 # get_message expects a dict
+                yield self.get_message(chunk_dict) 
         else:
-            return self.get_message(self.ask(prompt, stream=False, optimizer=optimizer, conversationally=conversationally))
+            # ask() returns a dict when not streaming
+            response_dict = self.ask(
+                prompt, stream=False, 
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_dict)
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Retrieves message from response."""
-        if isinstance(response, str):  # Handle raw responses
-            return response
-        elif isinstance(response, dict):
+        if isinstance(response, dict):
             assert isinstance(response, dict), "Response should be of dict data-type only"
-            return response.get("text", "")  # Extract text from dictionary response
+            # Handle potential unicode escapes in the final text
+            text = response.get("text", "")
+            try:
+                # Attempt to decode escapes, return original if fails
+                return text.encode('utf-8').decode('unicode_escape')
+            except UnicodeDecodeError:
+                return text 
         else:
-            raise TypeError("Invalid response type. Expected str or dict.")
+            # This case should ideally not be reached if ask() behaves as expected
+            raise TypeError(f"Invalid response type: {type(response)}. Expected dict.")
 
 if __name__ == "__main__":
     print("-" * 80)
@@ -213,20 +262,32 @@ if __name__ == "__main__":
     for model in TypeGPT.AVAILABLE_MODELS:
         try:
             test_ai = TypeGPT(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
-            for chunk in response:
+            print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
                 response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
+                # Optional: print chunks as they arrive for visual feedback
+                # print(chunk, end="", flush=True) 
             
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                # Clean and truncate response
+                clean_text = response_text.strip() # Already decoded in get_message
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
             print(f"\r{model:<50} {status:<10} {display_text}")
+            
+            # Optional: Add non-stream test if needed, but stream test covers basic functionality
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
+
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-    
+

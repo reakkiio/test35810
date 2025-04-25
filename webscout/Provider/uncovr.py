@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import uuid
 import re
@@ -76,7 +77,9 @@ class UncovrAI(Provider):
             "Sec-Fetch-Site": "same-origin"
         }
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
         self.session.proxies.update(proxies)
 
@@ -169,74 +172,50 @@ class UncovrAI(Provider):
 
         def for_stream():
             try:
-                with self.session.post(self.url, json=payload, stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        # If we get a non-200 response, try refreshing our identity once
-                        if response.status_code in [403, 429]:
-                            self.refresh_identity()
-                            # Retry with new identity
-                            with self.session.post(self.url, json=payload, stream=True, timeout=self.timeout) as retry_response:
-                                if not retry_response.ok:
-                                    raise exceptions.FailedToGenerateResponseError(
-                                        f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
-                                    )
-                                response = retry_response
-                        else:
-                            raise exceptions.FailedToGenerateResponseError(
-                                f"Request failed with status code {response.status_code}"
-                            )
-                    
-                    streaming_text = ""
-                    for line in response.iter_lines():
-                        if line:
-                            try:
-                                line = line.decode('utf-8')
-                                # Use regex to match content messages
-                                content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
-                                if content_match:  # Content message
-                                    content = content_match.group(1)
-                                    streaming_text += content
-                                    resp = dict(text=content)
-                                    yield resp if raw else resp
-                                # Check for error messages
-                                error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
-                                if error_match:
-                                    error_msg = error_match.group(1)
-                                    raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
-                            except (json.JSONDecodeError, UnicodeDecodeError):
-                                continue
-                    
-                    self.last_response = {"text": streaming_text}
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
-
-        def for_non_stream():
-            try:
-                response = self.session.post(self.url, json=payload, timeout=self.timeout)
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate=self.fingerprint.get("browser_type", "chrome110") # Use fingerprint browser type
+                )
+                
                 if response.status_code != 200:
+                    # If we get a non-200 response, try refreshing our identity once
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        response = self.session.post(self.url, json=payload, timeout=self.timeout)
-                        if not response.ok:
+                        # Retry with new identity using curl_cffi session
+                        retry_response = self.session.post(
+                            self.url, 
+                            json=payload, 
+                            stream=True, 
+                            timeout=self.timeout,
+                            impersonate=self.fingerprint.get("browser_type", "chrome110") # Use updated fingerprint
+                        )
+                        if not retry_response.ok:
                             raise exceptions.FailedToGenerateResponseError(
-                                f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {response.text}"
+                                f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
                             )
+                        response = retry_response # Use the successful retry response
                     else:
                         raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
+                            f"Request failed with status code {response.status_code} - {response.text}"
                         )
-
-                full_response = ""
-                for line in response.iter_lines():
-                    if line:
+                
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
                         try:
-                            line = line.decode('utf-8')
+                            line = line_bytes.decode('utf-8')
+                            # Use regex to match content messages
                             content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
-                            if content_match:
-                                content = content_match.group(1)
-                                full_response += content
+                            if content_match:  # Content message
+                                content = content_match.group(1).encode().decode('unicode_escape') # Decode escapes
+                                streaming_text += content
+                                resp = dict(text=content)
+                                yield resp if raw else resp
                             # Check for error messages
                             error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
                             if error_match:
@@ -244,12 +223,73 @@ class UncovrAI(Provider):
                                 raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             continue
+                
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
+                    
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
+
+
+        def for_non_stream():
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    json=payload, 
+                    timeout=self.timeout,
+                    impersonate=self.fingerprint.get("browser_type", "chrome110")
+                )
+                
+                if response.status_code != 200:
+                    if response.status_code in [403, 429]:
+                        self.refresh_identity()
+                        # Retry with new identity using curl_cffi session
+                        response = self.session.post(
+                            self.url, 
+                            json=payload, 
+                            timeout=self.timeout,
+                            impersonate=self.fingerprint.get("browser_type", "chrome110")
+                        )
+                        if not response.ok:
+                            raise exceptions.FailedToGenerateResponseError(
+                                f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {response.text}"
+                            )
+                    else:
+                        raise exceptions.FailedToGenerateResponseError(
+                            f"Request failed with status code {response.status_code} - {response.text}"
+                        )
+
+                # Process the non-streamed response content (assuming it's similar line format)
+                full_response = ""
+                # Use response.text which should contain the full body for non-streamed curl_cffi requests
+                for line in response.text.splitlines(): 
+                    if line:
+                        try:
+                            # line is already decoded string
+                            content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
+                            if content_match:
+                                content = content_match.group(1).encode().decode('unicode_escape') # Decode escapes
+                                full_response += content
+                            # Check for error messages
+                            error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
+                            if error_match:
+                                error_msg = error_match.group(1)
+                                raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
+                        except (json.JSONDecodeError): # UnicodeDecodeError less likely here
+                            continue
 
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
                 return {"text": full_response}
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {e}")
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -286,6 +326,7 @@ class UncovrAI(Provider):
         return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
@@ -293,20 +334,29 @@ if __name__ == "__main__":
     for model in UncovrAI.AVAILABLE_MODELS:
         try:
             test_ai = UncovrAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
-            response_text = ""
-            for chunk in response:
-                response_text += chunk
+            # Test non-stream first as stream logic depends on it
+            response_non_stream = test_ai.chat("Say 'Hello' in one word", stream=False) 
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Clean and truncate response
-                clean_text = response_text.strip().encode('utf-8', errors='ignore').decode('utf-8')
-                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
+            if response_non_stream and len(response_non_stream.strip()) > 0:
+                 # Now test stream
+                response_stream = test_ai.chat("Say 'Hi' in one word", stream=True)
+                response_text = ""
+                for chunk in response_stream:
+                    response_text += chunk
+                
+                if response_text and len(response_text.strip()) > 0:
+                    status = "✓"
+                    # Clean and truncate response
+                    clean_text = response_text.strip().encode('utf-8', errors='ignore').decode('utf-8')
+                    display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
+                else:
+                    status = "✗ (Stream)"
+                    display_text = "Empty or invalid stream response"
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
+                status = "✗ (Non-Stream)"
+                display_text = "Empty or invalid non-stream response"
+                
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}") 
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")
 

@@ -1,6 +1,9 @@
-import requests
+from typing import Generator, Union
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 
+from webscout import exceptions
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
@@ -14,7 +17,7 @@ class GPTWeb(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -22,7 +25,7 @@ class GPTWeb(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-
+        # Note: system_prompt is not used by this API
     ):
         """
         Initializes the Nexra GPTWeb API with given parameters.
@@ -37,9 +40,9 @@ class GPTWeb(Provider):
             proxies (dict, optional): Http request proxies. Defaults to {}.
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
-            system_prompt (str, optional): System prompt for GPTWeb. Defaults to "You are a helpful AI assistant.".
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = 'https://nexra.aryahcr.cc/api/chat/gptweb'
@@ -48,6 +51,7 @@ class GPTWeb(Provider):
         self.last_response = {}
         self.headers = {
             "Content-Type": "application/json"
+            # Remove User-Agent, Accept-Encoding, etc. - handled by impersonate
         }
 
         self.__available_optimizers = (
@@ -55,7 +59,10 @@ class GPTWeb(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
+
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -67,16 +74,15 @@ class GPTWeb(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> dict:
+    ) -> Union[dict, Generator[dict, None, None]]: # Corrected return type hint
         """Chat with GPTWeb
 
         Args:
@@ -110,31 +116,66 @@ class GPTWeb(Provider):
         }
 
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, data=json.dumps(data), stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise Exception(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            full_response = '' # Initialize outside try block
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    # headers are set on the session
+                    data=json.dumps(data), 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
+                response.raise_for_status() # Check for HTTP errors
             
-            full_response = ''
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    line = line.lstrip('_') # Remove "_"
-                    try:
-                        # Attempt to parse the entire line as JSON
-                        json_data = json.loads(line)  
-                        full_response = json_data.get("gpt", "")
-                        yield full_response if raw else dict(text=full_response) 
-                    except json.JSONDecodeError:
-                        print(f"Skipping invalid JSON line: {line}") 
-            self.last_response.update(dict(text=full_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8').lstrip('_') # Remove "_"
+                            # Attempt to parse the entire line as JSON
+                            json_data = json.loads(line)  
+                            content = json_data.get("gpt", "")
+                            if content: # Ensure content is not None or empty
+                                full_response = content # API seems to send the full response each time
+                                resp = dict(text=full_response)
+                                # Yield dict or raw string chunk (yielding full response each time)
+                                yield resp if not raw else full_response 
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            # print(f"Skipping invalid JSON line: {line}") # Optional: for debugging
+                            continue # Ignore lines that are not valid JSON or cannot be decoded
+                
+                # Update history after stream finishes (using the final full response)
+                self.last_response = dict(text=full_response)
+                self.conversation.update_chat_history(
+                    prompt, full_response
+                )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
+
+
         def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            # Aggregate the stream using the updated for_stream logic
+            # Since the stream yields the full response each time, we just need the last one.
+            last_chunk = None
+            try:
+                for chunk in for_stream():
+                    last_chunk = chunk
+            except Exception as e:
+                 # If aggregation fails, re-raise.
+                 raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            if last_chunk is None:
+                 raise exceptions.FailedToGenerateResponseError("No response received from stream.")
+            
+            return last_chunk # last_chunk is already dict or raw string based on 'raw'
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -144,7 +185,7 @@ class GPTWeb(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
+    ) -> Union[str, Generator[str, None, None]]: # Corrected return type hint
         """Generate response `str`
         Args:
             prompt (str): Prompt to be send.
@@ -155,23 +196,31 @@ class GPTWeb(Provider):
             str: Response generated
         """
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            # Since the API sends the full response each time, we only need the last one.
+            # However, to maintain the streaming interface, we yield the message from each chunk.
+            # This might result in repeated text if the client doesn't handle it.
+            # A better approach might be to track changes, but for simplicity, yield each message.
+            for response_dict in gen:
+                yield self.get_message(response_dict) 
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False, # Ensure ask returns dict
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -186,6 +235,7 @@ class GPTWeb(Provider):
         return response["text"]
 
 if __name__ == '__main__':
+    # Ensure curl_cffi is installed
     from rich import print
     ai = GPTWeb()
     response = ai.chat("tell me about Abhay koul, HelpingAI", stream=True)

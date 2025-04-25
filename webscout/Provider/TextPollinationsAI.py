@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator, Optional, List
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
@@ -39,7 +40,7 @@ class TextPollinationsAI(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 8096,
+        max_tokens: int = 8096, # Note: max_tokens is not directly used by this API endpoint
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -54,7 +55,8 @@ class TextPollinationsAI(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://text.pollinations.ai/openai"
@@ -69,10 +71,12 @@ class TextPollinationsAI(Provider):
             'Accept-Language': 'en-US,en;q=0.9',
             'User-Agent': Lit().random(),
             'Content-Type': 'application/json',
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
 
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
 
         self.__available_optimizers = (
             method for method in dir(Optimizers)
@@ -128,51 +132,95 @@ class TextPollinationsAI(Provider):
             payload["tool_choice"] = tool_choice
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint,
-                headers=self.headers,
-                json=payload,
-                stream=True,
-                timeout=self.timeout
-            )
-
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try: # Add try block for CurlError
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint,
+                    # headers are set on the session
+                    json=payload,
+                    stream=True,
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
                 )
 
-            full_response = ""
-            for line in response.iter_lines():
-                if line:
-                    line = line.decode('utf-8').strip()
-                    if line == "data: [DONE]":
-                        break
-                    if line.startswith('data: '):
-                        try:
-                            json_data = json.loads(line[6:])
-                            if 'choices' in json_data and len(json_data['choices']) > 0:
-                                choice = json_data['choices'][0]
-                                if 'delta' in choice:
-                                    if 'content' in choice['delta']:
-                                        content = choice['delta']['content']
-                                        full_response += content
-                                        yield content if raw else dict(text=content)
-                                    elif 'tool_calls' in choice['delta']:
-                                        # Handle tool calls in streaming response
-                                        tool_calls = choice['delta']['tool_calls']
-                                        yield tool_calls if raw else dict(tool_calls=tool_calls)
-                        except json.JSONDecodeError:
-                            continue
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
 
-            self.last_response.update(dict(text=full_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                full_response = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        line = line_bytes.decode('utf-8').strip()
+                        if line == "data: [DONE]":
+                            break
+                        if line.startswith('data: '):
+                            try:
+                                json_data = json.loads(line[6:])
+                                if 'choices' in json_data and len(json_data['choices']) > 0:
+                                    choice = json_data['choices'][0]
+                                    if 'delta' in choice:
+                                        if 'content' in choice['delta'] and choice['delta']['content'] is not None:
+                                            content = choice['delta']['content']
+                                            full_response += content
+                                            # Yield dict or raw string
+                                            yield content if raw else dict(text=content)
+                                        elif 'tool_calls' in choice['delta']:
+                                            # Handle tool calls in streaming response
+                                            tool_calls = choice['delta']['tool_calls']
+                                            # Yield dict or raw list
+                                            yield tool_calls if raw else dict(tool_calls=tool_calls)
+                            except json.JSONDecodeError:
+                                continue
+                            except UnicodeDecodeError:
+                                continue
+
+                # Update history and last response after stream finishes
+                # Note: last_response might only contain text, not tool calls if they occurred
+                self.last_response.update(dict(text=full_response))
+                if full_response: # Only update history if text was received
+                    self.conversation.update_chat_history(
+                        prompt, full_response # Use the fully aggregated text
+                    )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
+
 
         def for_non_stream():
-            for _ in for_stream():
-                pass
+            # Aggregate the stream using the updated for_stream logic
+            final_content = ""
+            tool_calls_aggregated = None # To store potential tool calls
+            for chunk_data in for_stream():
+                if isinstance(chunk_data, dict):
+                    if "text" in chunk_data:
+                        final_content += chunk_data["text"]
+                    elif "tool_calls" in chunk_data:
+                        # Aggregate tool calls (simple aggregation, might need refinement)
+                        if tool_calls_aggregated is None:
+                            tool_calls_aggregated = []
+                        tool_calls_aggregated.extend(chunk_data["tool_calls"])
+                elif isinstance(chunk_data, str): # Handle raw stream case
+                    final_content += chunk_data
+                # Handle raw tool calls list if raw=True
+                elif isinstance(chunk_data, list) and raw:
+                     if tool_calls_aggregated is None:
+                         tool_calls_aggregated = []
+                     tool_calls_aggregated.extend(chunk_data)
+
+
+            # last_response and history are updated within for_stream (for text)
+            # Return a dict containing text and/or tool_calls
+            result = {}
+            if final_content:
+                result["text"] = final_content
+            if tool_calls_aggregated:
+                result["tool_calls"] = tool_calls_aggregated
+            self.last_response = result # Update last_response with aggregated result
             return self.last_response
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -217,6 +265,7 @@ class TextPollinationsAI(Provider):
             return json.dumps(response["tool_calls"])
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
@@ -228,19 +277,28 @@ if __name__ == "__main__":
     for model in TextPollinationsAI.AVAILABLE_MODELS:
         try:
             test_ai = TextPollinationsAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
-            for chunk in response:
+            print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
                 response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
 
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                # Clean and truncate response
+                clean_text = response_text.strip()
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
             print(f"\r{model:<50} {status:<10} {display_text}")
+
+            # Optional: Add non-stream test if needed
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")

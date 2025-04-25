@@ -2,7 +2,6 @@ import os
 import json
 import base64
 import asyncio
-import requests
 from urllib.parse import quote
 from typing import Optional, Dict, Any, List, Union, Generator
 
@@ -287,8 +286,6 @@ class Copilot(Provider):
                     finally:
                         wss.close()
                         
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Error: {str(e)}")
 

@@ -1,9 +1,14 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
+import json
+from typing import Union, Any, Dict, Generator
+from webscout import exceptions
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout.litagent import LitAgent
+
 
 class Elmo(Provider):
     """
@@ -13,7 +18,7 @@ class Elmo(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600,  # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -22,7 +27,6 @@ class Elmo(Provider):
         history_offset: int = 10250,
         act: str = None,
         system_prompt: str = "You are a helpful AI assistant. Provide clear, concise, and well-structured information. Organize your responses into paragraphs for better readability.",
-
     ) -> None:
         """Instantiates Elmo
 
@@ -37,9 +41,9 @@ class Elmo(Provider):
             history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
             system_prompt (str, optional): System prompt for Elmo. Defaults to the provided string.
-            web_search (bool, optional): Enables web search mode when True. Defaults to False.
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://www.elmo.chat/api/v1/prompt"
@@ -49,20 +53,14 @@ class Elmo(Provider):
         self.system_prompt = system_prompt
         self.headers = {
             "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "content-length": "763",
             "content-type": "text/plain;charset=UTF-8",
             "dnt": "1",
             "origin": "chrome-extension://ipnlcfhfdicbfbchfoihipknbaeenenm",
             "priority": "u=1, i",
-            "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Microsoft Edge";v="128"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "cross-site",
-            "user-agent": LitAgent().random(),
         }
 
         self.__available_optimizers = (
@@ -70,7 +68,10 @@ class Elmo(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies  # Assign proxies directly
+
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -82,16 +83,15 @@ class Elmo(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False,  # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> dict:
+    ) -> Union[Dict[str, Any], Generator[Any, None, None]]:  # Corrected return type hint
         """Chat with AI
 
         Args:
@@ -106,7 +106,7 @@ class Elmo(Provider):
         {
            "text" : "How may I assist you today?"
         }
-        ```
+        ```json
         """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -118,7 +118,6 @@ class Elmo(Provider):
                 raise Exception(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
 
         payload = {
             "metadata": {
@@ -145,36 +144,75 @@ class Elmo(Provider):
         }
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint,
-                headers=self.headers,
-                json=payload,
-                stream=True,
-                timeout=self.timeout,
-            )
-            if not response.ok:
-                raise Exception(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            full_response = ""  # Initialize outside try block
+            try:
+                # Use curl_cffi session post with impersonate
+                # Note: The API expects 'text/plain' but we send JSON.
+                # If this fails, try sending json.dumps(payload) as data with 'Content-Type': 'application/json'
+                response = self.session.post(
+                    self.api_endpoint,
+                    # headers are set on the session, but content-type might need override if sending JSON
+                    json=payload,  # Sending as JSON
+                    stream=True,
+                    timeout=self.timeout,
+                    impersonate="chrome110"  # Use a common impersonation profile
                 )
-            full_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    if line.startswith('0:'):
-                        chunk = line.split(':"')[1].strip('"')
-                        formatted_output = (
-                            chunk.replace("\\n", "\n").replace("\\n\\n", "\n\n")
-                        )
-                        full_response += formatted_output
-                        self.last_response.update(dict(text=full_response))
-                        yield formatted_output if raw else dict(text=formatted_output)
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                response.raise_for_status()  # Check for HTTP errors
+
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            line = line_bytes.decode('utf-8')
+                            if line.startswith('0:'):
+                                # Extract content after '0:"' and before the closing '"'
+                                match = line.split(':"', 1)
+                                if len(match) > 1:
+                                    chunk = match[1]
+                                    if chunk.endswith('"'):
+                                        chunk = chunk[:-1]  # Remove trailing quote
+
+                                    # Handle potential escape sequences like \\n
+                                    formatted_output = chunk.encode().decode('unicode_escape')
+
+                                    if formatted_output:  # Ensure content is not None or empty
+                                        full_response += formatted_output
+                                        resp = dict(text=formatted_output)
+                                        # Yield dict or raw string chunk
+                                        yield resp if not raw else formatted_output
+                        except (UnicodeDecodeError, IndexError):
+                            continue  # Ignore lines that cannot be decoded or parsed
+
+                # Update history after stream finishes
+                self.last_response = dict(text=full_response)
+                self.conversation.update_chat_history(
+                    prompt, full_response
+                )
+            except CurlError as e:  # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:  # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
 
         def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            # Aggregate the stream using the updated for_stream logic
+            collected_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        collected_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         collected_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not collected_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return collected_text if raw else self.last_response
 
         return for_stream() if stream else for_non_stream()
 
@@ -184,7 +222,7 @@ class Elmo(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
+    ) -> Union[str, Generator[str, None, None]]:  # Corrected return type hint
         """Generate response `str`
         Args:
             prompt (str): Prompt to be send.
@@ -195,23 +233,27 @@ class Elmo(Provider):
             str: Response generated
         """
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+        def for_stream_chat():  # Renamed inner function
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False,  # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict)  # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():  # Renamed inner function
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False,  # Ensure ask returns dict
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            return self.get_message(response_data)  # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()  # Use renamed functions
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -227,6 +269,7 @@ class Elmo(Provider):
 
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     ai = Elmo()
     response = ai.chat("write a poem about AI", stream=True)

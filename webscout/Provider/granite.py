@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator
 
@@ -19,7 +20,7 @@ class IBMGranite(Provider):
         self,
         api_key: str,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -35,7 +36,8 @@ class IBMGranite(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://d18n68ssusgr7r.cloudfront.net/v1/chat/completions"
@@ -46,18 +48,19 @@ class IBMGranite(Provider):
         self.system_prompt = system_prompt
         self.thinking = thinking
 
-        # Use Lit agent to generate a random User-Agent
+        # Use Lit agent (keep if needed for other headers or logic)
         self.headers = {
-            "authority": "d18n68ssusgr7r.cloudfront.net",
-            "accept": "application/json,application/jsonl",
+            "authority": "d18n68ssusgr7r.cloudfront.net", # Keep authority
+            "accept": "application/json,application/jsonl", # Keep accept
             "content-type": "application/json",
-            "origin": "https://www.ibm.com",
-            "referer": "https://www.ibm.com/",
-            "user-agent": Lit().random(),
+            "origin": "https://www.ibm.com", # Keep origin
+            "referer": "https://www.ibm.com/", # Keep referer
         }
         self.headers["Authorization"] = f"Bearer {api_key}"
+        
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
 
         self.__available_optimizers = (
             method for method in dir(Optimizers)
@@ -77,7 +80,7 @@ class IBMGranite(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -107,48 +110,81 @@ class IBMGranite(Provider):
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": conversation_prompt},
             ],
-            "stream": stream,
-            "thinking": self.thinking,
+            "stream": True # API seems to require stream=True based on response format
         }
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
             try:
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
-                    self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout
+                    self.api_endpoint, 
+                    # headers are set on the session
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
-                if not response.ok:
-                    msg = f"Request failed with status code {response.status_code}: {response.text}"
-                    raise exceptions.FailedToGenerateResponseError(msg)
+                response.raise_for_status() # Check for HTTP errors
 
-                streaming_text = ""
-                for line in response.iter_lines(decode_unicode=True):
-                    if line:
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
                         try:
+                            line = line_bytes.decode('utf-8')
                             data = json.loads(line)
-                            if len(data) == 2 and data[0] == 3 and isinstance(data[1], str):
+                            # Check the specific format [3, "text_chunk"]
+                            if isinstance(data, list) and len(data) == 2 and data[0] == 3 and isinstance(data[1], str):
                                 content = data[1]
-                                streaming_text += content
-                                yield content if raw else dict(text=content)
+                                if content: # Ensure content is not None or empty
+                                    streaming_text += content
+                                    resp = dict(text=content)
+                                    # Yield dict or raw string chunk
+                                    yield resp if not raw else content
                             else:
-                                # Skip unrecognized lines
+                                # Skip unrecognized lines/formats
                                 pass
-                        except json.JSONDecodeError:
-                            continue
-                self.last_response.update(dict(text=streaming_text))
-                self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Request failed: {e}")
-            except json.JSONDecodeError as e:
-                raise exceptions.InvalidResponseError(f"Failed to decode JSON response: {e}")
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred: {e}")
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue # Ignore lines that are not valid JSON or cannot be decoded
+                
+                # Update history after stream finishes
+                self.last_response = dict(text=streaming_text)
+                self.conversation.update_chat_history(prompt, streaming_text)
+                
+            except CurlError as e: # Catch CurlError
+                raise exceptions.ProviderConnectionError(f"Request failed (CurlError): {e}") from e
+            except json.JSONDecodeError as e: # Keep specific JSON error handling
+                raise exceptions.InvalidResponseError(f"Failed to decode JSON response: {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                # Use specific exception type if available, otherwise generic
+                ex_type = exceptions.FailedToGenerateResponseError if not isinstance(e, exceptions.ProviderConnectionError) else type(e)
+                raise ex_type(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
+
 
         def for_non_stream():
-            # Run the generator to completion
-            for _ in for_stream():
-                pass
-            return self.last_response
+            # Aggregate the stream using the updated for_stream logic
+            full_text = ""
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return full_text if raw else self.last_response
+
+
+        # Since the API endpoint suggests streaming, always call the stream generator.
+        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -159,16 +195,24 @@ class IBMGranite(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response as a string using chat method"""
-        def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, conversationally=conversationally):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, False, optimizer=optimizer, conversationally=conversationally)
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response"""
@@ -176,6 +220,7 @@ class IBMGranite(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     from rich import print
     # Example usage: Initialize without logging.
     ai = IBMGranite(

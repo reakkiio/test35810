@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Any, Dict, Optional, Generator, Union
 from webscout.AIutel import Optimizers
@@ -21,7 +22,7 @@ class SonusAI(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2049,
+        max_tokens: int = 2049, # Note: max_tokens is not directly used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -44,11 +45,14 @@ class SonusAI(Provider):
             'Origin': 'https://chat.sonus.ai',
             'Referer': 'https://chat.sonus.ai/',
             'User-Agent': LitAgent().random()
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -92,61 +96,95 @@ class SonusAI(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
-        # Prepare the multipart form data
-        files = {
-            'message': (None, conversation_prompt),
-            'history': (None),
-            'reasoning': (None, str(reasoning).lower()),
-            'model': (None, self.model)
+        # Prepare the multipart form data (curl_cffi handles tuples for files/data)
+        # No need for explicit (None, ...) for simple fields when using `data=`
+        form_data = {
+            'message': conversation_prompt,
+            'history': "", # Explicitly empty string if needed, or omit if None is acceptable
+            'reasoning': str(reasoning).lower(),
+            'model': self.model
         }
+        # Note: curl_cffi's `files` parameter is for actual file uploads.
+        # For simple key-value pairs like this, `data` is usually sufficient for multipart/form-data.
+        # If the server strictly requires `files`, keep the original structure but it might not work as expected with curl_cffi without actual file objects.
 
         def for_stream():
             try:
-                with requests.post(self.url, files=files, headers=self.headers, stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
+                # Use curl_cffi session post with impersonate
+                # Use `data` instead of `files` for simple key-value multipart
+                response = self.session.post(
+                    self.url, 
+                    # headers are set on the session
+                    data=form_data, # Use data for multipart form fields
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                if response.status_code != 200:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Request failed with status code {response.status_code} - {response.text}"
+                    )
                     
-                    streaming_text = ""
-                    for line in response.iter_lines():
-                        if line:
-                            try:
-                                # Decode the line and remove 'data: ' prefix if present
-                                line = line.decode('utf-8')
-                                if line.startswith('data: '):
-                                    line = line[6:]
-                                
-                                data = json.loads(line)
-                                if "content" in data:
-                                    content = data["content"]
-                                    streaming_text += content
-                                    resp = dict(text=content)
-                                    yield resp if raw else resp
-                            except (json.JSONDecodeError, UnicodeDecodeError):
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            # Decode the line and remove 'data: ' prefix if present
+                            line = line_bytes.decode('utf-8')
+                            if line.startswith('data: '):
+                                line = line[6:]
+                            
+                            # Handle potential empty lines after prefix removal
+                            if not line.strip():
                                 continue
+
+                            data = json.loads(line)
+                            if "content" in data:
+                                content = data["content"]
+                                streaming_text += content
+                                resp = dict(text=content)
+                                # Yield dict or raw string
+                                yield resp if raw else resp
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
+                
+                # Update history and last response after stream finishes
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
                     
-                    self.last_response = {"text": streaming_text}
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions
+                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
 
         def for_non_stream():
             try:
-                response = requests.post(self.url, files=files, headers=self.headers, timeout=self.timeout)
+                 # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    # headers are set on the session
+                    data=form_data, # Use data for multipart form fields
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
                 if response.status_code != 200:
                     raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed with status code {response.status_code}"
+                        f"Request failed with status code {response.status_code} - {response.text}"
                     )
 
                 full_response = ""
-                for line in response.iter_lines():
+                # Process the full response text which might contain multiple JSON objects
+                # Split by lines and process each potential JSON object
+                for line in response.text.splitlines():
                     if line:
                         try:
-                            line = line.decode('utf-8')
                             if line.startswith('data: '):
                                 line = line[6:]
+                            
+                            if not line.strip():
+                                continue
+                                
                             data = json.loads(line)
                             if "content" in data:
                                 full_response += data["content"]
@@ -155,9 +193,13 @@ class SonusAI(Provider):
 
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
-                return {"text": full_response}
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                # Return dict or raw string
+                return full_response if raw else {"text": full_response}
+                
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
 
         return for_stream() if stream else for_non_stream()
 
@@ -169,20 +211,30 @@ class SonusAI(Provider):
         conversationally: bool = False,
         reasoning: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
-        def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, conversationally=conversationally, reasoning=reasoning):
-                yield self.get_message(response)
-        def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, False, optimizer=optimizer, conversationally=conversationally, reasoning=reasoning)
+        def for_stream_chat():
+            # ask() yields dicts when raw=False
+            for response_dict in self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
+            ):
+                yield self.get_message(response_dict)
+        
+        def for_non_stream_chat():
+             # ask() returns dict or str when raw=False/True
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
             )
-        return for_stream() if stream else for_non_stream()
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
@@ -205,4 +257,4 @@ if __name__ == "__main__":
                 display_text = "Empty or invalid response"
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}") 
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")

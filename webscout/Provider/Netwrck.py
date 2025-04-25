@@ -1,6 +1,5 @@
 import time
 import uuid
-import requests
 import json
 from typing import Any, Dict, Optional, Generator, Union
 from dataclasses import dataclass, asdict
@@ -9,6 +8,9 @@ from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
+# Replace requests with curl_cffi
+from curl_cffi.requests import Session # Import Session
+from curl_cffi import CurlError # Import CurlError
 
 class Netwrck(Provider):
     """
@@ -21,9 +23,10 @@ class Netwrck(Provider):
         "x-ai/grok-2",
         "anthropic/claude-3-7-sonnet-20250219",
         "sao10k/l3-euryale-70b",
-        "openai/gpt-4o-mini",
+        "openai/gpt-4.1-mini",
         "gryphe/mythomax-l2-13b",
         "google/gemini-pro-1.5",
+        "google/gemini-2.5-flash-preview-04-17",
         "nvidia/llama-3.1-nemotron-70b-instruct",
         "deepseek/deepseek-r1",
         "deepseek/deepseek-chat"
@@ -34,7 +37,7 @@ class Netwrck(Provider):
         self,
         model: str = "anthropic/claude-3-7-sonnet-20250219",
         is_conversation: bool = True,
-        max_tokens: int = 4096,
+        max_tokens: int = 4096, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: Optional[str] = None,
         filepath: Optional[str] = None,
@@ -43,17 +46,18 @@ class Netwrck(Provider):
         history_offset: int = 0,
         act: Optional[str] = None,
         system_prompt: str = "You are a helpful assistant.",
-        temperature: float = 0.7,
-        top_p: float = 0.8
+        temperature: float = 0.7, # Note: temperature is not used by this API
+        top_p: float = 0.8 # Note: top_p is not used by this API
     ):
         """Initializes the Netwrck API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
         self.model = model
-        self.model_name = model  # Use the model name directly since it's already in the correct format
+        self.model_name = model
         self.system_prompt = system_prompt
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -61,7 +65,7 @@ class Netwrck(Provider):
         self.temperature = temperature
         self.top_p = top_p
         
-        self.agent = LitAgent()
+        self.agent = LitAgent() # Keep for potential future use or other headers
         self.headers = {
             'authority': 'netwrck.com',
             'accept': '*/*',
@@ -69,11 +73,14 @@ class Netwrck(Provider):
             'content-type': 'application/json',
             'origin': 'https://netwrck.com',
             'referer': 'https://netwrck.com/',
-            'user-agent': self.agent.random()
+            'user-agent': self.agent.random() 
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
         
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
         self.proxies = proxies or {}
+        self.session.proxies = self.proxies # Assign proxies directly
 
         Conversation.intro = (
             AwesomePrompts().get_act(act, raise_not_found=True, default=None, case_insensitive=True)
@@ -92,7 +99,7 @@ class Netwrck(Provider):
         self,
         prompt: str,
         stream: bool = False,
-        raw: bool = False,
+        raw: bool = False, # Keep raw param for interface consistency
         optimizer: Optional[str] = None,
         conversationally: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
@@ -116,51 +123,72 @@ class Netwrck(Provider):
 
         def for_stream():
             try:
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     "https://netwrck.com/api/chatpred_or",
                     json=payload,
-                    headers=self.headers,
-                    proxies=self.proxies,
+                    # headers are set on the session
+                    # proxies are set on the session
                     timeout=self.timeout,
                     stream=True,
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
-                response.raise_for_status()
+                response.raise_for_status() # Check for HTTP errors
 
                 streaming_text = ""
-                for line in response.iter_lines():
-                    if line:
-                        decoded_line = line.decode('utf-8').strip('"')
-                        streaming_text += decoded_line
-                        yield {"text": decoded_line}
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            decoded_line = line_bytes.decode('utf-8').strip('"')
+                            # Handle potential escape sequences if necessary
+                            # decoded_line = decoded_line.encode().decode('unicode_escape') # Uncomment if needed
+                            streaming_text += decoded_line
+                            resp = {"text": decoded_line}
+                            # Yield dict or raw string
+                            yield resp if not raw else decoded_line
+                        except UnicodeDecodeError:
+                            # Handle potential decoding errors if chunks split mid-character
+                            continue 
 
+                # Update history after stream finishes
+                self.last_response = {"text": streaming_text} # Store aggregated text
                 self.conversation.update_chat_history(payload["query"], streaming_text)
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Network error: {str(e)}") from e
-            except Exception as e:
-                raise exceptions.ProviderConnectionError(f"Unexpected error: {str(e)}") from e
+            except CurlError as e: # Catch CurlError
+                raise exceptions.ProviderConnectionError(f"Network error (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.ProviderConnectionError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
 
         def for_non_stream():
             try:
+                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     "https://netwrck.com/api/chatpred_or",
                     json=payload,
-                    headers=self.headers,
-                    proxies=self.proxies,
+                    # headers are set on the session
+                    # proxies are set on the session
                     timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
-                response.raise_for_status()
+                response.raise_for_status() # Check for HTTP errors
                 
+                # Use response.text which is already decoded
                 text = response.text.strip('"')
+                # Handle potential escape sequences if necessary
+                # text = text.encode().decode('unicode_escape') # Uncomment if needed
                 self.last_response = {"text": text}
                 self.conversation.update_chat_history(prompt, text)
 
-                return self.last_response
+                # Return dict or raw string
+                return text if raw else self.last_response
 
-            except requests.exceptions.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Network error: {str(e)}") from e
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Unexpected error: {str(e)}") from e
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Network error (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
 
         return for_stream() if stream else for_non_stream()
 
@@ -172,26 +200,30 @@ class Netwrck(Provider):
         conversationally: bool = False,
     ) -> str:
         """Generates a response from the Netwrck API."""
-        def for_stream():
-            for response in self.ask(
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
                 prompt,
                 stream=True,
+                raw=False, # Ensure ask yields dicts for get_message
                 optimizer=optimizer,
                 conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    stream=False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False, # Ensure ask returns dict for get_message
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Retrieves message only from response"""
@@ -199,6 +231,7 @@ class Netwrck(Provider):
         return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

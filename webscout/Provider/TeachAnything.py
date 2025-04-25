@@ -1,20 +1,25 @@
-import requests
-from requests.exceptions import RequestException
+from curl_cffi.requests import Session # Import Session
+from curl_cffi import CurlError # Import CurlError
 from typing import Union, Any, Dict
-from webscout.AIutel import Conversation, Optimizers
-from webscout.litagent import LitAgent
+from webscout.AIbase import Provider # Import Provider base class
+from webscout import exceptions # Import custom exceptions
+from webscout.conversation import Conversation
+from webscout.optimizers import Optimizers
 from webscout.prompt_manager import AwesomePrompts
+from webscout.litagent import LitAgent
 
-class TeachAnything:
+# Inherit from Provider
+class TeachAnything(Provider):
     """
     A class to interact with the Teach-Anything API.
     """
-
+    # Add AVAILABLE_MODELS if applicable, otherwise remove model param
+    # AVAILABLE_MODELS = ["default"] # Example
 
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 600,
+        max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -22,6 +27,7 @@ class TeachAnything:
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
+        # model: str = "default" # Remove if not used
     ) -> None:
         """
         Initializes the Teach-Anything API with given parameters.
@@ -40,7 +46,8 @@ class TeachAnything:
         """
 
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://www.teach-anything.com/api/generate"
@@ -48,8 +55,6 @@ class TeachAnything:
         self.last_response = {}
         self.headers = {
             "authority": "www.teach-anything.com",
-            "path": "/api/generate",
-            "scheme": "https",
             "accept": "*/*",
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
@@ -57,13 +62,16 @@ class TeachAnything:
             "origin": "https://www.teach-anything.com",
             "referer": "https://www.teach-anything.com/",
             "user-agent": LitAgent().random(),
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
         self.__available_optimizers = (
             method
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Assign proxies directly
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -75,12 +83,12 @@ class TeachAnything:
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
+
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
-        raw: bool = False,
+        stream: bool = False, # Keep stream param for interface, but API doesn't stream
+        raw: bool = False, # Keep raw param for interface
         optimizer: str = None,
         conversationally: bool = False,
     ) -> dict:
@@ -110,31 +118,40 @@ class TeachAnything:
         payload = {
             "prompt": conversation_prompt
         }
-        def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, timeout=self.timeout)
-            if not response.ok:
-                raise RequestException(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
 
-            resp = response.text
-            self.last_response.update(dict(text=resp))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
+        # API does not stream, so implement non-stream logic directly
+        try:
+            # Use curl_cffi session post with impersonate
+            response = self.session.post(
+                self.api_endpoint, 
+                # headers are set on the session
+                json=payload, 
+                timeout=self.timeout,
+                impersonate="chrome110" # Use a common impersonation profile
             )
-            return self.last_response
-        
-        def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            response.raise_for_status() # Check for HTTP errors
 
-        return for_stream() if stream else for_non_stream()
+            # Use response.text which is already decoded
+            resp_text = response.text
+            # The response is plain text, wrap it in the expected dict format
+            self.last_response = {"text": resp_text}
+            self.conversation.update_chat_history(
+                prompt, resp_text
+            )
+            # Return dict or raw string based on raw flag
+            return resp_text if raw else self.last_response
+
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+        except Exception as e: # Catch other potential exceptions (like HTTPError)
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
+
 
     def chat(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # Keep stream param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
     ) -> str:
@@ -148,23 +165,22 @@ class TeachAnything:
             str: Response generated
         """
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
-            )
-
-        return for_stream() if stream else for_non_stream()
+        # Since ask() now handles both stream=True/False by returning the full response dict/str:
+        response_data = self.ask(
+            prompt, 
+            stream=False, # Call ask in non-stream mode internally
+            raw=False, # Ensure ask returns dict
+            optimizer=optimizer, 
+            conversationally=conversationally
+        )
+        # If stream=True was requested, simulate streaming by yielding the full message at once
+        if stream:
+            def stream_wrapper():
+                yield self.get_message(response_data)
+            return stream_wrapper()
+        else:
+            # If stream=False, return the full message directly
+            return self.get_message(response_data)
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -180,8 +196,26 @@ class TeachAnything:
 
 
 if __name__ == '__main__':
+    # Ensure curl_cffi is installed
     from rich import print
-    ai = TeachAnything()
-    response = ai.chat("hi")
-    for chunk in response:
-        print(chunk, end="", flush=True)
+    try: # Add try-except block for testing
+        ai = TeachAnything(timeout=60)
+        print("[bold blue]Testing Chat (Non-Stream Simulation):[/bold blue]")
+        # Test non-stream first as API doesn't truly stream
+        response_non_stream = ai.chat("hi", stream=False)
+        print(response_non_stream)
+        print("[bold green]Non-Stream Test Complete.[/bold green]\n")
+
+        # Test stream interface (will yield the full response at once)
+        print("[bold blue]Testing Chat (Stream Simulation):[/bold blue]")
+        response_stream = ai.chat("hello again", stream=True)
+        full_stream_response = ""
+        for chunk in response_stream:
+            print(chunk, end="", flush=True)
+            full_stream_response += chunk
+        print("\n[bold green]Stream Test Complete.[/bold green]")
+
+    except exceptions.FailedToGenerateResponseError as e:
+        print(f"\n[bold red]API Error:[/bold red] {e}")
+    except Exception as e:
+        print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")

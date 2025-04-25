@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import secrets
 from typing import Any, Dict, Optional, Generator, Union
@@ -26,13 +27,13 @@ class SCNet(Provider):
         self,
         model: str = "QWQ-32B",
         is_conversation: bool = True,
-        max_tokens: int = 2048,
+        max_tokens: int = 2048, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: Optional[str] = None,
         filepath: Optional[str] = None,
         update_file: bool = True,
         proxies: Optional[dict] = None,
-        history_offset: int = 0,
+        history_offset: int = 0, # Note: history_offset might not be fully effective due to API structure
         act: Optional[str] = None,
         system_prompt: str = (
             "You are a helpful, advanced LLM assistant. "
@@ -46,14 +47,15 @@ class SCNet(Provider):
         self.model = model
         self.modelId = self.MODEL_NAME_TO_ID[model]
         self.system_prompt = system_prompt
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
         self.last_response: Dict[str, Any] = {}
         self.proxies = proxies or {}
         self.cookies = {
-            "Token": secrets.token_hex(16),
+            "Token": secrets.token_hex(16), # Keep cookie generation logic
         }
         self.headers = {
             "accept": "text/event-stream",
@@ -61,8 +63,17 @@ class SCNet(Provider):
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
             "referer": "https://www.scnet.cn/ui/chatbot/temp_1744712663464",
             "origin": "https://www.scnet.cn",
+            # Add sec-ch-ua headers if needed for impersonation consistency
         }
         self.url = "https://www.scnet.cn/acx/chatbot/v1/chat/completion"
+        
+        # Update curl_cffi session headers, proxies, and cookies
+        self.session.headers.update(self.headers)
+        self.session.proxies = self.proxies # Assign proxies directly
+        # Set cookies on the session object for curl_cffi
+        for name, value in self.cookies.items():
+            self.session.cookies.set(name, value) 
+
         self.__available_optimizers = (
             method for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
@@ -86,9 +97,7 @@ class SCNet(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise exceptions.FailedToGenerateResponseError(f"Optimizer is not one of {list(self.__available_optimizers)}")
 
@@ -105,39 +114,61 @@ class SCNet(Provider):
 
         def for_stream():
             try:
-                with self.session.post(
+                # Use curl_cffi session post with impersonate
+                # Cookies are now handled by the session object
+                response = self.session.post(
                     self.url,
-                    headers=self.headers,
-                    cookies=self.cookies,
                     json=payload,
                     stream=True,
                     timeout=self.timeout,
-                    proxies=self.proxies
-                ) as resp:
-                    streaming_text = ""
-                    for line in resp.iter_lines(decode_unicode=True):
-                        if line and line.startswith("data:"):
+                    impersonate="chrome120" # Changed impersonation to chrome120
+                )
+                response.raise_for_status() # Check for HTTP errors
+
+                streaming_text = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        line = line_bytes.decode('utf-8') # Decode bytes
+                        if line.startswith("data:"):
                             data = line[5:].strip()
                             if data and data != "[done]":
                                 try:
                                     obj = json.loads(data)
                                     content = obj.get("content", "")
                                     streaming_text += content
-                                    yield {"text": content} if raw else {"text": content}
-                                except Exception:
+                                    resp = {"text": content}
+                                    # Yield dict or raw string
+                                    yield resp if not raw else content
+                                except (json.JSONDecodeError, UnicodeDecodeError):
                                     continue
                             elif data == "[done]":
                                 break
-                    self.last_response = {"text": streaming_text}
-                    self.conversation.update_chat_history(prompt, streaming_text)
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                
+                # Update history and last response after stream finishes
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
+
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
 
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
             text = ""
-            for chunk in for_stream():
-                text += chunk["text"]
-            return {"text": text}
+             # Ensure raw=False so for_stream yields dicts
+            for chunk_data in for_stream():
+                if isinstance(chunk_data, dict) and "text" in chunk_data:
+                     text += chunk_data["text"]
+                # Handle raw string case if raw=True was passed
+                elif isinstance(chunk_data, str):
+                     text += chunk_data
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return text if raw else self.last_response
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -148,40 +179,59 @@ class SCNet(Provider):
         optimizer: Optional[str] = None,
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
-        def for_stream():
-            for response in self.ask(
-                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, stream=False, optimizer=optimizer, conversationally=conversationally
-                )
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
-        return for_stream() if stream else for_non_stream()
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'ModelId':<10} {'Model':<30} {'Status':<10} {'Response'}")
     print("-" * 80)
     for model in SCNet.AVAILABLE_MODELS:
         try:
             test_ai = SCNet(model=model["name"], timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
-            for chunk in response:
+            print(f"\r{model['modelId']:<10} {model['name']:<30} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
                 response_text += chunk
+            
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                # Clean and truncate response
+                clean_text = response_text.strip()
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model['modelId']:<10} {model['name']:<30} {status:<10} {display_text}")
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
+            print(f"\r{model['modelId']:<10} {model['name']:<30} {status:<10} {display_text}")
+
+            # Optional: Add non-stream test if needed
+            # print(f"\r{model['modelId']:<10} {model['name']:<30} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model['modelId']:<10} {model['name']:<30} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
         except Exception as e:
-            print(f"{model['modelId']:<10} {model['name']:<30} {'✗':<10} {str(e)}")
+            print(f"\r{model['modelId']:<10} {model['name']:<30} {'✗':<10} {str(e)}")

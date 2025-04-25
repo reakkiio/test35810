@@ -1,6 +1,7 @@
 from typing import Union, Any, Dict
 from uuid import uuid4
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import re
 
 from webscout.AIutel import Optimizers
@@ -9,6 +10,8 @@ from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
+# Import HTTPVersion enum
+from curl_cffi.const import CurlHttpVersion
 
 class X0GPT(Provider):
     """
@@ -60,7 +63,8 @@ class X0GPT(Provider):
             >>> print(ai.system_prompt)
             'You are a friendly assistant.'
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session instead of requests.Session
+        self.session = Session() 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://x0-gpt.devwtf.in/api/stream/reply"
@@ -77,18 +81,18 @@ class X0GPT(Provider):
             "path": "/api/stream/reply",
             "scheme": "https",
             "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-encoding": "gzip, deflate, br, zstd", # Keep zstd for now
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "content-length": "114",
+            # "content-length": "114", # Let curl_cffi handle content-length
             "content-type": "application/json",
             "dnt": "1",
             "origin": "https://x0-gpt.devwtf.in",
-            "priority": "u=1, i",
+            # "priority": "u=1, i", # Remove priority header
             "referer": "https://x0-gpt.devwtf.in/chat",
             "sec-ch-ua": '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
-            "user-agent": self.agent.random()  # Use LitAgent to generate a random user agent
+            "user-agent": self.agent.random()
         }
 
         self.__available_optimizers = (
@@ -96,7 +100,10 @@ class X0GPT(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies
+
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -108,7 +115,6 @@ class X0GPT(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
@@ -158,25 +164,44 @@ class X0GPT(Provider):
         }
 
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try:
+                # Use curl_cffi session post with updated impersonate and http_version
+                response = self.session.post(
+                    self.api_endpoint,
+                    headers=self.headers,
+                    json=payload,
+                    stream=True,
+                    timeout=self.timeout,
+                    impersonate="chrome120", # Try a different impersonation profile
+                    http_version=CurlHttpVersion.V1_1 # Force HTTP/1.1
                 )
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    match = re.search(r'0:"(.*?)"', line)
-                    if match:
-                        content = match.group(1)
-                        streaming_response += content
-                        yield content if raw else dict(text=content)
-            self.last_response.update(dict(text=streaming_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
+                streaming_response = ""
+                # Iterate over bytes and decode manually
+                for byte_line in response.iter_lines(): # Remove decode_unicode=True
+                    if byte_line:
+                        line = byte_line.decode('utf-8') # Decode bytes to string
+                        match = re.search(r'0:"(.*?)"', line)
+                        if match:
+                            # Decode potential unicode escapes like \u00e9
+                            content = match.group(1).encode().decode('unicode_escape')
+                            streaming_response += content
+                            yield content if raw else dict(text=content)
+                self.last_response.update(dict(text=streaming_response))
+                self.conversation.update_chat_history(
+                    prompt, self.get_message(self.last_response)
+                )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                # Include the original exception type in the message for clarity
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
+            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
             return self.last_response
@@ -245,7 +270,10 @@ class X0GPT(Provider):
             'Why did the scarecrow win an award? Because he was outstanding in his field!'
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        formatted_text = response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        # Ensure text exists before processing
+        text = response.get("text", "")
+        # Remove potential backslashes before quotes and handle escaped newlines
+        formatted_text = text.replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
         return formatted_text
 
 if __name__ == "__main__":

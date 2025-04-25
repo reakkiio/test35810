@@ -2,7 +2,7 @@
 
 import os
 import json
-import requests
+from curl_cffi.requests import Session
 from typing import Optional, Dict, Union
 from rich.console import Console
 from rich.table import Table
@@ -12,12 +12,14 @@ console = Console()
 
 class AwesomePrompts:
     """The most awesome prompts manager you'll ever see fr fr! 🔥"""
-    
+
     def __init__(
         self,
         repo_url: str = "https://raw.githubusercontent.com/OE-LUCIFER/prompts/main/prompt.json",
         local_path: Optional[str] = None,
-        auto_update: bool = True
+        auto_update: bool = True,
+        timeout: int = 10,
+        impersonate: str = "chrome110"
     ):
         """Initialize them Awesome Prompts with style! 💫
 
@@ -25,6 +27,8 @@ class AwesomePrompts:
             repo_url (str): URL to fetch prompts from
             local_path (str, optional): Where to save them prompts locally
             auto_update (bool): Auto update prompts on init. Defaults to True
+            timeout (int): Timeout for HTTP requests. Defaults to 10.
+            impersonate (str): Browser profile for curl_cffi. Defaults to "chrome110".
         """
         self.repo_url = repo_url
         self.local_path = local_path or os.path.join(
@@ -34,14 +38,20 @@ class AwesomePrompts:
         )
         self._cache: Dict[Union[str, int], str] = {}
         self._last_update: Optional[datetime] = None
-        
+        self.timeout = timeout
+        # Initialize curl_cffi session
+        self.session = Session(
+            timeout=self.timeout,
+            impersonate=impersonate
+        )
+
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(self.local_path), exist_ok=True)
-        
+
         # Load those prompts on init if auto_update is True
         if auto_update:
             self.update_prompts_from_online()
-    
+
     def _load_prompts(self) -> Dict[Union[str, int], str]:
         """Load prompts from the local file fr fr! 📂"""
         try:
@@ -52,7 +62,7 @@ class AwesomePrompts:
         except Exception as e:
             console.print(f"[red]❌ Error loading prompts: {str(e)}[/red]")
             return {}
-    
+
     def _save_prompts(self, prompts: Dict[Union[str, int], str]) -> None:
         """Save them prompts with style! 💾"""
         try:
@@ -62,7 +72,7 @@ class AwesomePrompts:
             console.print("[green]✨ Prompts saved successfully![/green]")
         except Exception as e:
             console.print(f"[red]❌ Error saving prompts: {str(e)}[/red]")
-    
+
     def update_prompts_from_online(self, force: bool = False) -> bool:
         """Update prompts from the repo! 🚀
 
@@ -78,34 +88,39 @@ class AwesomePrompts:
                (datetime.now() - self._last_update).total_seconds() < 3600:
                 console.print("[yellow]⚡ Prompts are already up to date![/yellow]")
                 return True
-                
+
             console.print("[cyan]🔄 Updating prompts...[/cyan]")
-            response = requests.get(self.repo_url, timeout=10)
+            # Use the curl_cffi session
+            response = self.session.get(self.repo_url)
             response.raise_for_status()
-            
+
             # Merge new prompts with existing ones
             new_prompts = response.json()
             existing_prompts = self._load_prompts()
             merged_prompts = {**existing_prompts, **new_prompts}
-            
+
             # Create a new dictionary for numeric indices
             indexed_prompts = merged_prompts.copy()
-            
+
             # Add indices for numeric access
             for i, (key, value) in enumerate(list(merged_prompts.items())):
                 if isinstance(key, str):
                     indexed_prompts[i] = value
-            
+
             self._save_prompts(indexed_prompts)
             self._last_update = datetime.now()
-            
+
             console.print("[green]✨ Prompts updated successfully![/green]")
             return True
-            
+
         except Exception as e:
-            console.print(f"[red]❌ Error updating prompts: {str(e)}[/red]")
+            # Provide more specific error context if possible
+            if hasattr(e, 'response') and e.response is not None:
+                 console.print(f"[red]❌ Error updating prompts with status {e.response.status_code}: {str(e)}[/red]")
+            else:
+                 console.print(f"[red]❌ Error updating prompts: {str(e)}[/red]")
             return False
-    
+
     def get_act(
         self,
         key: Union[str, int],
@@ -124,20 +139,20 @@ class AwesomePrompts:
             str: The prompt or default value
         """
         prompts = self._cache or self._load_prompts()
-        
+
         # Try direct access first
         if key in prompts:
             return prompts[key]
-            
+
         # Try case-insensitive search for string keys
         if isinstance(key, str) and case_insensitive:
             key_lower = key.lower()
             for k, v in prompts.items():
                 if isinstance(k, str) and k.lower() == key_lower:
                     return v
-        
+
         return default
-    
+
     def add_prompt(self, name: str, prompt: str) -> bool:
         """Add a new prompt to the collection! ✨
 
@@ -151,12 +166,12 @@ class AwesomePrompts:
         if not name or not prompt:
             console.print("[red]❌ Name and prompt cannot be empty![/red]")
             return False
-            
+
         prompts = self._cache or self._load_prompts()
         prompts[name] = prompt
         self._save_prompts(prompts)
         return True
-    
+
     def delete_prompt(
         self,
         name: Union[str, int],
@@ -174,13 +189,13 @@ class AwesomePrompts:
             bool: Success status
         """
         prompts = self._cache or self._load_prompts()
-        
+
         # Handle direct key match
         if name in prompts:
             del prompts[name]
             self._save_prompts(prompts)
             return True
-            
+
         # Handle case-insensitive match
         if isinstance(name, str) and case_insensitive:
             name_lower = name.lower()
@@ -189,12 +204,12 @@ class AwesomePrompts:
                     del prompts[k]
                     self._save_prompts(prompts)
                     return True
-        
+
         if raise_not_found:
             raise KeyError(f"Prompt '{name}' not found!")
         console.print(f"[yellow]⚠️ Prompt '{name}' not found![/yellow]")
         return False
-    
+
     @property
     def all_acts(self) -> Dict[Union[str, int], str]:
         """All them awesome prompts mapped with style! 📚
@@ -206,17 +221,17 @@ class AwesomePrompts:
         if not prompts:
             self.update_prompts_from_online()
             prompts = self._load_prompts()
-            
+
         # Create a new dictionary for the result
         result = prompts.copy()
-        
+
         # Add numeric indices to the copy
         for i, (key, value) in enumerate(list(prompts.items())):
             if isinstance(key, str):
                 result[i] = value
-                
+
         return result
-    
+
     def show_acts(self, search: Optional[str] = None) -> None:
         """Show all them awesome prompts with style! 📋
 
@@ -224,7 +239,7 @@ class AwesomePrompts:
             search: Optional search term to filter prompts
         """
         prompts = self.all_acts
-        
+
         # Create a fire table! 🔥
         table = Table(
             title="🚀 Awesome Prompts Collection",
@@ -234,21 +249,21 @@ class AwesomePrompts:
         table.add_column("Index", style="cyan", justify="right")
         table.add_column("Name", style="green")
         table.add_column("Preview", style="yellow")
-        
+
         for i, (key, value) in enumerate(prompts.items()):
             if isinstance(key, int):
                 continue  # Skip numeric keys as they're duplicates
-                
+
             # Filter by search term if provided
             if search and search.lower() not in key.lower() and \
                search.lower() not in value.lower():
                 continue
-                
+
             preview = value[:50] + "..." if len(value) > 50 else value
             table.add_row(str(i), str(key), preview)
-        
+
         console.print(table)
-    
+
     def get_random_act(self) -> Optional[str]:
         """Get a random prompt for that surprise factor! 🎲"""
         import random
@@ -261,14 +276,13 @@ class AwesomePrompts:
 if __name__ == "__main__":
     # Quick demo of the features! 🚀
     prompts = AwesomePrompts()
-    prompts.update_prompts_from_online()
     prompts.show_acts()
-    
+
     # Add a test prompt
     prompts.add_prompt("test_prompt", "This is a test prompt! 🔥")
-    
+
     # Show the new prompt
     print("\nTest Prompt:", prompts.get_act("test_prompt"))
-    
+
     # Clean up
     prompts.delete_prompt("test_prompt")

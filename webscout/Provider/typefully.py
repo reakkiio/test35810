@@ -1,5 +1,4 @@
 from typing import Union, Any, Dict
-import requests
 import re
 from uuid import uuid4
 
@@ -9,6 +8,9 @@ from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
+# Replace requests with curl_cffi
+from curl_cffi.requests import Session # Import Session
+from curl_cffi import CurlError # Import CurlError
 
 class TypefullyAI(Provider):
     """
@@ -63,7 +65,8 @@ class TypefullyAI(Provider):
             >>> print(ai.system_prompt)
             'You are a friendly assistant.'
         """
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://typefully.com/tools/ai/api/completion"
@@ -96,7 +99,9 @@ class TypefullyAI(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
+        self.session.proxies = proxies # Use proxies directly, not session.proxies.update
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -108,7 +113,6 @@ class TypefullyAI(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
 
     def ask(
         self,
@@ -156,31 +160,51 @@ class TypefullyAI(Provider):
         }
 
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try: # Add try block for CurlError
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    headers=self.headers, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
                 )
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line:
-                    match = re.search(r'0:"(.*?)"', line)
-                    if match:
-                        content = match.group(1)
-                        streaming_response += content
-                        yield content if raw else dict(text=content)
-                    elif line.startswith('e:') or line.startswith('d:'):
-                        # End of response
-                        break
-            self.last_response.update(dict(text=streaming_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
+                streaming_response = ""
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        line = line_bytes.decode('utf-8') # Decode bytes
+                        match = re.search(r'0:"(.*?)"', line)
+                        if match:
+                            # Decode potential unicode escapes
+                            content = match.group(1).encode().decode('unicode_escape') 
+                            streaming_response += content
+                            # Yield dict or raw string
+                            yield content if raw else dict(text=content)
+                        elif line.startswith('e:') or line.startswith('d:'):
+                            # End of response
+                            break
+                # Update history and last response after stream finishes
+                self.last_response.update(dict(text=streaming_response))
+                self.conversation.update_chat_history(
+                    prompt, self.get_message(self.last_response)
+                )
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except Exception as e: # Catch other potential exceptions
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
+            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
-            return self.last_response
+            # Ensure last_response is updated by for_stream before returning
+            return self.last_response 
 
         return for_stream() if stream else for_non_stream()
 
@@ -246,10 +270,19 @@ class TypefullyAI(Provider):
             'Why did the scarecrow win an award? Because he was outstanding in his field!'
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        formatted_text = response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
-        return formatted_text
+        # Handle potential unicode escapes in the final text
+        text = response.get("text", "")
+        try:
+            # Attempt to decode escapes, return original if fails
+            # Already decoded in ask method, just handle formatting
+            formatted_text = text.replace('\\n', '\n').replace('\\n\\n', '\n\n')
+            return formatted_text
+        except Exception: # Catch potential errors during formatting
+             return text # Return original text if formatting fails
+
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
@@ -261,20 +294,29 @@ if __name__ == "__main__":
     for model in TypefullyAI.AVAILABLE_MODELS:
         try:
             test_ai = TypefullyAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
-            for chunk in response:
+            print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
                 response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
             
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                # Clean and truncate response
+                clean_text = response_text.strip() # Already formatted in get_message
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
             else:
-                status = "✗"
-                display_text = "Empty or invalid response"
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
             print(f"\r{model:<50} {status:<10} {display_text}")
+            
+            # Optional: Add non-stream test if needed
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-    
+

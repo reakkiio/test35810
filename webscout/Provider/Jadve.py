@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import re
 from typing import Union, Any, Dict, Optional, Generator
@@ -27,7 +28,7 @@ class JadveOpenAI(Provider):
         history_offset: int = 10250,
         act: str = None,
         model: str = "gpt-4o-mini",
-        system_prompt: str = "You are a helpful AI assistant."
+        system_prompt: str = "You are a helpful AI assistant." # Note: system_prompt is not used by this API
     ):
         """
         Initializes the JadveOpenAI client.
@@ -48,7 +49,8 @@ class JadveOpenAI(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://openai.jadve.com/stream"
@@ -61,24 +63,21 @@ class JadveOpenAI(Provider):
         # Headers for API requests
         self.headers = {
             "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
             "content-type": "application/json",
             "dnt": "1",
             "origin": "https://jadve.com",
-            "priority": "u=1, i",
+            "priority": "u=1, i", # Keep priority header if needed
             "referer": "https://jadve.com/",
-            "sec-ch-ua": '"Not(A:Brand";v="99", "Microsoft Edge";v="133", "Chromium";v="133"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "same-site",
-            "user-agent": LitAgent().random(),
-            "x-authorization": "Bearer"
+            "x-authorization": "Bearer" # Keep custom headers
         }
+        
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
 
         self.__available_optimizers = (
             method for method in dir(Optimizers)
@@ -101,7 +100,7 @@ class JadveOpenAI(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -121,83 +120,109 @@ class JadveOpenAI(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
-                raise Exception(
-                    f"Optimizer is not one of {list(self.__available_optimizers)}"
-                )
+                raise Exception(f"Optimizer is not one of {list(self.__available_optimizers)}")
 
         payload = {
             "messages": [
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": [{"type": "text", "text": conversation_prompt}]}
             ],
             "model": self.model,
             "botId": "",
             "chatId": "",
-            "stream": stream,
+            "stream": True, # API endpoint suggests streaming is default/required
             "temperature": 0.7,
             "returnTokensUsage": True,
             "useTools": False
         }
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout
-            )
-
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            full_response_text = "" # Initialize outside try block
+            try:
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.api_endpoint, 
+                    # headers are set on the session
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    # proxies are set on the session
+                    impersonate="chrome110" # Use a common impersonation profile
                 )
+                response.raise_for_status() # Check for HTTP errors
 
-            # Pattern to match the streaming chunks format: 0:"text"
-            pattern = r'0:"(.*?)"'
-            full_response_text = ""
-            
-            # Process the response as it comes in
-            buffer = ""
-            
-            for line in response.iter_lines(decode_unicode=True):
-                if not line:
-                    continue
+                # Pattern to match the streaming chunks format: 0:"text"
+                pattern = r'0:"(.*?)"'
+                buffer = ""
                 
-                buffer += line
-                
-                # Try to match chunks in the current buffer
-                matches = re.findall(pattern, buffer)
-                if matches:
-                    for chunk in matches:
-                        full_response_text += chunk
-                        # Return the current chunk
-                        yield chunk if raw else dict(text=chunk)
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if not line_bytes:
+                        continue
                     
-                    # Remove matched parts from the buffer
-                    matched_parts = [f'0:"{match}"' for match in matches]
-                    for part in matched_parts:
-                        buffer = buffer.replace(part, '', 1)
-                
-                # Check if we've reached the end of the response
-                if 'e:' in line or 'd:' in line:
-                    # No need to process usage data without logging
-                    break
+                    try:
+                        line = line_bytes.decode('utf-8')
+                        buffer += line
+                        
+                        # Try to match chunks in the current buffer
+                        matches = re.findall(pattern, buffer)
+                        if matches:
+                            for chunk in matches:
+                                # Handle potential escape sequences like \\n
+                                decoded_chunk = chunk.encode().decode('unicode_escape')
+                                full_response_text += decoded_chunk
+                                resp = {"text": decoded_chunk}
+                                # Yield dict or raw string chunk
+                                yield resp if not raw else decoded_chunk
+                            
+                            # Remove matched parts from the buffer
+                            # Be careful with buffer modification during iteration if issues arise
+                            matched_parts = [f'0:"{match}"' for match in matches]
+                            for part in matched_parts:
+                                buffer = buffer.replace(part, '', 1)
+                        
+                        # Check if we've reached the end of the response
+                        if 'e:' in line or 'd:' in line:
+                            break
+                    except UnicodeDecodeError:
+                        continue # Ignore decoding errors for specific lines
 
-            self.last_response.update(dict(text=full_response_text))
-            self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
+                # Update history after stream finishes
+                self.last_response = {"text": full_response_text}
+                self.conversation.update_chat_history(prompt, full_response_text)
+
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
+
 
         def for_non_stream():
-            # For non-streaming requests, we collect all chunks and return the complete response
+            # Aggregate the stream using the updated for_stream logic
             collected_text = ""
-            for chunk in for_stream():
-                if raw:
-                    collected_text += chunk
-                else:
-                    collected_text += chunk.get("text", "")
-            
-            self.last_response = {"text": collected_text}
-            return self.last_response
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        collected_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         collected_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not collected_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            return collected_text if raw else self.last_response
+
+
+        # Since the API endpoint suggests streaming, always call the stream generator.
+        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -208,7 +233,7 @@ class JadveOpenAI(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """
-        Generate a chat response (string).
+        Generate a chat response (string). 
 
         Args:
             prompt (str): Prompt to be sent.
@@ -218,18 +243,24 @@ class JadveOpenAI(Provider):
         Returns:
             str or generator: Generated response string or generator yielding response chunks.
         """
-        def for_stream():
-            for response in self.ask(
-                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, stream=False, optimizer=optimizer, conversationally=conversationally)
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """
@@ -244,6 +275,7 @@ class JadveOpenAI(Provider):
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

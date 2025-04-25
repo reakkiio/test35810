@@ -31,12 +31,15 @@ class Hika(AISearch):
         timeout: int = 60,
         proxies: Optional[dict] = None,
         language: str = "en",
+        model: str = "deepseek-r1",
+        
     ):
         self.session = requests.Session()
         self.base_url = "https://api.hika.fyi/api/"
         self.endpoint = "kbase/web"
         self.timeout = timeout
         self.language = language
+        self.model = model
         self.last_response = {}
         
         self.headers = {
@@ -104,6 +107,7 @@ class Hika(AISearch):
         # Prepare payload
         payload = {
             "keyword": prompt,
+            "model": self.model,
             "language": self.language,
             "stream": True  # Always request streaming for consistent handling
         }

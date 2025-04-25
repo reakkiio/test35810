@@ -28,7 +28,7 @@ class KOALA(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-4.1",
         web_search: bool = True,
 
     ) -> None:

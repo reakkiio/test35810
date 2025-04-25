@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator, Optional
 
@@ -38,7 +39,7 @@ class NousHermes(Provider):
                 f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}"
             )
 
-        self.session = requests.Session()
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -49,15 +50,14 @@ class NousHermes(Provider):
         self.temperature = temperature
         self.top_p = top_p
         self.cookies_path = cookies_path
-        self.cookies = self._load_cookies()
+        self.cookies_dict = self._load_cookies()
+        
         self.headers = {
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9',
             'content-type': 'application/json',
             'origin': 'https://hermes.nousresearch.com',
             'referer': 'https://hermes.nousresearch.com/',
-            'user-agent': LitAgent().random(),
-            'cookie': self.cookies
         }
 
         self.__available_optimizers = (
@@ -77,20 +77,31 @@ class NousHermes(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+        # Update curl_cffi session headers and proxies
         self.session.proxies = proxies
+        
+        # Apply cookies to curl_cffi session
+        if self.cookies_dict:
+            for name, value in self.cookies_dict.items():
+                self.session.cookies.set(name, value, domain="hermes.nousresearch.com")
 
-    def _load_cookies(self) -> Optional[str]:
-        """Load cookies from a JSON file and convert them to a string."""
+    def _load_cookies(self) -> Optional[Dict[str, str]]:
+        """Load cookies from a JSON file and return them as a dictionary."""
         try:
             with open(self.cookies_path, 'r') as f:
                 cookies_data = json.load(f)
-            return '; '.join([f"{cookie['name']}={cookie['value']}" for cookie in cookies_data])
+            # Convert list of cookie objects to a dictionary
+            return {cookie['name']: cookie['value'] for cookie in cookies_data if 'name' in cookie and 'value' in cookie}
         except FileNotFoundError:
-            print("Error: cookies.json file not found!")
+            print(f"Warning: Cookies file not found at {self.cookies_path}")
             return None
         except json.JSONDecodeError:
-            print("Error: Invalid JSON format in cookies.json!")
+            print(f"Warning: Invalid JSON format in cookies file at {self.cookies_path}")
             return None
+        except Exception as e:
+            print(f"Warning: Error loading cookies: {e}")
+            return None
+
 
     def ask(
         self,
@@ -134,32 +145,59 @@ class NousHermes(Provider):
             "top_p": self.top_p,
         }
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
             full_response = ""
-            for line in response.iter_lines():
-                if line:
-                    decoded_line = line.decode('utf-8').replace('data: ', '')
-                    try:
-                        data = json.loads(decoded_line)
-                        if data['type'] == 'llm_response':
-                            content = data['content']
-                            full_response += content
-                            yield content if raw else dict(text=content)
-                    except json.JSONDecodeError:
-                        continue
-            self.last_response.update(dict(text=full_response))
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+            try:
+                response = self.session.post(
+                    self.api_endpoint, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110"
+                )
+                response.raise_for_status()
+
+                for line_bytes in response.iter_lines():
+                    if line_bytes:
+                        try:
+                            decoded_line = line_bytes.decode('utf-8')
+                            if decoded_line.startswith('data: '):
+                                data_str = decoded_line.replace('data: ', '', 1)
+                                data = json.loads(data_str)
+                                if data.get('type') == 'llm_response':
+                                    content = data.get('content', '')
+                                    if content:
+                                        full_response += content
+                                        resp = dict(text=content)
+                                        yield resp if not raw else content
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
+
+                self.last_response = dict(text=full_response)
+                self.conversation.update_chat_history(
+                    prompt, full_response
+                )
+
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
+
 
         def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            collected_text = ""
+            try:
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        collected_text += chunk_data["text"]
+                    elif raw and isinstance(chunk_data, str):
+                         collected_text += chunk_data
+            except Exception as e:
+                 if not collected_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            return collected_text if raw else self.last_response
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -180,23 +218,25 @@ class NousHermes(Provider):
             str: Response generated
         """
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+        def for_stream_chat():
+            gen = self.ask(
+                prompt, stream=True, raw=False,
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict)
 
-        return for_stream() if stream else for_non_stream()
+        def for_non_stream_chat():
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False,
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            return self.get_message(response_data)
+
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response

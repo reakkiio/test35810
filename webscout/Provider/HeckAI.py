@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import uuid
 import sys
@@ -26,7 +27,7 @@ class HeckAI(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2049,
+        max_tokens: int = 2049, # Note: max_tokens is not used by this API
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -45,18 +46,18 @@ class HeckAI(Provider):
         self.session_id = str(uuid.uuid4())
         self.language = language
         
-        # Use LitAgent for user-agent
+        # Use LitAgent (keep if needed for other headers or logic)
         self.headers = {
-            'User-Agent': LitAgent().random(),
             'Content-Type': 'application/json',
-            'Origin': 'https://heck.ai',
-            'Referer': 'https://heck.ai/',
-            'Connection': 'keep-alive'
+            'Origin': 'https://heck.ai', # Keep Origin
+            'Referer': 'https://heck.ai/', # Keep Referer
         }
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -87,7 +88,7 @@ class HeckAI(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -95,9 +96,7 @@ class HeckAI(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
@@ -116,25 +115,32 @@ class HeckAI(Provider):
         self.previous_question = conversation_prompt
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
+            in_answer = False # Initialize outside try block
             try:
-                with requests.post(self.url, headers=self.headers, data=json.dumps(payload), stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
+                # Use curl_cffi session post with impersonate
+                response = self.session.post(
+                    self.url, 
+                    # headers are set on the session
+                    data=json.dumps(payload), 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110" # Use a common impersonation profile
+                )
+                response.raise_for_status() # Check for HTTP errors
                     
-                    streaming_text = ""
-                    in_answer = False
-                    
-                    for line in response.iter_lines(decode_unicode=True):
-                        if not line:
-                            continue
-                            
+                # Iterate over bytes and decode manually
+                for line_bytes in response.iter_lines():
+                    if not line_bytes:
+                        continue
+                        
+                    try:
+                        line = line_bytes.decode('utf-8')
                         # Remove "data: " prefix
                         if line.startswith("data: "):
                             data = line[6:]
                         else:
-                            continue
+                            continue # Skip lines without the prefix
                         
                         # Check for control markers
                         if data == "[ANSWER_START]":
@@ -150,23 +156,46 @@ class HeckAI(Provider):
                             
                         # Process content if we're in an answer section
                         if in_answer:
+                            # Assuming 'data' is the text chunk here
                             streaming_text += data
                             resp = dict(text=data)
-                            yield resp if raw else resp
+                            # Yield dict or raw string chunk
+                            yield resp if not raw else data
+                    except UnicodeDecodeError:
+                        continue # Ignore decoding errors for specific lines
+                
+                # Update history and previous answer after stream finishes
+                self.previous_answer = streaming_text
+                self.conversation.update_chat_history(prompt, streaming_text)
                     
-                    self.previous_answer = streaming_text
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            except CurlError as e: # Catch CurlError
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e: # Catch other potential exceptions (like HTTPError)
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)} - {err_text}") from e
+
 
         def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
             full_text = ""
-            for chunk in for_stream():
-                if isinstance(chunk, dict) and "text" in chunk:
-                    full_text += chunk["text"]
-            self.last_response = {"text": full_text}
-            return self.last_response
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_text += chunk_data["text"]
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_text += chunk_data
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+
+            # last_response and history are updated within for_stream
+            # Return the final aggregated response dict or raw string
+            self.last_response = {"text": full_text} # Update last_response here
+            return full_text if raw else self.last_response
+
 
         return for_stream() if stream else for_non_stream()
 
@@ -191,23 +220,32 @@ class HeckAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
-        def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, conversationally=conversationally):
-                yield self.get_message(response)
-                
-        def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, False, optimizer=optimizer, conversationally=conversationally)
+    ) -> Union[str, Generator[str, None, None]]: # Corrected return type hint
+        def for_stream_chat():
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
+                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                optimizer=optimizer, conversationally=conversationally
             )
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+                
+        def for_non_stream_chat():
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, stream=False, raw=False, # Ensure ask returns dict
+                optimizer=optimizer, conversationally=conversationally
+            )
+            return self.get_message(response_data) # get_message expects dict
             
-        return for_stream() if stream else for_non_stream()
+        return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["text"]
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

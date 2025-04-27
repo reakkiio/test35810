@@ -1,12 +1,15 @@
 from typing import Any, AsyncGenerator, Dict, Optional, Callable, List, Union
 
 import httpx
-import requests
 import json
+
+# Import curl_cffi for improved request handling
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
 
@@ -15,6 +18,7 @@ class GROQ(Provider):
     A class to interact with the GROQ AI API.
     """
 
+    # Default models list (will be updated dynamically)
     AVAILABLE_MODELS = [
         "distil-whisper-large-v3-en",
         "gemma2-9b-it",
@@ -42,6 +46,45 @@ class GROQ(Provider):
         "llama-3.2-90b-vision-preview",
         "mixtral-8x7b-32768"
     ]
+    
+    @classmethod
+    def get_models(cls, api_key: str = None):
+        """Fetch available models from Groq API.
+        
+        Args:
+            api_key (str, optional): Groq API key. If not provided, returns default models.
+            
+        Returns:
+            list: List of available model IDs
+        """
+        if not api_key:
+            return cls.AVAILABLE_MODELS
+            
+        try:
+            # Use a temporary curl_cffi session for this class method
+            temp_session = Session()
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+            
+            response = temp_session.get(
+                "https://api.groq.com/openai/v1/models",
+                headers=headers,
+                impersonate="chrome110"  # Use impersonate for fetching
+            )
+            
+            if response.status_code != 200:
+                return cls.AVAILABLE_MODELS
+                
+            data = response.json()
+            if "data" in data and isinstance(data["data"], list):
+                return [model["id"] for model in data["data"]]
+            return cls.AVAILABLE_MODELS
+            
+        except (CurlError, Exception):
+            # Fallback to default models list if fetching fails
+            return cls.AVAILABLE_MODELS
 
     def __init__(
         self,
@@ -82,10 +125,15 @@ class GROQ(Provider):
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
             system_prompt (str, optional): System prompt to guide the conversation. Defaults to None.
         """
+        # Update available models from API
+        self.update_available_models(api_key)
+        
+        # Validate model after updating available models
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_key = api_key
@@ -110,7 +158,11 @@ class GROQ(Provider):
             for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
+        
+        # Update curl_cffi session headers
         self.session.headers.update(self.headers)
+        
+        # Set up conversation
         Conversation.intro = (
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
@@ -122,7 +174,20 @@ class GROQ(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+        
+        # Set proxies for curl_cffi session
         self.session.proxies = proxies
+    
+    @classmethod
+    def update_available_models(cls, api_key=None):
+        """Update the available models list from Groq API"""
+        try:
+            models = cls.get_models(api_key)
+            if models and len(models) > 0:
+                cls.AVAILABLE_MODELS = models
+        except Exception:
+            # Fallback to default models list if fetching fails
+            pass
 
     def add_function(self, function_name: str, function: Callable):
         """Add a function to the available functions dictionary.
@@ -183,32 +248,42 @@ class GROQ(Provider):
         }
 
         def for_stream():
-            response = self.session.post(
-                self.chat_endpoint, json=payload, stream=True, timeout=self.timeout
-            )
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try:
+                response = self.session.post(
+                    self.chat_endpoint, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=self.timeout,
+                    impersonate="chrome110"  # Use impersonate for better compatibility
                 )
+                if not response.status_code == 200:
+                    raise exceptions.FailedToGenerateResponseError(
+                        # Removed response.reason_phrase
+                        f"Failed to generate response - ({response.status_code}) - {response.text}"
+                    )
 
-            message_load = ""
-            for value in response.iter_lines(
-                decode_unicode=True,
-                delimiter="" if raw else "data:",
-                chunk_size=self.stream_chunk_size,
-            ):
-                try:
-                    resp = json.loads(value)
-                    incomplete_message = self.get_message(resp)
-                    if incomplete_message:
-                        message_load += incomplete_message
-                        resp["choices"][0]["delta"]["content"] = message_load
-                        self.last_response.update(resp)
-                        yield value if raw else resp
-                    elif raw:
-                        yield value
-                except json.decoder.JSONDecodeError:
-                    pass
+                message_load = ""
+                for value in response.iter_lines(
+                    decode_unicode=True,
+                    delimiter="" if raw else "data:",
+                    chunk_size=self.stream_chunk_size,
+                ):
+                    try:
+                        resp = json.loads(value)
+                        incomplete_message = self.get_message(resp)
+                        if incomplete_message:
+                            message_load += incomplete_message
+                            resp["choices"][0]["delta"]["content"] = message_load
+                            self.last_response.update(resp)
+                            yield value if raw else resp
+                        elif raw:
+                            yield value
+                    except json.decoder.JSONDecodeError:
+                        pass
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"CurlError: {str(e)}")
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Error: {str(e)}")
 
             # Handle tool calls if any
             if 'tool_calls' in self.last_response.get('choices', [{}])[0].get('message', {}):
@@ -226,32 +301,54 @@ class GROQ(Provider):
                         })
                         payload['messages'] = messages
                         # Make a second call to get the final response
-                        second_response = self.session.post(
-                            self.chat_endpoint, json=payload, timeout=self.timeout
-                        )
-                        if second_response.ok:
-                            self.last_response = second_response.json()
-                        else:
-                            raise exceptions.FailedToGenerateResponseError(
-                                f"Failed to execute tool - {second_response.text}"
+                        try:
+                            second_response = self.session.post(
+                                self.chat_endpoint, 
+                                json=payload, 
+                                timeout=self.timeout,
+                                impersonate="chrome110"  # Use impersonate for better compatibility
                             )
+                            if second_response.status_code == 200:
+                                self.last_response = second_response.json()
+                            else:
+                                raise exceptions.FailedToGenerateResponseError(
+                                    f"Failed to execute tool - {second_response.text}"
+                                )
+                        except CurlError as e:
+                            raise exceptions.FailedToGenerateResponseError(f"CurlError during tool execution: {str(e)}")
+                        except Exception as e:
+                            raise exceptions.FailedToGenerateResponseError(f"Error during tool execution: {str(e)}")
 
             self.conversation.update_chat_history(
                 prompt, self.get_message(self.last_response)
             )
 
         def for_non_stream():
-            response = self.session.post(
-                self.chat_endpoint, json=payload, stream=False, timeout=self.timeout
-            )
-            if (
-                not response.ok
-                or not response.headers.get("Content-Type", "") == "application/json"
-            ):
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try:
+                response = self.session.post(
+                    self.chat_endpoint, 
+                    json=payload, 
+                    stream=False, 
+                    timeout=self.timeout,
+                    impersonate="chrome110"  # Use impersonate for better compatibility
                 )
-            resp = response.json()
+                if (
+                    not response.status_code == 200
+                ):
+                    raise exceptions.FailedToGenerateResponseError(
+                         # Removed response.reason_phrase
+                        f"Failed to generate response - ({response.status_code}) - {response.text}"
+                    )
+                resp = response.json()
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"CurlError: {str(e)}")
+            except Exception as e:
+                # Catch the original AttributeError here if it happens before the raise
+                if isinstance(e, AttributeError) and 'reason_phrase' in str(e):
+                     raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}) - {response.text}"
+                    )
+                raise exceptions.FailedToGenerateResponseError(f"Error: {str(e)}")
 
             # Handle tool calls if any
             if 'tool_calls' in resp.get('choices', [{}])[0].get('message', {}):
@@ -269,15 +366,23 @@ class GROQ(Provider):
                         })
                         payload['messages'] = messages
                         # Make a second call to get the final response
-                        second_response = self.session.post(
-                            self.chat_endpoint, json=payload, timeout=self.timeout
-                        )
-                        if second_response.ok:
-                            resp = second_response.json()
-                        else:
-                            raise exceptions.FailedToGenerateResponseError(
-                                f"Failed to execute tool - {second_response.text}"
+                        try:
+                            second_response = self.session.post(
+                                self.chat_endpoint, 
+                                json=payload, 
+                                timeout=self.timeout,
+                                impersonate="chrome110"  # Use impersonate for better compatibility
                             )
+                            if second_response.status_code == 200:
+                                resp = second_response.json()
+                            else:
+                                raise exceptions.FailedToGenerateResponseError(
+                                    f"Failed to execute tool - {second_response.text}"
+                                )
+                        except CurlError as e:
+                            raise exceptions.FailedToGenerateResponseError(f"CurlError during tool execution: {str(e)}")
+                        except Exception as e:
+                            raise exceptions.FailedToGenerateResponseError(f"Error during tool execution: {str(e)}")
 
             self.last_response.update(resp)
             self.conversation.update_chat_history(
@@ -286,7 +391,6 @@ class GROQ(Provider):
             return resp
 
         return for_stream() if stream else for_non_stream()
-
 
     def chat(
         self,
@@ -337,11 +441,16 @@ class GROQ(Provider):
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
         try:
-            if response["choices"][0].get("delta"):
+            # Check delta first for streaming
+            if response.get("choices") and response["choices"][0].get("delta") and response["choices"][0]["delta"].get("content"):
                 return response["choices"][0]["delta"]["content"]
-            return response["choices"][0]["message"]["content"]
-        except KeyError:
-            return ""
+            # Check message content for non-streaming or final message
+            if response.get("choices") and response["choices"][0].get("message") and response["choices"][0]["message"].get("content"):
+                return response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            # Handle cases where the structure might be different or content is null/missing
+            pass
+        return "" # Return empty string if no content found
 
 
 class AsyncGROQ(AsyncProvider):
@@ -349,33 +458,8 @@ class AsyncGROQ(AsyncProvider):
     An asynchronous class to interact with the GROQ AI API.
     """
 
-    AVAILABLE_MODELS = [
-        "distil-whisper-large-v3-en",
-        "gemma2-9b-it",
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "llama-guard-3-8b",
-        "llama3-70b-8192",
-        "llama3-8b-8192",
-        "whisper-large-v3",
-        "whisper-large-v3-turbo",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "playai-tts",
-        "playai-tts-arabic",
-        "qwen-qwq-32b",
-        "mistral-saba-24b",
-        "qwen-2.5-coder-32b",
-        "qwen-2.5-32b",
-        "deepseek-r1-distill-qwen-32b",
-        "deepseek-r1-distill-llama-70b",
-        "llama-3.3-70b-specdec",
-        "llama-3.2-1b-preview",
-        "llama-3.2-3b-preview",
-        "llama-3.2-11b-vision-preview",
-        "llama-3.2-90b-vision-preview",
-        "mixtral-8x7b-32768"
-    ]
+    # Use the same model list as the synchronous class
+    AVAILABLE_MODELS = GROQ.AVAILABLE_MODELS
 
     def __init__(
         self,
@@ -416,6 +500,10 @@ class AsyncGROQ(AsyncProvider):
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
             system_prompt (str, optional): System prompt to guide the conversation. Defaults to None.
         """
+        # Update available models from API
+        GROQ.update_available_models(api_key)
+        
+        # Validate model after updating available models
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
@@ -518,7 +606,8 @@ class AsyncGROQ(AsyncProvider):
             ) as response:
                 if not response.is_success:
                     raise exceptions.FailedToGenerateResponseError(
-                        f"Failed to generate response - ({response.status_code}, {response.reason_phrase})"
+                        # Removed response.reason_phrase (not available in httpx response)
+                        f"Failed to generate response - ({response.status_code})"
                     )
 
                 message_load = ""
@@ -575,7 +664,8 @@ class AsyncGROQ(AsyncProvider):
             )
             if not response.is_success:
                 raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason_phrase})"
+                    # Removed response.reason_phrase (not available in httpx response)
+                    f"Failed to generate response - ({response.status_code})"
                 )
             resp = response.json()
 
@@ -663,8 +753,21 @@ class AsyncGROQ(AsyncProvider):
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
         try:
-            if response["choices"][0].get("delta"):
+            # Check delta first for streaming
+            if response.get("choices") and response["choices"][0].get("delta") and response["choices"][0]["delta"].get("content"):
                 return response["choices"][0]["delta"]["content"]
-            return response["choices"][0]["message"]["content"]
-        except KeyError:
-            return ""
+            # Check message content for non-streaming or final message
+            if response.get("choices") and response["choices"][0].get("message") and response["choices"][0]["message"].get("content"):
+                return response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+             # Handle cases where the structure might be different or content is null/missing
+            pass
+        return "" # Return empty string if no content found
+        
+if __name__ == "__main__":
+    # Example usage
+    api_key = "gsk_*******************************"
+    groq = GROQ(api_key=api_key, model="compound-beta")
+    prompt = "What is the capital of France?"
+    response = groq.chat(prompt)
+    print(response)

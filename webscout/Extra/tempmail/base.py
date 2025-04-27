@@ -148,7 +148,7 @@ def get_random_email(provider_name: str = "mailtm") -> Tuple[str, TempMailProvid
         except Exception as e:
             raise RuntimeError(f"Failed to initialize provider: {e}")
 
-    # Create the account
+    # Create the account (auto-generates a random email)
     success = provider.create_account()
     if not success:
         raise RuntimeError(f"Failed to create account with provider {provider_name}")

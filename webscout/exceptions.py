@@ -11,6 +11,26 @@ class WebscoutE(Exception):
     pass
 
 
+class ModelNotFoundError(WebscoutE):
+    """
+    Exception raised when a requested model is not found or available.
+
+    This exception is raised when the specified model cannot be located or accessed by the provider.
+    It indicates that the model name might be incorrect or the provider does not support it.
+    """
+    pass
+
+
+class MissingRequirementsError(WebscoutE):
+    """
+    Exception raised when required dependencies are missing.
+
+    This exception is raised when a feature requires certain libraries or packages that are not installed.
+    It indicates that the user needs to install the missing dependencies to use the feature.
+    """
+    pass
+
+
 class APIConnectionError(WebscoutE):
     """
     Exception raised when there are issues connecting to an API.

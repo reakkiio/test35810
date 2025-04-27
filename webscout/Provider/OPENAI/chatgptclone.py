@@ -1,6 +1,7 @@
 import time
 import uuid
-import cloudscraper
+# import cloudscraper
+from curl_cffi.requests import Session, RequestsError
 import json
 import re
 from typing import List, Dict, Optional, Union, Generator, Any
@@ -123,12 +124,15 @@ class Completions(BaseCompletions):
             for msg in payload.get("messages", []):
                 prompt_tokens += len(msg.get("content", "").split())
 
-            for line in response.iter_lines():
+            buffer = ""
+            for line in response.iter_content():
                 if line:
-                    decoded_line = line.decode('utf-8').strip()
+                    if isinstance(line, bytes):
+                        line = line.decode("utf-8", errors="replace")
+                    buffer += line
 
                     # ChatGPTClone uses a different format, so we need to extract the content
-                    match = re.search(r'0:"(.*?)"', decoded_line)
+                    match = re.search(r'0:"(.*?)"', buffer)
                     if match:
                         content = match.group(1)
 
@@ -178,6 +182,12 @@ class Completions(BaseCompletions):
 
                         # Return the chunk object for internal processing
                         yield chunk
+
+                        # Clear buffer after processing
+                        buffer = ""
+                    # If buffer gets too long, reset it to avoid memory issues
+                    elif len(buffer) > 1024:
+                        buffer = ""
 
             # Final chunk with finish_reason="stop"
             delta = ChoiceDelta(
@@ -254,12 +264,20 @@ class Completions(BaseCompletions):
 
             # Collect the full response
             full_text = ""
-            for line in response.iter_lines(decode_unicode=True):
+            buffer = ""
+            for line in response.iter_content():
                 if line:
-                    match = re.search(r'0:"(.*?)"', line)
+                    if isinstance(line, bytes):
+                        line = line.decode("utf-8", errors="replace")
+                    buffer += line
+                    match = re.search(r'0:"(.*?)"', buffer)
                     if match:
                         content = match.group(1)
                         full_text += content
+                        buffer = ""
+                    # If buffer gets too long, reset it to avoid memory issues
+                    elif len(buffer) > 1024:
+                        buffer = ""
 
             # Format the text (replace escaped newlines)
             full_text = self._client.format_text(full_text)
@@ -329,23 +347,25 @@ class ChatGPTClone(OpenAICompatibleProvider):
     def __init__(
         self,
         timeout: Optional[int] = None,
-        browser: str = "chrome"
+        browser: str = "chrome",
+        impersonate: str = "chrome120"
     ):
         """
         Initialize the ChatGPTClone client.
 
         Args:
             timeout: Request timeout in seconds (None for no timeout)
-            browser: Browser to emulate in user agent
+            browser: Browser to emulate in user agent (for LitAgent fallback)
+            impersonate: Browser impersonation for curl_cffi (default: chrome120)
         """
         self.timeout = timeout
         self.temperature = 0.6  # Default temperature
         self.top_p = 0.7  # Default top_p
 
-        # Use cloudscraper to bypass Cloudflare protection
-        self.session = cloudscraper.create_scraper()
+        # Use curl_cffi for Cloudflare bypass and browser impersonation
+        self.session = Session(impersonate=impersonate, timeout=timeout)
 
-        # Initialize LitAgent for user agent generation
+        # Use LitAgent for fingerprint if available, else fallback
         agent = LitAgent()
         self.fingerprint = agent.generate_fingerprint(browser)
 
@@ -374,11 +394,12 @@ class ChatGPTClone(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
-    def refresh_identity(self, browser: str = None):
-        """Refreshes the browser identity fingerprint."""
+    def refresh_identity(self, browser: str = None, impersonate: str = None):
+        """Refreshes the browser identity fingerprint and curl_cffi session."""
         browser = browser or self.fingerprint.get("browser_type", "chrome")
+        impersonate = impersonate or "chrome120"
         self.fingerprint = LitAgent().generate_fingerprint(browser)
-
+        self.session = Session(impersonate=impersonate, timeout=self.timeout)
         # Update headers with new fingerprint
         self.headers.update({
             "Accept": self.fingerprint["accept"],

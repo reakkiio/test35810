@@ -1,4 +1,5 @@
-import requests
+from curl_cffi.requests import Session
+from curl_cffi import CurlError
 import json
 import os
 from uuid import uuid4
@@ -57,40 +58,37 @@ class AllenAI(Provider):
         history_offset: int = 10250,
         act: str = None,
         model: str = "OLMo-2-1124-13B-Instruct",
-        host: str = None  # Now optional - will auto-detect if not provided
+        host: str = None
     ):
         """Initializes the AllenAI API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
         self.url = "https://playground.allenai.org"
-        # Updated API endpoint to v3 from v4
         self.api_endpoint = "https://olmo-api.allen.ai/v3/message/stream"
         self.whoami_endpoint = "https://olmo-api.allen.ai/v3/whoami"
         
-        # Updated headers based on JS implementation
+        # Updated headers (remove those handled by impersonate)
         self.headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
             'Accept': '*/*',
             'Accept-Language': 'id-ID,id;q=0.9',
             'Origin': self.url,
             'Referer': f"{self.url}/",
-            'Connection': 'keep-alive',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
             'Priority': 'u=1, i',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'cross-site',
-            'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24", "Microsoft Edge Simulate";v="131", "Lemur";v="131"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
             'Content-Type': 'application/json'
         }
         
-        self.session = requests.Session()
+        # Initialize curl_cffi Session
+        self.session = Session()
+        # Update curl_cffi session headers and proxies
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies
+        
         self.model = model
         
         # Auto-detect host if not provided
@@ -133,27 +131,30 @@ class AllenAI(Provider):
     def whoami(self):
         """Gets or creates a user ID for authentication with Allen AI API"""
         temp_id = str(uuid4())
-        headers = self.session.headers.copy()
-        headers.update({"x-anonymous-user-id": temp_id})
+        request_headers = self.session.headers.copy() # Use session headers as base
+        request_headers.update({"x-anonymous-user-id": temp_id})
         
         try:
+            # Use curl_cffi session get with impersonate
             response = self.session.get(
                 self.whoami_endpoint,
-                headers=headers,
-                timeout=self.timeout
+                headers=request_headers, # Pass updated headers
+                timeout=self.timeout,
+                impersonate="chrome110" # Use a common impersonation profile
             )
+            response.raise_for_status() # Check for HTTP errors
             
-            if response.status_code == 200:
-                data = response.json()
-                self.x_anonymous_user_id = data.get("client", temp_id)
-                return data
-            else:
-                self.x_anonymous_user_id = temp_id
-                return {"client": temp_id}
+            data = response.json()
+            self.x_anonymous_user_id = data.get("client", temp_id)
+            return data
                 
-        except Exception as e:
+        except CurlError as e: # Catch CurlError
             self.x_anonymous_user_id = temp_id
-            return {"client": temp_id, "error": str(e)}
+            return {"client": temp_id, "error": f"CurlError: {e}"}
+        except Exception as e: # Catch other potential exceptions (like HTTPError, JSONDecodeError)
+            self.x_anonymous_user_id = temp_id
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            return {"client": temp_id, "error": f"{type(e).__name__}: {e} - {err_text}"}
     
 
     def parse_stream(self, raw_data):
@@ -172,7 +173,7 @@ class AllenAI(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False,
+        stream: bool = False, # API supports streaming
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -185,20 +186,22 @@ class AllenAI(Provider):
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
-                conversation_prompt = getattr(Optimizers, optimizer)(
-                    conversation_prompt if conversationally else prompt
-                )
+                conversation_prompt = getattr(Optimizers, optimizer)(conversation_prompt if conversationally else prompt)
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
         # Ensure we have a user ID
         if not self.x_anonymous_user_id:
             self.whoami()
+            # Check if whoami failed and we still don't have an ID
+            if not self.x_anonymous_user_id:
+                 raise exceptions.AuthenticationError("Failed to obtain anonymous user ID.")
         
-        # Prepare the API request
-        self.session.headers.update({
+        # Prepare the API request headers for this specific request
+        request_headers = self.session.headers.copy()
+        request_headers.update({
             "x-anonymous-user-id": self.x_anonymous_user_id,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json" # Ensure Content-Type is set
         })
         
         # Create options dictionary
@@ -232,122 +235,149 @@ class AllenAI(Provider):
                 "host": current_host,
                 "opts": opts
             }
-            
-            # Add parent if exists
-            if self.parent:
-                payload["parent"] = self.parent
+            payload["host"] = current_host # Ensure host is updated in payload
                 
             try:
                 if stream:
-                    return self._stream_request(payload, prompt, raw)
+                    # Pass request_headers to the stream method
+                    return self._stream_request(payload, prompt, request_headers, raw)
                 else:
-                    return self._non_stream_request(payload, prompt)
-            except exceptions.FailedToGenerateResponseError as e:
+                    # Pass request_headers to the non-stream method
+                    return self._non_stream_request(payload, prompt, request_headers, raw)
+            except (exceptions.FailedToGenerateResponseError, CurlError, Exception) as e:
                 last_error = e
                 # Log the error but continue to try other hosts
-                print(f"Host '{current_host}' failed for model '{self.model}', trying next host...")
+                print(f"Host '{current_host}' failed for model '{self.model}' ({type(e).__name__}), trying next host...")
                 continue
         
         # If we've tried all hosts and none worked, raise the last error
         raise last_error or exceptions.FailedToGenerateResponseError("All hosts failed. Unable to complete request.")
 
-    def _stream_request(self, payload, prompt, raw=False):
-        """Handle streaming requests with the given payload"""
+    def _stream_request(self, payload, prompt, request_headers, raw=False):
+        """Handle streaming requests with the given payload and headers"""
+        streaming_text = "" # Initialize outside try block
+        current_parent = None # Initialize outside try block
         try:
+            # Use curl_cffi session post with impersonate
             response = self.session.post(
                 self.api_endpoint,
+                headers=request_headers, # Use headers passed to this method
                 json=payload,
                 stream=True,
-                timeout=self.timeout
+                timeout=self.timeout,
+                impersonate="chrome110" # Use a common impersonation profile
             )
+            response.raise_for_status() # Check for HTTP errors
             
-            if response.status_code != 200:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Request failed with status code {response.status_code}: {response.text}"
-                )
-            
-            streaming_text = ""
-            current_parent = None
-            
-            for chunk in response.iter_content(chunk_size=1024, decode_unicode=False):
-                if not chunk:
+            # Iterate over bytes and decode manually
+            for chunk_bytes in response.iter_content(chunk_size=None): # Process byte chunks
+                if not chunk_bytes:
                     continue
                     
-                decoded = chunk.decode(errors="ignore")
-                for line in decoded.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    try:
+                try:
+                    decoded = chunk_bytes.decode('utf-8')
+                    for line in decoded.splitlines(): # Process lines within the chunk
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
                         data = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    
-                    if isinstance(data, dict):
+                        
                         # Check for message pattern from JS implementation
-                        if data.get("message", "").startswith("msg_") and "content" in data:
-                            content = data.get("content", "")
-                            if content:
-                                streaming_text += content
-                                resp = dict(text=content)
-                                yield resp if raw else resp
-                        
-                        # Legacy handling for older API
-                        elif "message" in data and data.get("content"):
-                            content = data.get("content")
-                            if content.strip():
-                                streaming_text += content
-                                resp = dict(text=content)
-                                yield resp if raw else resp
-                        
-                        # Update parent ID if present
-                        if data.get("id"):
-                            current_parent = data.get("id")
-                        elif data.get("children"):
-                            for child in data["children"]:
-                                if child.get("role") == "assistant":
-                                    current_parent = child.get("id")
-                                    break
-                        
-                        # Handle completion
-                        if data.get("final") or data.get("finish_reason") == "stop":
-                            if current_parent:
-                                self.parent = current_parent
+                        if isinstance(data, dict):
+                            content_found = False
+                            if data.get("message", "").startswith("msg_") and "content" in data:
+                                content = data.get("content", "")
+                                content_found = True
+                            # Legacy handling for older API
+                            elif "message" in data and data.get("content"):
+                                content = data.get("content")
+                                content_found = True
                             
-                            # Update conversation history
-                            self.conversation.update_chat_history(prompt, streaming_text)
-                            self.last_response = {"text": streaming_text}
-                            return
-            
-        except requests.RequestException as e:
-            raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+                            if content_found and content:
+                                streaming_text += content
+                                resp = dict(text=content)
+                                yield resp if not raw else content
+                            
+                            # Update parent ID if present
+                            if data.get("id"):
+                                current_parent = data.get("id")
+                            elif data.get("children"):
+                                for child in data["children"]:
+                                    if child.get("role") == "assistant":
+                                        current_parent = child.get("id")
+                                        break
+                            
+                            # Handle completion
+                            if data.get("final") or data.get("finish_reason") == "stop":
+                                if current_parent:
+                                    self.parent = current_parent
+                                
+                                # Update conversation history
+                                self.conversation.update_chat_history(prompt, streaming_text)
+                                self.last_response = {"text": streaming_text}
+                                return # End the generator
 
-    def _non_stream_request(self, payload, prompt):
-        """Handle non-streaming requests with the given payload"""
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue # Ignore lines/chunks that are not valid JSON or cannot be decoded
+            
+            # If loop finishes without returning (e.g., no final message), update history
+            if current_parent:
+                self.parent = current_parent
+            self.conversation.update_chat_history(prompt, streaming_text)
+            self.last_response = {"text": streaming_text}
+
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+        except Exception as e: # Catch other potential exceptions (like HTTPError)
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)} - {err_text}") from e
+
+
+    def _non_stream_request(self, payload, prompt, request_headers, raw=False):
+        """Handle non-streaming requests with the given payload and headers"""
         try:
-            # For non-streaming requests, we can directly send without stream=True
+            # Use curl_cffi session post with impersonate
             response = self.session.post(
                 self.api_endpoint,
+                headers=request_headers, # Use headers passed to this method
                 json=payload,
-                stream=False,
-                timeout=self.timeout
+                stream=False, # Explicitly set stream to False
+                timeout=self.timeout,
+                impersonate="chrome110" # Use a common impersonation profile
             )
-            
-            if response.status_code != 200:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Request failed with status code {response.status_code}: {response.text}"
-                )
+            response.raise_for_status() # Check for HTTP errors
             
             # Parse the response as per JS implementation
             raw_response = response.text
-            parsed_response = self.parse_stream(raw_response)
+            parsed_response = self.parse_stream(raw_response) # Use existing parser
+            
+            # Update parent ID from the full response if possible (might need adjustment based on actual non-stream response structure)
+            # This part is speculative as the non-stream structure isn't fully clear from the stream logic
+            try:
+                lines = raw_response.splitlines()
+                if lines:
+                    last_line_data = json.loads(lines[-1])
+                    if last_line_data.get("id"):
+                         self.parent = last_line_data.get("id")
+                    elif last_line_data.get("children"):
+                         for child in last_line_data["children"]:
+                             if child.get("role") == "assistant":
+                                 self.parent = child.get("id")
+                                 break
+            except (json.JSONDecodeError, IndexError):
+                pass # Ignore errors parsing parent ID from non-stream
+
             self.conversation.update_chat_history(prompt, parsed_response)
             self.last_response = {"text": parsed_response}
-            return self.last_response
+            return self.last_response if not raw else parsed_response # Return dict or raw string
             
-        except Exception as e:
-            raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+        except Exception as e: # Catch other potential exceptions (like HTTPError, JSONDecodeError)
+            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)} - {err_text}") from e
+
 
     def chat(
         self,
@@ -357,29 +387,35 @@ class AllenAI(Provider):
         conversationally: bool = False,
         host: str = None,
         options: dict = None,
-    ) -> str:
-        def for_stream():
-            for response in self.ask(
+    ) -> Union[str, Generator[str, None, None]]: # Corrected return type hint
+        def for_stream_chat(): # Renamed inner function
+            # ask() yields dicts or strings when streaming
+            gen = self.ask(
                 prompt, 
-                True, 
+                stream=True, 
+                raw=False, # Ensure ask yields dicts
                 optimizer=optimizer, 
                 conversationally=conversationally,
                 host=host,
                 options=options
-            ):
-                yield self.get_message(response)
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, 
-                    False, 
-                    optimizer=optimizer, 
-                    conversationally=conversationally,
-                    host=host,
-                    options=options
-                )
             )
-        return for_stream() if stream else for_non_stream()
+            for response_dict in gen:
+                yield self.get_message(response_dict) # get_message expects dict
+
+        def for_non_stream_chat(): # Renamed inner function
+            # ask() returns dict or str when not streaming
+            response_data = self.ask(
+                prompt, 
+                stream=False, 
+                raw=False, # Ensure ask returns dict
+                optimizer=optimizer, 
+                conversationally=conversationally,
+                host=host,
+                options=options
+            )
+            return self.get_message(response_data) # get_message expects dict
+
+        return for_stream_chat() if stream else for_non_stream_chat() # Use renamed functions
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
@@ -388,6 +424,7 @@ class AllenAI(Provider):
 
 
 if __name__ == "__main__":
+    # Ensure curl_cffi is installed
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)

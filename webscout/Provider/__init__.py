@@ -37,7 +37,6 @@ from .GPTWeb import *
 from .Netwrck import Netwrck
 from .promptrefine import *
 from .tutorai import *
-from .ChatGPTES import *
 from .bagoodex import *
 from .aimathgpt import *
 from .gaurish import *
@@ -70,7 +69,6 @@ from .ElectronHub import *
 from .HuggingFaceChat import *
 from .GithubChat import *
 from .copilot import *
-from .C4ai import *
 from .sonus import *
 from .uncovr import *
 from .LambdaChat import *
@@ -89,12 +87,10 @@ from .toolbaz import Toolbaz
 from .scnet import SCNet
 from .WritingMate import WritingMate
 __all__ = [
-
     'SCNet',
     'SciraAI',
     'StandardInputAI',
     'OpenGPT',
-    'C4ai',
     'Venice',
     'ExaAI',
     'Copilot',
@@ -153,7 +149,6 @@ __all__ = [
     'Netwrck',
     'PromptRefine',
     'TutorAI',
-    'ChatGPTES',
     'Bagoodex',
     'AIMathGPT',
     'GaurishCerebras',

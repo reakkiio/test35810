@@ -1,4 +1,4 @@
-import requests
+from curl_cffi.requests import Session, RequestsError
 import urllib.parse
 from typing import Union, Any, Dict
 
@@ -44,7 +44,7 @@ class AI4Chat(Provider):
             country (str, optional): Country parameter for API. Defaults to "Asia".
             user_id (str, optional): User ID for API. Defaults to "usersmjb2oaz7y".
         """
-        self.session = requests.Session()
+        self.session = Session(timeout=timeout, proxies=proxies)
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://yw85opafq6.execute-api.us-east-1.amazonaws.com/default/boss_mode_15aug"
@@ -84,7 +84,6 @@ class AI4Chat(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
         self.system_prompt = system_prompt 
 
     def ask(
@@ -123,24 +122,24 @@ class AI4Chat(Provider):
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
 
-        # Use provided values or defaults
         country_param = country or self.country
         user_id_param = user_id or self.user_id
         
-        # Build the URL with parameters
         encoded_text = urllib.parse.quote(conversation_prompt)
         encoded_country = urllib.parse.quote(country_param)
         encoded_user_id = urllib.parse.quote(user_id_param)
         
         url = f"{self.api_endpoint}?text={encoded_text}&country={encoded_country}&user_id={encoded_user_id}"
         
-        response = self.session.get(url, headers=self.headers, timeout=self.timeout)
+        try:
+            response = self.session.get(url, headers=self.headers, timeout=self.timeout)
+        except RequestsError as e:
+            raise Exception(f"Failed to generate response: {e}")
         if not response.ok:
             raise Exception(f"Failed to generate response: {response.status_code} - {response.reason}")
         
         response_text = response.text
         
-        # Remove quotes from the start and end of the response
         if response_text.startswith('"'):
             response_text = response_text[1:]
         if response_text.endswith('"'):

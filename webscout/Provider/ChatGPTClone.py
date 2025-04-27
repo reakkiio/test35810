@@ -1,6 +1,7 @@
 import time
 import uuid
-import cloudscraper
+# import cloudscraper
+from curl_cffi.requests import Session, RequestsError
 import json
 import re
 from typing import Any, Dict, Optional, Generator, Union
@@ -12,7 +13,7 @@ from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import WEBS, exceptions
-from webscout.litagent import LitAgent
+# from webscout.litagent import LitAgent
 
 class ChatGPTClone(Provider):
     """
@@ -22,6 +23,11 @@ class ChatGPTClone(Provider):
     
     url = "https://chatgpt-clone-ten-nu.vercel.app"
     AVAILABLE_MODELS = ["gpt-4", "gpt-3.5-turbo"]
+    SUPPORTED_IMPERSONATION = [
+        "chrome110", "chrome116", "chrome119", "chrome120",
+        "chrome99_android", "edge99", "edge101",
+        "safari15_3", "safari15_6_1", "safari17_0", "safari17_2_1"
+    ]
     
     def __init__(
         self,
@@ -37,15 +43,18 @@ class ChatGPTClone(Provider):
         model: str = "gpt-4",
         temperature: float = 0.6,
         top_p: float = 0.7,
-        browser: str = "chrome",
+        impersonate: str = "chrome120",
         system_prompt: str = "You are a helpful assistant."
     ):
-        """Initialize the ChatGPT Clone client."""
+        """Initialize the ChatGPT Clone client using curl_cffi."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
+        if impersonate not in self.SUPPORTED_IMPERSONATION:
+            raise ValueError(f"Invalid impersonate browser: {impersonate}. Choose from: {self.SUPPORTED_IMPERSONATION}")
             
         self.model = model
-        self.session = cloudscraper.create_scraper()
+        self.impersonate = impersonate
+        self.session = Session(impersonate=self.impersonate, proxies=proxies, timeout=timeout)
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -54,28 +63,17 @@ class ChatGPTClone(Provider):
         self.top_p = top_p
         self.system_prompt = system_prompt
 
-        # Initialize LitAgent for user agent generation
-        self.agent = LitAgent()
-        # Use fingerprinting to create a consistent browser identity
-        self.fingerprint = self.agent.generate_fingerprint(browser)
-
-        # Use the fingerprint for headers
         self.headers = {
-            "Accept": self.fingerprint["accept"],
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": self.fingerprint["accept_language"],
             "Content-Type": "application/json",
-            "DNT": "1",
             "Origin": self.url,
             "Referer": f"{self.url}/",
-            "Sec-CH-UA": self.fingerprint["sec_ch_ua"] or '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
-            "Sec-CH-UA-Mobile": "?0",
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "User-Agent": self.fingerprint["user_agent"],
+            "DNT": "1",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "TE": "trailers"
         }
-        
-        # Create session cookies with unique identifiers
-        self.cookies = {"__Host-session": uuid.uuid4().hex, '__cf_bm': uuid.uuid4().hex}
+        self.session.headers.update(self.headers)
 
         self.__available_optimizers = (
             method
@@ -92,34 +90,20 @@ class ChatGPTClone(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
-        
-        # Set consistent headers for the scraper session
-        for header, value in self.headers.items():
-            self.session.headers[header] = value
 
-    def refresh_identity(self, browser: str = None):
-        """Refreshes the browser identity fingerprint."""
-        browser = browser or self.fingerprint.get("browser_type", "chrome")
-        self.fingerprint = self.agent.generate_fingerprint(browser)
-        
-        # Update headers with new fingerprint
-        self.headers.update({
-            "Accept": self.fingerprint["accept"],
-            "Accept-Language": self.fingerprint["accept_language"],
-            "Sec-CH-UA": self.fingerprint["sec_ch_ua"] or self.headers["Sec-CH-UA"],
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "User-Agent": self.fingerprint["user_agent"],
-        })
-        
-        # Update session headers
-        for header, value in self.headers.items():
-            self.session.headers[header] = value
-        
-        # Generate new cookies
-        self.cookies = {"__Host-session": uuid.uuid4().hex, '__cf_bm': uuid.uuid4().hex}
-        
-        return self.fingerprint
+    def refresh_identity(self, impersonate: str = None):
+        """Re-initializes the curl_cffi session with a new impersonation target."""
+        impersonate = impersonate or self.impersonate
+        if impersonate not in self.SUPPORTED_IMPERSONATION:
+            raise ValueError(f"Invalid impersonate browser: {impersonate}. Choose from: {self.SUPPORTED_IMPERSONATION}")
+        self.impersonate = impersonate
+        self.session = Session(
+            impersonate=self.impersonate,
+            proxies=self.session.proxies,
+            timeout=self.timeout
+        )
+        self.session.headers.update(self.headers)
+        return self.impersonate
 
     def ask(
         self,
@@ -129,7 +113,7 @@ class ChatGPTClone(Provider):
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
-        """Send a message to the ChatGPT Clone API"""
+        """Send a message to the ChatGPT Clone API using curl_cffi"""
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -149,38 +133,66 @@ class ChatGPTClone(Provider):
             "model": self.model
         }
 
-        def for_stream():
-            try:
-                with self.session.post(f"{self.url}/api/chat", headers=self.headers, cookies=self.cookies, json=payload, stream=True, timeout=self.timeout) as response:
-                    if not response.ok:
-                        # If we get a non-200 response, try refreshing our identity once
-                        if response.status_code in [403, 429]:
-                            self.refresh_identity()
-                            # Retry with new identity
-                            with self.session.post(f"{self.url}/api/chat", headers=self.headers, cookies=self.cookies, json=payload, stream=True, timeout=self.timeout) as retry_response:
-                                if not retry_response.ok:
-                                    raise exceptions.FailedToGenerateResponseError(
-                                        f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
-                                    )
-                                response = retry_response
-                        else:
-                            raise exceptions.FailedToGenerateResponseError(
-                                f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                            )
+        api_url = f"{self.url}/api/chat"
 
-                    streaming_text = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            match = re.search(r'0:"(.*?)"', line)
-                            if match:
-                                content = match.group(1)
-                                streaming_text += content
-                                yield content if raw else dict(text=content)
-                                
-                    self.last_response.update(dict(text=streaming_text))
-                    self.conversation.update_chat_history(prompt, streaming_text)
+        def _make_request(attempt_refresh=True):
+            try:
+                response = self.session.post(api_url, json=payload, stream=True)
+                response.raise_for_status()
+                return response
+            except RequestsError as e:
+                if attempt_refresh and e.response and e.response.status_code in [403, 429]:
+                    self.refresh_identity()
+                    return _make_request(attempt_refresh=False)
+                else:
+                    err_msg = f"Request failed: {e}"
+                    if e.response is not None:
+                        err_msg = f"Failed to generate response - ({e.response.status_code}, {e.response.reason}) - {e.response.text}"
+                    raise exceptions.FailedToGenerateResponseError(err_msg) from e
             except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred: {e}") from e
+
+        def for_stream():
+            response = _make_request()
+            streaming_text = ""
+            buffer = ""
+            try:
+                for line in response.iter_content():
+                    if line:
+                        # decode bytes to str before concatenation
+                        if isinstance(line, bytes):
+                            line = line.decode("utf-8", errors="replace")
+                        buffer += line
+                        match = re.search(r'0:"((?:[^\\"]|\\.)*)"', buffer)
+                        if match:
+                            content = match.group(1)
+                            try:
+                                decoded_content = json.loads(f'"{content}"')
+                            except json.JSONDecodeError:
+                                decoded_content = content.encode().decode('unicode_escape')
+                            streaming_text += decoded_content
+                            yield decoded_content if raw else dict(text=decoded_content)
+                            buffer = ""
+                        elif len(buffer) > 1024:
+                            buffer = ""
+                if buffer:
+                    match = re.search(r'0:"((?:[^\\"]|\\.)*)"', buffer)
+                    if match:
+                        content = match.group(1)
+                        try:
+                            decoded_content = json.loads(f'"{content}"')
+                        except json.JSONDecodeError:
+                            decoded_content = content.encode().decode('unicode_escape')
+                        streaming_text += decoded_content
+                        yield decoded_content if raw else dict(text=decoded_content)
+                self.last_response.update(dict(text=streaming_text))
+                self.conversation.update_chat_history(prompt, streaming_text)
+            except RequestsError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Stream interrupted by request error: {e}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Error processing stream: {e}") from e
+            finally:
+                response.close()
 
         def for_non_stream():
             for _ in for_stream():
@@ -202,25 +214,25 @@ class ChatGPTClone(Provider):
                 prompt, True, optimizer=optimizer, conversationally=conversationally
             ):
                 yield self.get_message(response)
-                
         def for_non_stream():
             return self.get_message(
                 self.ask(
                     prompt, False, optimizer=optimizer, conversationally=conversationally
                 )
             )
-            
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:
         """Extract message text from response"""
         assert isinstance(response, dict)
-        formatted_text = response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        if not isinstance(response, dict) or "text" not in response:
+            return str(response)
+        formatted_text = response["text"]
         return formatted_text
 
 if __name__ == "__main__":
     from rich import print
-    ai = ChatGPTClone(timeout=5000)
+    ai = ChatGPTClone(timeout=120, impersonate="chrome120")
     response = ai.chat("write a poem about AI", stream=True)
     for chunk in response:
-        print(chunk, end="", flush=True) 
+        print(chunk, end="", flush=True)

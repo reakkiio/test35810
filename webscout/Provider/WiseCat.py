@@ -19,7 +19,7 @@ class WiseCat(Provider):
 
     AVAILABLE_MODELS = [
         "chat-model-small",
-        "chat-model-large",
+        # "chat-model-large", # >>> NOT WORKING <<<
         "chat-model-reasoning",
     ]
 

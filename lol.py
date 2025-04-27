@@ -1,14 +1,14 @@
-from webscout.Provider.OPENAI import MultiChatAI
+from webscout.Provider.OPENAI import AI4Chat
 
-# Initialize the client
-client = MultiChatAI()
+# Create a completion
+client = AI4Chat()
 
 # Create a completion
 response = client.chat.completions.create(
     model="llama-3.3-70b-versatile",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Tell me about Python programming."}
+        {"role": "user", "content": "Write a poem about the sea."}
     ],
     temperature=0.7,
     max_tokens=500

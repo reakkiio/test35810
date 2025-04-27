@@ -1,11 +1,11 @@
-from webscout.Provider.OPENAI import AI4Chat
+from webscout.Provider.OPENAI.groq import Groq
 
 # Create a completion
-client = AI4Chat()
+client = Groq(api_key="")
 
 # Create a completion
 response = client.chat.completions.create(
-    model="llama-3.3-70b-versatile",
+    model="qwen-qwq-32b",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Write a poem about the sea."}

@@ -66,6 +66,9 @@ class DeepInfra(Provider):
         # "Qwen/Qwen2.5-7B-Instruct",  # >>>> NOT WORKING
         "Qwen/Qwen2.5-72B-Instruct",
         "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "Qwen/Qwen3-14B",
+        "Qwen/Qwen3-30B-A3B",
+        "Qwen/Qwen3-32B",
         # "Sao10K/L3.1-70B-Euryale-v2.2",  # >>>> NOT WORKING
         # "Sao10K/L3.3-70B-Euryale-v2.3",  # >>>> NOT WORKING
     ]

@@ -15,6 +15,7 @@ class ElectronHub(Provider):
     A class to interact with the ElectronHub API with LitAgent user-agent.
     """
 
+    # Default models list (will be updated dynamically)
     AVAILABLE_MODELS = [
             # OpenAI GPT models
             "gpt-3.5-turbo",
@@ -498,6 +499,56 @@ class ElectronHub(Provider):
             "text-moderation-stable",
             "text-moderation-007"
         ]
+        
+    @classmethod
+    def get_models(cls, api_key: str = None):
+        """Fetch available models from ElectronHub API.
+        
+        Args:
+            api_key (str, optional): ElectronHub API key. If not provided, returns default models.
+            
+        Returns:
+            list: List of available model IDs
+        """
+        if not api_key:
+            return cls.AVAILABLE_MODELS
+            
+        try:
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': '*/*',
+                'User-Agent': LitAgent().random(),
+                'Authorization': f'Bearer {api_key}'
+            }
+            
+            response = requests.get(
+                "https://api.electronhub.top/v1/models",
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                return cls.AVAILABLE_MODELS
+                
+            data = response.json()
+            if "data" in data and isinstance(data["data"], list):
+                return [model["id"] for model in data["data"]]
+            return cls.AVAILABLE_MODELS
+            
+        except Exception:
+            # Fallback to default models list if fetching fails
+            return cls.AVAILABLE_MODELS
+    
+    @classmethod
+    def update_available_models(cls, api_key=None):
+        """Update the available models list from ElectronHub API"""
+        try:
+            models = cls.get_models(api_key)
+            if models and len(models) > 0:
+                cls.AVAILABLE_MODELS = models
+        except Exception:
+            # Fallback to default models list if fetching fails
+            pass
 
     def __init__(
         self,
@@ -515,6 +566,10 @@ class ElectronHub(Provider):
         api_key: str = None
     ):
         """Initializes the ElectronHub API client."""
+        # Update available models from API
+        self.update_available_models(api_key)
+        
+        # Validate model after updating available models
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             

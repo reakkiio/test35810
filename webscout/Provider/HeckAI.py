@@ -18,10 +18,14 @@ class HeckAI(Provider):
     """
 
     AVAILABLE_MODELS = [
+        "google/gemini-2.0-flash-001",
         "deepseek/deepseek-chat",
-        "openai/gpt-4o-mini",
         "deepseek/deepseek-r1",
-        "google/gemini-2.0-flash-001"
+        "openai/gpt-4o-mini",
+        "openai/gpt-4.1-mini",
+        "x-ai/grok-3-mini-beta",
+        "meta-llama/llama-4-scout"
+
     ]
 
     def __init__(

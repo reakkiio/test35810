@@ -1,6 +1,6 @@
 import re
 import time
-import requests
+from curl_cffi import requests
 import json
 from typing import Union, Any, Dict, Generator, Optional
 import uuid
@@ -231,4 +231,4 @@ if __name__ == "__main__":
                 display_text = "Empty or invalid response"
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}") 
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")

@@ -25,3 +25,4 @@ from .textpollinations import *
 from .e2b import *
 from .multichat import * # Add MultiChatAI
 from .ai4chat import * # Add AI4Chat
+from .mcpcore import *

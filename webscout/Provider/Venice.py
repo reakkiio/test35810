@@ -7,7 +7,7 @@ import random
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -19,6 +19,7 @@ class Venice(Provider):
     
     AVAILABLE_MODELS = [
         "mistral-31-24b",
+        "dolphin-3.0-mistral-24b",
         "llama-3.2-3b-akash",
         "qwen2dot5-coder-32b",
         "deepseek-coder-v2-lite",

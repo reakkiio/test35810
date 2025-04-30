@@ -86,6 +86,7 @@ from .Writecream import Writecream
 from .toolbaz import Toolbaz
 from .scnet import SCNet
 from .WritingMate import WritingMate
+from .MCPCore import MCPCore
 __all__ = [
     'SCNet',
     'SciraAI',
@@ -174,5 +175,6 @@ __all__ = [
     'Aitopia',
     'SearchChatAI',
     'Writecream',
-    'Toolbaz'
+    'Toolbaz',
+    'MCPCore'
 ]

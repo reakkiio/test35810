@@ -6,7 +6,7 @@ from curl_cffi.requests import Session
 from typing import Any, Dict, Optional, Generator, Union, List, TypeVar
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -192,65 +192,67 @@ class YEPCHAT(Provider):
 
         def for_stream():
             try:
+                # buffer = b"" # No longer needed here
                 # Use curl_cffi session post, pass cookies explicitly
-                with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110")) as response:
-                    if not response.ok:
-                        # If we get a non-200 response, try refreshing our identity once
-                        if response.status_code in [403, 429]:
-                            self.refresh_identity()
-                            # Retry with new identity
-                            # Use curl_cffi session post, pass cookies explicitly
-                            with self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110")) as retry_response:
-                                if not retry_response.ok:
-                                    raise exceptions.FailedToGenerateResponseError(
-                                        f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
-                                    )
-                                response = retry_response
-                        else:
+                response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
+                
+                if not response.ok:
+                    # If we get a non-200 response, try refreshing our identity once
+                    if response.status_code in [403, 429]:
+                        self.refresh_identity()
+                        # Retry with new identity
+                        # Use curl_cffi session post, pass cookies explicitly
+                        retry_response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
+                        if not retry_response.ok:
                             raise exceptions.FailedToGenerateResponseError(
-                                f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                                f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
                             )
-
-                    streaming_text = ""
-                    # Use response.iter_lines for curl_cffi
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            line = line.strip()
-                            if line.startswith("data: "):
-                                json_str = line[6:]
-                                if json_str == "[DONE]":
-                                    break
-                                try:
-                                    json_data = json.loads(json_str)
-                                    if 'choices' in json_data:
-                                        choice = json_data['choices'][0]
-                                        if 'delta' in choice and 'content' in choice['delta']:
-                                            content = choice['delta']['content']
-                                            streaming_text += content
-                                            
-                                            # Yield ONLY the new content:
-                                            resp = dict(text=content) 
-                                            yield resp if raw else resp
-                                except json.JSONDecodeError:
-                                    pass
-                    
-                    # Check if the response contains a tool call
-                    response_data = self.conversation.handle_tool_response(streaming_text)
-                    
-                    if response_data["is_tool_call"]:
-                        # Handle tool call results
-                        if response_data["success"]:
-                            for tool_call in response_data.get("tool_calls", []):
-                                tool_name = tool_call.get("name", "unknown_tool")
-                                result = response_data["result"]
-                                self.conversation.update_chat_history_with_tool(prompt, tool_name, result)
-                        else:
-                            # If tool call failed, update history with error
-                            self.conversation.update_chat_history(prompt, 
-                                f"Error executing tool call: {response_data['result']}")
+                        response = retry_response # Use the successful retry response
                     else:
-                        # Normal response handling
-                        self.conversation.update_chat_history(prompt, streaming_text)
+                        raise exceptions.FailedToGenerateResponseError(
+                            f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                        )
+
+                # --- Start of stream processing block (should be outside the 'if not response.ok' block) ---
+                streaming_text = ""
+
+                # Use sanitize_stream to process the lines
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass the byte iterator directly
+                    intro_value="data:",
+                    to_json=True, # Yep sends JSON after 'data:'
+                    skip_markers=["[DONE]"], # Skip the final marker
+                    yield_raw_on_error=False, # Only process valid JSON data
+                    # --- Add the content extractor ---
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None
+                )
+                # The loop now yields the final extracted string content directly
+                for content_chunk in processed_stream:
+                    # --- TEMPORARY DEBUG PRINT ---
+                    # print(f"\nDEBUG: Received extracted content: {content_chunk!r}\n", flush=True) # Keep or remove debug print as needed
+                    if content_chunk and isinstance(content_chunk, str): # Ensure it's a non-empty string
+                        streaming_text += content_chunk
+                        # Yield dict or raw string chunk based on 'raw' flag
+                        yield dict(text=content_chunk) if not raw else content_chunk
+                # --- End of stream processing block ---
+
+                # Check if the response contains a tool call (This should happen *after* processing the stream)
+                response_data = self.conversation.handle_tool_response(streaming_text)
+                
+                if response_data["is_tool_call"]:
+                    # Handle tool call results
+                    if response_data["success"]:
+                        for tool_call in response_data.get("tool_calls", []):
+                            tool_name = tool_call.get("name", "unknown_tool")
+                            result = response_data["result"]
+                            self.conversation.update_chat_history_with_tool(prompt, tool_name, result)
+                    else:
+                        # If tool call failed, update history with error
+                        self.conversation.update_chat_history(prompt, 
+                            f"Error executing tool call: {response_data['result']}")
+                else:
+                    # Normal response handling
+                    self.conversation.update_chat_history(prompt, streaming_text)
                         
             except CurlError as e: # Catch CurlError
                  raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
@@ -384,3 +386,4 @@ if __name__ == "__main__":
             print(f"{model:<50} {status:<10} {display_text}")
         except Exception as e:
             print(f"{model:<50} {'✗':<10} {str(e)}")
+

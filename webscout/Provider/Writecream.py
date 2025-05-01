@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -136,10 +136,21 @@ class Writecream(Provider):
                     impersonate="chrome120" # Add impersonate
                 )
                 response.raise_for_status()
-                data = response.json()
+                response_text = response.text # Get the raw text
 
-                # Extract the response content
-                response_content = data.get("response", data.get("response_content", ""))
+                # Use sanitize_stream to process the non-streaming text
+                # It will try to parse the whole text as JSON because to_json=True
+                processed_stream = sanitize_stream(
+                    data=response_text,
+                    to_json=True, # Attempt to parse the whole response text as JSON
+                    intro_value=None, # No prefix expected on the full response
+                    content_extractor=lambda chunk: chunk.get("response", chunk.get("response_content", "")) if isinstance(chunk, dict) else None
+                )
+
+                # Extract the single result from the generator
+                response_content = ""
+                for content in processed_stream:
+                    response_content = content if isinstance(content, str) else ""
 
                 # Update conversation history
                 self.last_response = {"text": response_content}

@@ -19,21 +19,7 @@ class HuggingFaceChat(Provider):
     """
     
     # Available models (default models - will be updated dynamically)
-    AVAILABLE_MODELS = [
-        'meta-llama/Llama-3.3-70B-Instruct',
-        'Qwen/Qwen2.5-72B-Instruct',
-        'CohereForAI/c4ai-command-r-plus-08-2024',
-        'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B',
-        'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF',
-        'Qwen/QwQ-32B',
-        'Qwen/Qwen2.5-Coder-32B-Instruct',
-        'meta-llama/Llama-3.2-11B-Vision-Instruct',
-        'NousResearch/Hermes-3-Llama-3.1-8B',
-        'mistralai/Mistral-Nemo-Instruct-2407',
-        'microsoft/Phi-3.5-mini-instruct',
-        'meta-llama/Llama-3.1-8B-Instruct'
-
-    ]
+    AVAILABLE_MODELS = ['meta-llama/Llama-3.3-70B-Instruct', 'Qwen/Qwen3-235B-A22B', 'Qwen/Qwen2.5-72B-Instruct', 'CohereForAI/c4ai-command-r-plus-08-2024', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF', 'Qwen/QwQ-32B', 'google/gemma-3-27b-it', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'Qwen/Qwen2.5-VL-32B-Instruct', 'microsoft/Phi-4', 'NousResearch/Hermes-3-Llama-3.1-8B', 'internal/task']
     
     def __init__(
         self,

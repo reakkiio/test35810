@@ -1,4 +1,4 @@
-from typing import Union, Any, Dict
+from typing import Optional, Union, Any, Dict
 from uuid import uuid4
 from curl_cffi import CurlError
 from curl_cffi.requests import Session
@@ -6,7 +6,7 @@ import re
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -116,6 +116,17 @@ class X0GPT(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _x0gpt_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the x0gpt stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"', chunk)
+            if match:
+                # Decode potential unicode escapes like \u00e9
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -179,17 +190,21 @@ class X0GPT(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     )
+                
                 streaming_response = ""
-                # Iterate over bytes and decode manually
-                for byte_line in response.iter_lines(): # Remove decode_unicode=True
-                    if byte_line:
-                        line = byte_line.decode('utf-8') # Decode bytes to string
-                        match = re.search(r'0:"(.*?)"', line)
-                        if match:
-                            # Decode potential unicode escapes like \u00e9
-                            content = match.group(1).encode().decode('unicode_escape')
-                            streaming_response += content
-                            yield content if raw else dict(text=content)
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix to remove here
+                    to_json=False,    # Content is not JSON
+                    content_extractor=self._x0gpt_extractor # Use the specific extractor
+                )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_response += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
+
                 self.last_response.update(dict(text=streaming_response))
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)
@@ -272,8 +287,8 @@ class X0GPT(Provider):
         assert isinstance(response, dict), "Response should be of dict data-type only"
         # Ensure text exists before processing
         text = response.get("text", "")
-        # Remove potential backslashes before quotes and handle escaped newlines
-        formatted_text = text.replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
+        # Formatting is now mostly handled by the extractor, just return
+        formatted_text = text
         return formatted_text
 
 if __name__ == "__main__":

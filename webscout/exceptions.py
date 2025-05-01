@@ -90,6 +90,9 @@ class FailedToGenerateResponseError(WebscoutE):
     """
     pass
 
+class InvalidAuthenticationError(Exception):
+    """Custom exception for authentication errors (e.g., invalid API key, cookies)."""
+    pass
 
 class AllProvidersFailure(WebscoutE):
     """

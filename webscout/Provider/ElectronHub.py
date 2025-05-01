@@ -1,4 +1,5 @@
-from curl_cffi.requests import Session, CurlError, Response # Import curl_cffi
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import json
 import os
 from typing import Any, Dict, Optional, Generator, Union, List

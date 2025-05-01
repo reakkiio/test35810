@@ -247,7 +247,7 @@ if __name__ == "__main__":
     from rich import print
     import os
 
-    api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJzanl2OHJtZGxDZDFnQ2hQdGxzZHdxUlVteXkyIiwic291cmNlIjoiRmlyZWJhc2UiLCJpYXQiOjE3NDYxMDQ4NDIsImV4cCI6MTc0NjEwNTc0Mn0.EISWJOYVHxdcvYUbXd7jhD5ao3_yTKD0me8oGDcj5u8"
+    api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJzanl2OHJtZGxDZDFnQ2hQdGxzZHdxUlVteXkyIiwic291cmNlIjoiRmlyZWJhc2UiLCJpYXQiOjE3NDYxMDY0NjksImV4cCI6MTc0NjEwNzM2OX0.o3fprDgsUJwvwCsWr0HfqmVpSBUthHsxqnopfWhtiYc"
 
     try:
         ai = TwoAI(

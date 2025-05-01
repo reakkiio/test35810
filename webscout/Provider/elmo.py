@@ -1,13 +1,14 @@
 from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
-from typing import Union, Any, Dict, Generator
+from typing import Optional, Union, Any, Dict, Generator
 from webscout import exceptions
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout.litagent import LitAgent
+import re # Import re for the extractor
 
 
 class Elmo(Provider):
@@ -84,6 +85,17 @@ class Elmo(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _elmo_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the Elmo stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -144,7 +156,7 @@ class Elmo(Provider):
         }
 
         def for_stream():
-            full_response = ""  # Initialize outside try block
+            streaming_text = "" # Initialize outside try block
             try:
                 # Use curl_cffi session post with impersonate
                 # Note: The API expects 'text/plain' but we send JSON.
@@ -159,40 +171,32 @@ class Elmo(Provider):
                 )
                 response.raise_for_status()  # Check for HTTP errors
 
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8')
-                            if line.startswith('0:'):
-                                # Extract content after '0:"' and before the closing '"'
-                                match = line.split(':"', 1)
-                                if len(match) > 1:
-                                    chunk = match[1]
-                                    if chunk.endswith('"'):
-                                        chunk = chunk[:-1]  # Remove trailing quote
-
-                                    # Handle potential escape sequences like \\n
-                                    formatted_output = chunk.encode().decode('unicode_escape')
-
-                                    if formatted_output:  # Ensure content is not None or empty
-                                        full_response += formatted_output
-                                        resp = dict(text=formatted_output)
-                                        # Yield dict or raw string chunk
-                                        yield resp if not raw else formatted_output
-                        except (UnicodeDecodeError, IndexError):
-                            continue  # Ignore lines that cannot be decoded or parsed
-
-                # Update history after stream finishes
-                self.last_response = dict(text=full_response)
-                self.conversation.update_chat_history(
-                    prompt, full_response
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is text after extraction
+                    content_extractor=self._elmo_extractor, # Use the specific extractor
+                    yield_raw_on_error=True
                 )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
+
             except CurlError as e:  # Catch CurlError
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
             except Exception as e:  # Catch other potential exceptions (like HTTPError)
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
+            finally:
+                # Update history after stream finishes
+                self.last_response = dict(text=streaming_text)
+                self.conversation.update_chat_history(
+                    prompt, streaming_text
+                )
 
         def for_non_stream():
             # Aggregate the stream using the updated for_stream logic
@@ -210,7 +214,9 @@ class Elmo(Provider):
                  if not collected_text:
                      raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
-            # last_response and history are updated within for_stream
+            # Update last_response and history *after* aggregation for non-stream
+            self.last_response = {"text": collected_text}
+            self.conversation.update_chat_history(prompt, collected_text)
             # Return the final aggregated response dict or raw string
             return collected_text if raw else self.last_response
 
@@ -265,7 +271,7 @@ class Elmo(Provider):
             str: Message extracted
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        return response.get("text", "") # Use .get for safety
 
 
 if __name__ == "__main__":

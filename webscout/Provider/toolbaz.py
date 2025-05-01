@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, Generator, Union, List
 from webscout import exceptions
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 
 class Toolbaz(Provider):
@@ -26,6 +26,7 @@ class Toolbaz(Provider):
         "gemini-2.0-flash-thinking",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "o3-mini",
         "gpt-4o-latest",
         "gpt-4o",
         "deepseek-r1",
@@ -110,6 +111,13 @@ class Toolbaz(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+
+    @staticmethod
+    def _toolbaz_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Removes [model:...] tags from a string chunk."""
+        if isinstance(chunk, str):
+            return re.sub(r"\[model:.*?\]", "", chunk)
+        return None
 
     def random_string(self, length):
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -207,53 +215,23 @@ class Toolbaz(Provider):
                 )
                 resp.raise_for_status()
 
-                buffer = ""
-                tag_start = "[model:"
                 streaming_text = ""
 
-                # Iterate over bytes and decode manually
-                for chunk_bytes in resp.iter_content(chunk_size=1024): # Read in larger chunks
-                    if chunk_bytes:
-                        text = chunk_bytes.decode(errors="ignore")
-                        buffer += text
-                        
-                        processed_buffer = ""
-                        last_processed_index = 0
-                        # Find all complete tags and process text between them
-                        for match in re.finditer(r"\[model:.*?\]", buffer):
-                            # Add text before the tag
-                            segment = buffer[last_processed_index:match.start()]
-                            if segment:
-                                processed_buffer += segment
-                            last_processed_index = match.end()
-                        
-                        # Add remaining text after the last complete tag
-                        processed_buffer += buffer[last_processed_index:]
-                        
-                        # Now, check for incomplete tag at the end
-                        last_tag_start_index = processed_buffer.rfind(tag_start)
-                        
-                        if last_tag_start_index != -1:
-                            # Text before the potential incomplete tag
-                            text_to_yield = processed_buffer[:last_tag_start_index]
-                            # Keep the potential incomplete tag start for the next iteration
-                            buffer = processed_buffer[last_tag_start_index:] 
-                        else:
-                            # No potential incomplete tag found, yield everything processed
-                            text_to_yield = processed_buffer
-                            buffer = "" # Clear buffer as everything is processed
+                # Use sanitize_stream with the custom extractor
+                # It will decode bytes and yield processed string chunks
+                processed_stream = sanitize_stream(
+                    data=resp.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is text
+                    content_extractor=self._toolbaz_extractor, # Use the tag remover
+                    yield_raw_on_error=True # Yield even if extractor somehow fails (though unlikely for regex)
+                )
 
-                        if text_to_yield:
-                            streaming_text += text_to_yield
-                            # Yield dict or raw string
-                            yield {"text": text_to_yield} if not raw else text_to_yield
-
-                # Process any remaining text in the buffer after the loop finishes
-                # Remove any potential tags (complete or incomplete)
-                final_text = re.sub(r"\[model:.*?\]", "", buffer)
-                if final_text:
-                    streaming_text += final_text
-                    yield {"text": final_text} if not raw else final_text
+                for content_chunk in processed_stream:
+                    # content_chunk is the string with tags removed
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield {"text": content_chunk} if not raw else content_chunk
 
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)

@@ -4,7 +4,7 @@ import json
 import re
 from typing import Union, Any, Dict, Optional, Generator
 
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -97,6 +97,17 @@ class JadveOpenAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _jadve_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the Jadve stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -153,41 +164,22 @@ class JadveOpenAI(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
 
-                # Pattern to match the streaming chunks format: 0:"text"
-                pattern = r'0:"(.*?)"'
-                buffer = ""
-                
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if not line_bytes:
-                        continue
-                    
-                    try:
-                        line = line_bytes.decode('utf-8')
-                        buffer += line
-                        
-                        # Try to match chunks in the current buffer
-                        matches = re.findall(pattern, buffer)
-                        if matches:
-                            for chunk in matches:
-                                # Handle potential escape sequences like \\n
-                                decoded_chunk = chunk.encode().decode('unicode_escape')
-                                full_response_text += decoded_chunk
-                                resp = {"text": decoded_chunk}
-                                # Yield dict or raw string chunk
-                                yield resp if not raw else decoded_chunk
-                            
-                            # Remove matched parts from the buffer
-                            # Be careful with buffer modification during iteration if issues arise
-                            matched_parts = [f'0:"{match}"' for match in matches]
-                            for part in matched_parts:
-                                buffer = buffer.replace(part, '', 1)
-                        
-                        # Check if we've reached the end of the response
-                        if 'e:' in line or 'd:' in line:
-                            break
-                    except UnicodeDecodeError:
-                        continue # Ignore decoding errors for specific lines
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is text after extraction
+                    content_extractor=self._jadve_extractor, # Use the specific extractor
+                    # end_marker="e:", # Add if 'e:' reliably marks the end
+                    yield_raw_on_error=True
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _jadve_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response_text += content_chunk
+                        resp = {"text": content_chunk}
+                        yield resp if not raw else content_chunk
 
                 # Update history after stream finishes
                 self.last_response = {"text": full_response_text}
@@ -272,7 +264,8 @@ class JadveOpenAI(Provider):
             str: Extracted text.
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        # Extractor handles formatting
+        return response.get("text", "")
 
 if __name__ == "__main__":
     # Ensure curl_cffi is installed

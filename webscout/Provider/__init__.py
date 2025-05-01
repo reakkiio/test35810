@@ -28,7 +28,6 @@ from .turboseek import *
 from .Free2GPT import *
 from .TeachAnything import *
 from .AI21 import *
-from .Chatify import *
 from .x0gpt import *
 from .cerebras import *
 from .geminiapi import *
@@ -39,12 +38,10 @@ from .promptrefine import *
 from .tutorai import *
 from .bagoodex import *
 from .aimathgpt import *
-from .gaurish import *
 from .geminiprorealtime import *
 from .llmchat import *
 from .llmchatco import LLMChatCo  # Add new LLMChat.co provider
 from .talkai import *
-from .askmyai import *
 from .llama3mitril import *
 from .Marcus import *
 from .typegpt import *
@@ -127,7 +124,6 @@ __all__ = [
     'Sambanova',
     'KOALA',
     'Meta',
-    'AskMyAI',
     'PiAI',
     'Julius',
     'YouChat',
@@ -136,7 +132,6 @@ __all__ = [
     'TurboSeek',
     'TeachAnything',
     'AI21',
-    'Chatify',
     'X0GPT',
     'Cerebras',
     'GEMINIAPI',
@@ -152,7 +147,6 @@ __all__ = [
     'TutorAI',
     'Bagoodex',
     'AIMathGPT',
-    'GaurishCerebras',
     'GeminiPro',
     'LLMChat',
     'LLMChatCo',

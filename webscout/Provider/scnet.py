@@ -4,7 +4,7 @@ import json
 import secrets
 from typing import Any, Dict, Optional, Generator, Union
 
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 
@@ -86,6 +86,13 @@ class SCNet(Provider):
         self.conversation = Conversation(is_conversation, max_tokens, filepath, update_file)
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _scnet_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from SCNet stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("content")
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -126,25 +133,21 @@ class SCNet(Provider):
                 response.raise_for_status() # Check for HTTP errors
 
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        line = line_bytes.decode('utf-8') # Decode bytes
-                        if line.startswith("data:"):
-                            data = line[5:].strip()
-                            if data and data != "[done]":
-                                try:
-                                    obj = json.loads(data)
-                                    content = obj.get("content", "")
-                                    streaming_text += content
-                                    resp = {"text": content}
-                                    # Yield dict or raw string
-                                    yield resp if not raw else content
-                                except (json.JSONDecodeError, UnicodeDecodeError):
-                                    continue
-                            elif data == "[done]":
-                                break
-                
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[done]"],
+                    content_extractor=self._scnet_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _scnet_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield {"text": content_chunk} if not raw else content_chunk
                 # Update history and last response after stream finishes
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)

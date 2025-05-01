@@ -288,6 +288,7 @@ class Toolbaz(OpenAICompatibleProvider):
         "gemini-2.0-flash-thinking",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
+        "o3-mini",
         "gpt-4o-latest",
         "gpt-4o",
         "deepseek-r1",

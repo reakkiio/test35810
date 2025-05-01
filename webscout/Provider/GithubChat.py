@@ -1,12 +1,13 @@
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import json
 import time
 from typing import Any, Dict, List, Optional, Union, Generator
 
 from webscout.AIutel import Conversation
 from webscout.AIutel import Optimizers
-from webscout.AIutel import AwesomePrompts
-from webscout.AIbase import Provider
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
+from webscout.AIbase import Provider 
 from webscout import exceptions
 from webscout.litagent import LitAgent
 
@@ -54,7 +55,7 @@ class GithubChat(Provider):
         self.url = "https://github.com/copilot"
         self.api_url = "https://api.individual.githubcopilot.com"
         self.cookie_path = cookie_path
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.session.proxies.update(proxies)
         
         # Load cookies for authentication
@@ -158,8 +159,15 @@ class GithubChat(Provider):
                 
             return self._access_token
             
-        except requests.exceptions.RequestException as e:
-            raise exceptions.FailedToGenerateResponseError(f"Failed to get access token: {str(e)}")
+        except:
+            pass
+
+    @staticmethod
+    def _github_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from GitHub Copilot stream JSON objects."""
+        if isinstance(chunk, dict) and chunk.get("type") == "content":
+            return chunk.get("body")
+        return None
 
     def create_conversation(self):
         """Create a new conversation with GitHub Copilot."""
@@ -173,7 +181,10 @@ class GithubChat(Provider):
         headers["Authorization"] = f"GitHub-Bearer {access_token}"
         
         try:
-            response = self.session.post(url, headers=headers)
+            response = self.session.post(
+                url, headers=headers,
+                impersonate="chrome120" # Add impersonate
+            )
             
             if response.status_code == 401:
                 # Token might be expired, try refreshing
@@ -181,7 +192,10 @@ class GithubChat(Provider):
                 access_token = self.get_access_token()
                 headers["Authorization"] = f"GitHub-Bearer {access_token}"
                 response = self.session.post(url, headers=headers)
-                
+            
+            # Check status after potential retry
+            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+
             if response.status_code not in [200, 201]:
                 raise exceptions.FailedToGenerateResponseError(f"Failed to create conversation: {response.status_code}")
                 
@@ -192,40 +206,8 @@ class GithubChat(Provider):
                 raise exceptions.FailedToGenerateResponseError("Failed to extract conversation ID from response")
                 
             return self._conversation_id
-            
-        except requests.exceptions.RequestException as e:
+        except (CurlError, exceptions.FailedToGenerateResponseError, Exception) as e: # Catch CurlError and others
             raise exceptions.FailedToGenerateResponseError(f"Failed to create conversation: {str(e)}")
-
-    def process_response(self, response, prompt: str):
-        """Process streaming response and extract content."""
-        full_text = ""
-        
-        for line in response.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data: "):
-                continue
-                
-            try:
-                # Parse each line (remove "data: " prefix)
-                json_str = line[6:]
-                if json_str == "[DONE]":
-                    break
-                    
-                data = json.loads(json_str)
-                
-                # Handle different response types
-                if data.get("type") == "content":
-                    token = data.get("body", "")
-                    full_text += token
-                    resp = {"text": token}
-                    yield resp
-                    
-            except json.JSONDecodeError:
-                continue
-        
-        # Update conversation history only for saving to file if needed
-        if full_text:
-            self.last_response = {"text": full_text}
-            self.conversation.update_chat_history(prompt, full_text)
     
     def ask(
         self,
@@ -275,12 +257,14 @@ class GithubChat(Provider):
             "mode": "immersive"
         }
         
+        streaming_text = "" # Initialize for history update
         def for_stream():
+            nonlocal streaming_text # Allow modification of outer scope variable
             try:
                 response = self.session.post(
                     url, 
                     json=request_data,
-                    headers=headers,
+                    headers=headers, # Use updated headers with Authorization
                     stream=True,
                     timeout=self.timeout
                 )
@@ -292,21 +276,35 @@ class GithubChat(Provider):
                     headers["Authorization"] = f"GitHub-Bearer {access_token}"
                     response = self.session.post(
                         url,
-                        json=request_data,
+                        json=request_data, # Use original payload
                         headers=headers,
                         stream=True,
                         timeout=self.timeout
                     )
                 
                 # If still not successful, raise exception
-                if response.status_code != 200:
-                    raise exceptions.FailedToGenerateResponseError(f"Request failed with status code {response.status_code}")
+                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
                 
                 # Process the streaming response
-                yield from self.process_response(response, prompt)
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=self._github_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _github_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = {"text": content_chunk}
+                        yield resp if not raw else content_chunk
                 
             except Exception as e:
-                if isinstance(e, requests.exceptions.RequestException):
+                if isinstance(e, CurlError): # Check for CurlError
                     if hasattr(e, 'response') and e.response is not None:
                         status_code = e.response.status_code 
                         if status_code == 401:
@@ -314,13 +312,18 @@ class GithubChat(Provider):
                 
                 # If anything else fails
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            finally:
+                # Update history after stream finishes or fails (if text was generated)
+                if streaming_text:
+                    self.last_response = {"text": streaming_text}
+                    self.conversation.update_chat_history(prompt, streaming_text)
 
         def for_non_stream():
             response_text = ""
             for response in for_stream():
                 if "text" in response:
                     response_text += response["text"]
-            self.last_response = {"text": response_text}
+            # self.last_response and history are updated in for_stream's finally block
             return self.last_response
 
         return for_stream() if stream else for_non_stream()
@@ -358,7 +361,7 @@ if __name__ == "__main__":
     from rich import print
     
     try:
-        ai = GithubChat()
+        ai = GithubChat("cookies.json")
         response = ai.chat("Python code to count r in strawberry", stream=True)
         for chunk in response:
             print(chunk, end="", flush=True)

@@ -1,8 +1,11 @@
-import requests
+from typing import Any, Dict, Optional, Union
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
+from webscout import exceptions
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
-from webscout.AIbase import Provider
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
+from webscout.AIbase import Provider 
 from webscout.litagent import LitAgent
 
 class AskSteve(Provider):
@@ -36,7 +39,7 @@ class AskSteve(Provider):
             act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
             system_prompt (str, optional): System prompt for AskSteve. Defaults to the provided string.
         """
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://quickstart.asksteve.to/quickStartRequest"
@@ -73,7 +76,15 @@ class AskSteve(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
+    @staticmethod
+    def _asksteve_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from AskSteve JSON response."""
+        if isinstance(chunk, dict) and "candidates" in chunk and len(chunk["candidates"]) > 0:
+            parts = chunk["candidates"][0].get("content", {}).get("parts", [])
+            if parts and isinstance(parts[0].get("text"), str):
+                return parts[0]["text"]
+        return None
 
     def ask(
         self,
@@ -115,37 +126,43 @@ class AskSteve(Provider):
             "prompt": conversation_prompt
         }
 
-        def for_stream():
+
+        # This API doesn't stream, so we process the full response
+        try:
             response = self.session.post(
                 self.api_endpoint,
                 headers=self.headers,
                 json=payload,
-                stream=True,
+                stream=False, # API doesn't stream
                 timeout=self.timeout,
+                impersonate="chrome120" # Add impersonate
             )
-            if not response.ok:
-                raise Exception(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
-            
-            response_data = response.json()
-            if "candidates" in response_data and len(response_data["candidates"]) > 0:
-                text = response_data["candidates"][0]["content"]["parts"][0]["text"]
-                self.last_response.update(dict(text=text))
-                yield dict(text=text) if not raw else text
-            else:
-                raise Exception("No response generated")
+            response.raise_for_status()
+            response_text_raw = response.text # Get raw text
 
+            # Process the full JSON text using sanitize_stream
+            processed_stream = sanitize_stream(
+                data=response_text_raw,
+                to_json=True, # Parse the whole text as JSON
+                intro_value=None,
+                content_extractor=self._asksteve_extractor, # Use the specific extractor
+                yield_raw_on_error=False
+            )
+            # Extract the single result
+            text = next(processed_stream, None)
+            text = text if isinstance(text, str) else "" # Ensure it's a string
+
+            self.last_response.update(dict(text=text))
             self.conversation.update_chat_history(
                 prompt, self.get_message(self.last_response)
             )
+            # Return dict or raw string based on raw flag
+            return text if raw else self.last_response
 
-        def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
-
-        return for_stream() if stream else for_non_stream()
+        except CurlError as e:
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+        except Exception as e: # Catch other potential errors
+            raise exceptions.FailedToGenerateResponseError(f"Failed to get response ({type(e).__name__}): {e}") from e
 
     def chat(
         self,
@@ -164,23 +181,15 @@ class AskSteve(Provider):
             str: Response generated
         """
 
-        def for_stream():
-            for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
-            ):
-                yield self.get_message(response)
-
-        def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
-            )
-
-        return for_stream() if stream else for_non_stream()
+        # Since ask() doesn't truly stream, we just call it once.
+        response_data = self.ask(
+            prompt,
+            stream=False, # Always False for this API
+            raw=False,    # Get the dict back
+            optimizer=optimizer,
+            conversationally=conversationally,
+        )
+        return self.get_message(response_data)
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -192,12 +201,12 @@ class AskSteve(Provider):
             str: Message extracted
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        return response.get("text", "") # Use .get for safety
 
 
 if __name__ == "__main__":
     from rich import print
     ai = AskSteve()
-    response = ai.chat("hi", stream=True)
+    response = ai.chat("write a short poem about AI", stream=True)
     for chunk in response:
         print(chunk, end="", flush=True) 

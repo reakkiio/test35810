@@ -4,10 +4,10 @@ import json
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
-from typing import Union, Any, AsyncGenerator, Dict
+from typing import Optional, Union, Any, AsyncGenerator, Dict
 from webscout.litagent import LitAgent
 
 class TurboSeek(Provider):
@@ -88,6 +88,13 @@ class TurboSeek(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _turboseek_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from TurboSeek stream JSON objects."""
+        if isinstance(chunk, dict) and "text" in chunk:
+            return chunk.get("text") # json.loads already handles unicode escapes
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -142,24 +149,24 @@ class TurboSeek(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     )
+
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for value_bytes in response.iter_lines():
-                    try:
-                        if value_bytes and value_bytes.startswith(b"data: "): # Check for bytes
-                            # Decode bytes to string
-                            line = value_bytes[6:].decode('utf-8') 
-                            data = json.loads(line) 
-                            if "text" in data:
-                                # Decode potential unicode escapes
-                                content = data["text"].encode().decode('unicode_escape') 
-                                streaming_text += content
-                                resp = dict(text=content)
-                                self.last_response.update(resp) # Update last_response incrementally
-                                # Yield raw bytes or dict based on flag
-                                yield value_bytes if raw else resp 
-                    except (json.decoder.JSONDecodeError, UnicodeDecodeError):
-                        pass # Ignore lines that are not valid JSON or cannot be decoded
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._turboseek_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _turboseek_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        self.last_response.update(dict(text=streaming_text)) # Update last_response incrementally
+                        yield dict(text=content_chunk) if not raw else content_chunk # Yield dict or raw string
+
                 # Update conversation history after stream finishes
                 if streaming_text: # Only update if content was received
                     self.conversation.update_chat_history(
@@ -174,21 +181,15 @@ class TurboSeek(Provider):
         def for_non_stream():
             # Aggregate the stream using the updated for_stream logic
             full_text = ""
-            for chunk_data in for_stream():
-                 # Ensure chunk_data is a dict (not raw) and has 'text'
-                if isinstance(chunk_data, dict) and "text" in chunk_data:
-                    full_text += chunk_data["text"]
-                # If raw=True, chunk_data is bytes, decode and process if needed (though raw non-stream is less common)
-                elif isinstance(chunk_data, bytes):
-                     try:
-                         if chunk_data.startswith(b"data: "):
-                             line = chunk_data[6:].decode('utf-8')
-                             data = json.loads(line)
-                             if "text" in data:
-                                 content = data["text"].encode().decode('unicode_escape')
-                                 full_text += content
-                     except (json.decoder.JSONDecodeError, UnicodeDecodeError):
-                         pass
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_text += chunk_data["text"]
+                    elif isinstance(chunk_data, str): # Handle case where raw=True was passed
+                        full_text += chunk_data
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Failed to aggregate non-stream response: {e}") from e
             # last_response and history are updated within for_stream
             # Ensure last_response reflects the complete aggregated text
             self.last_response = {"text": full_text} 
@@ -241,7 +242,7 @@ class TurboSeek(Provider):
             str: Message extracted
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        # Text is already decoded in ask method
+        # Unicode escapes are handled by json.loads within sanitize_stream
         return response.get("text", "") 
 
 if __name__ == '__main__':
@@ -250,13 +251,9 @@ if __name__ == '__main__':
     try: # Add try-except block for testing
         ai = TurboSeek(timeout=60)
         print("[bold blue]Testing Stream:[/bold blue]")
-        response_stream = ai.chat("hello buddy", stream=True)
-        full_stream_response = ""
+        response_stream = ai.chat("yooooooooooo", stream=True)
         for chunk in response_stream:
             print(chunk, end="", flush=True)
-            full_stream_response += chunk
-        print("\n[bold green]Stream Test Complete.[/bold green]\n")
-
         # Optional: Test non-stream
         # print("[bold blue]Testing Non-Stream:[/bold blue]")
         # response_non_stream = ai.chat("What is the capital of France?", stream=False)
@@ -267,4 +264,3 @@ if __name__ == '__main__':
         print(f"\n[bold red]API Error:[/bold red] {e}")
     except Exception as e:
         print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")
-

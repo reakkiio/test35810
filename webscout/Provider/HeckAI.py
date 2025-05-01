@@ -120,7 +120,7 @@ class HeckAI(Provider):
 
         def for_stream():
             streaming_text = "" # Initialize outside try block
-            in_answer = False # Initialize outside try block
+            # in_answer = False # No longer needed
             try:
                 # Use curl_cffi session post with impersonate
                 response = self.session.post(
@@ -132,41 +132,23 @@ class HeckAI(Provider):
                     impersonate="chrome110" # Use a common impersonation profile
                 )
                 response.raise_for_status() # Check for HTTP errors
-                    
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if not line_bytes:
-                        continue
-                        
-                    try:
-                        line = line_bytes.decode('utf-8')
-                        # Remove "data: " prefix
-                        if line.startswith("data: "):
-                            data = line[6:]
-                        else:
-                            continue # Skip lines without the prefix
-                        
-                        # Check for control markers
-                        if data == "[ANSWER_START]":
-                            in_answer = True
-                            continue
-                            
-                        if data == "[ANSWER_DONE]":
-                            in_answer = False
-                            continue
-                            
-                        if data == "[RELATE_Q_START]" or data == "[RELATE_Q_DONE]":
-                            continue
-                            
-                        # Process content if we're in an answer section
-                        if in_answer:
-                            # Assuming 'data' is the text chunk here
-                            streaming_text += data
-                            resp = dict(text=data)
-                            # Yield dict or raw string chunk
-                            yield resp if not raw else data
-                    except UnicodeDecodeError:
-                        continue # Ignore decoding errors for specific lines
+
+                # Use sanitize_stream to process the stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",  # Prefix to remove *from lines between markers*
+                    to_json=False,        # Content is text
+                    start_marker="data: [ANSWER_START]", # Check against the raw line including prefix
+                    end_marker="data: [ANSWER_DONE]",     # Check against the raw line including prefix
+                    skip_markers=["[RELATE_Q_START]", "[RELATE_Q_DONE]"], # Skip these if they appear within answer block
+                    yield_raw_on_error=True
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the text between ANSWER_START and ANSWER_DONE
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
                 
                 # Update history and previous answer after stream finishes
                 self.previous_answer = streaming_text

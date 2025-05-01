@@ -5,7 +5,7 @@ import uuid
 import re
 from typing import Union, Any, Dict, Optional, Generator, List
 
-from webscout.AIutel import Optimizers
+from webscout.AIutel import Optimizers, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
@@ -66,15 +66,15 @@ class LLMChatCo(Provider):
         self.model = model
         self.system_prompt = system_prompt
         self.thread_id = str(uuid.uuid4())  # Generate a unique thread ID for conversations
-        
+
         # Create LitAgent instance (keep if needed for other headers)
         lit_agent = Lit()
-        
+
         # Headers based on the provided request
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
-            "User-Agent": lit_agent.random(), 
+            "User-Agent": lit_agent.random(),
             "Accept-Language": "en-US,en;q=0.9",
             "Origin": "https://llmchat.co",
             "Referer": f"https://llmchat.co/chat/{self.thread_id}",
@@ -109,24 +109,16 @@ class LLMChatCo(Provider):
         # Store message history for conversation context
         self.last_assistant_response = ""
 
-    def parse_sse(self, data):
-        """Parse Server-Sent Events data"""
-        if not data or not data.strip():
-            return None
-            
-        # Check if it's an event line
-        if data.startswith('event:'):
-            return {'event': data[6:].strip()}
-            
-        # Check if it's data
-        if data.startswith('data:'):
-            data_content = data[5:].strip()
-            if data_content:
-                try:
-                    return {'data': json.loads(data_content)}
-                except json.JSONDecodeError:
-                    return {'data': data_content}
-        
+    @staticmethod
+    def _llmchatco_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts text content from LLMChat.co stream JSON objects."""
+        if isinstance(chunk, dict) and "answer" in chunk:
+            answer = chunk["answer"]
+            # Prefer fullText if available and status is COMPLETED
+            if answer.get("fullText") and answer.get("status") == "COMPLETED":
+                return answer["fullText"]
+            elif "text" in answer:
+                return answer["text"]
         return None
 
     def ask(
@@ -176,62 +168,40 @@ class LLMChatCo(Provider):
             try:
                 # Use curl_cffi session post with impersonate
                 response = self.session.post(
-                    self.api_endpoint, 
-                    json=payload, 
+                    self.api_endpoint,
+                    json=payload,
                     # headers are set on the session
-                    stream=True, 
+                    stream=True,
                     timeout=self.timeout,
                     # proxies are set on the session
                     impersonate="chrome110" # Use a common impersonation profile
                 )
                 response.raise_for_status() # Check for HTTP errors
-                
-                # Process the SSE stream
-                current_event = None
-                buffer = ""
-                
-                # Iterate over bytes and decode manually
-                for chunk in response.iter_content(chunk_size=None, decode_unicode=False): # Use chunk_size=None for better SSE handling
-                    if not chunk:
-                        continue
-                    
-                    # Decode the chunk and add to buffer
-                    buffer += chunk.decode('utf-8', errors='replace') # Use replace for potential errors
-                    
-                    # Process complete lines in the buffer
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        line = line.strip()
-                        
-                        if not line:
-                            continue
-                            
-                        if line.startswith('event:'):
-                            current_event = line[6:].strip()
-                        elif line.startswith('data:'):
-                            data_content = line[5:].strip()
-                            if data_content and current_event == 'answer':
-                                try:
-                                    json_data = json.loads(data_content)
-                                    if "answer" in json_data and "text" in json_data["answer"]:
-                                        text_chunk = json_data["answer"]["text"]
-                                        # If there's a fullText, use it as it's more complete
-                                        if json_data["answer"].get("fullText") and json_data["answer"].get("status") == "COMPLETED":
-                                            text_chunk = json_data["answer"]["fullText"]
-                                            
-                                        # Extract only new content since last chunk
-                                        new_text = text_chunk[len(full_response):]
-                                        if new_text:
-                                            full_response = text_chunk # Update full response tracker
-                                            resp = dict(text=new_text)
-                                            # Yield dict or raw string chunk
-                                            yield resp if not raw else new_text
-                                except json.JSONDecodeError:
-                                    continue # Ignore invalid JSON data
-                            elif data_content and current_event == 'done':
-                                # Handle potential final data before done event if needed
-                                break # Exit loop on 'done' event
-                
+
+                # Use sanitize_stream
+                # Note: This won't handle SSE 'event:' lines, only 'data:' lines.
+                # The original code checked for event == 'answer'. We assume relevant data is JSON after 'data:'.
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._llmchatco_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                last_yielded_text = ""
+                for current_full_text in processed_stream:
+                    # current_full_text is the full text extracted by _llmchatco_extractor
+                    if current_full_text and isinstance(current_full_text, str):
+                        # Calculate the new part of the text
+                        new_text = current_full_text[len(last_yielded_text):]
+                        if new_text:
+                            full_response = current_full_text # Keep track of the latest full text
+                            last_yielded_text = current_full_text # Update tracker
+                            resp = dict(text=new_text)
+                            # Yield dict or raw string chunk
+                            yield resp if not raw else new_text
+
                 # Update history after stream finishes
                 self.last_response = dict(text=full_response)
                 self.last_assistant_response = full_response
@@ -244,7 +214,7 @@ class LLMChatCo(Provider):
             except Exception as e: # Catch other potential exceptions (like HTTPError)
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
-        
+
         def for_non_stream():
             # Aggregate the stream using the updated for_stream logic
             full_response_text = ""
@@ -261,7 +231,7 @@ class LLMChatCo(Provider):
                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
                 if not full_response_text:
                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-            
+
             # last_response and history are updated within for_stream
             # Return the final aggregated response dict or raw string
             return full_response_text if raw else self.last_response
@@ -313,17 +283,17 @@ if __name__ == "__main__":
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
-    
+
     # Test all available models
     working = 0
     total = len(LLMChatCo.AVAILABLE_MODELS)
-    
+
     for model in LLMChatCo.AVAILABLE_MODELS:
         try:
             test_ai = LLMChatCo(model=model, timeout=60)
             response = test_ai.chat("Say 'Hello' in one word")
             response_text = response
-            
+
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
                 # Truncate response if too long

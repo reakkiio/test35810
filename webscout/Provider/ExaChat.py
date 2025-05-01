@@ -1,10 +1,11 @@
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session, Response # Import Response
 import json
 import uuid
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Union, Optional, List
 from datetime import datetime
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
-from webscout.AIbase import Provider
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
+from webscout.AIbase import Provider 
 from webscout import exceptions
 from webscout.litagent import LitAgent
 
@@ -22,6 +23,8 @@ MODEL_CONFIGS = {
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.0-pro-exp-02-05",
+            "gemini-2.5-flash-preview-04-17",
+
         
         ],
     },
@@ -87,6 +90,7 @@ class ExaChat(Provider):
         "gemini-2.0-flash-thinking-exp-01-21",
         "gemini-2.5-pro-exp-03-25",
         "gemini-2.0-pro-exp-02-05",
+        "gemini-2.5-flash-preview-04-17",
         
         # OpenRouter Models
         "mistralai/mistral-small-3.1-24b-instruct:free",
@@ -141,7 +145,7 @@ class ExaChat(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -166,7 +170,7 @@ class ExaChat(Provider):
         }
         
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
         self.session.cookies.update({"session": uuid.uuid4().hex})
 
         self.__available_optimizers = (
@@ -208,18 +212,27 @@ class ExaChat(Provider):
         error_msg = f"Invalid model: {model}\nAvailable models: {', '.join(available_models)}"
         raise ValueError(error_msg)
 
-    def _make_request(self, payload: Dict[str, Any]) -> requests.Response:
+    @staticmethod
+    def _exachat_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from ExaChat stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+        return None
+
+    def _make_request(self, payload: Dict[str, Any]) -> Response: # Change type hint to Response
         """Make the API request with proper error handling."""
         try:
             response = self.session.post(
                 self._get_endpoint(),
                 headers=self.headers,
                 json=payload,
-                timeout=self.timeout,
+                timeout=self.timeout, # type: ignore
+                stream=True, # Enable streaming for the request
+                impersonate="chrome120" # Add impersonate
             )
             response.raise_for_status()
             return response
-        except requests.exceptions.RequestException as e:
+        except (CurlError, exceptions.FailedToGenerateResponseError, Exception) as e: # Catch CurlError and others
             raise exceptions.FailedToGenerateResponseError(f"API request failed: {e}") from e
 
     def _build_payload(self, conversation_prompt: str) -> Dict[str, Any]:
@@ -271,20 +284,23 @@ class ExaChat(Provider):
         
         try:
             full_response = ""
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        data = json.loads(line.decode('utf-8'))
-                        if 'choices' in data and len(data['choices']) > 0:
-                            content = data['choices'][0].get('delta', {}).get('content', '')
-                            if content:
-                                full_response += content
-                    except json.JSONDecodeError:
-                        continue
+            # Use sanitize_stream to process the response
+            processed_stream = sanitize_stream(
+                data=response.iter_content(chunk_size=None), # Pass byte iterator
+                intro_value=None, # API doesn't seem to use 'data:' prefix
+                to_json=True,     # Stream sends JSON lines
+                content_extractor=self._exachat_extractor, # Use the specific extractor
+                yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+            )
+
+            for content_chunk in processed_stream:
+                # content_chunk is the string extracted by _exachat_extractor
+                if content_chunk and isinstance(content_chunk, str):
+                    full_response += content_chunk
                             
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
-            return self.last_response
+            return self.last_response if not raw else full_response # Return dict or raw string
             
         except json.JSONDecodeError as e:
             raise exceptions.FailedToGenerateResponseError(f"Invalid JSON response: {e}") from e

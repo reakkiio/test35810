@@ -5,7 +5,7 @@ from typing import Union, Any, Dict, Generator
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -137,37 +137,30 @@ class TypeGPT(Provider):
                     f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
 
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
-            message_load = ""
-            # Iterate over bytes and decode manually
-            for line_bytes in response.iter_lines():
-                if line_bytes:
-                    line = line_bytes.decode("utf-8")
-                    if line.startswith("data: "):
-                        line = line[6:]  # Remove "data: " prefix
-                        # Skip [DONE] message
-                        if line.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(line)
-                            # Extract and yield only new content
-                            if 'choices' in data and len(data['choices']) > 0:
-                                delta = data['choices'][0].get('delta', {})
-                                if 'content' in delta:
-                                    new_content = delta['content']
-                                    message_load += new_content
-                                    # Yield only the new content
-                                    yield dict(text=new_content) if not raw else new_content
-                                    # Update last_response incrementally for potential non-stream use later
-                                    self.last_response = dict(text=message_load) 
-                        except json.JSONDecodeError:
-                            continue
+            response.raise_for_status() # Check for HTTP errors first
+
+            streaming_text = ""
+            # Use sanitize_stream
+            processed_stream = sanitize_stream(
+                data=response.iter_content(chunk_size=None), # Pass byte iterator
+                intro_value="data:",
+                to_json=True,     # Stream sends JSON
+                skip_markers=["[DONE]"],
+                content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None,
+                yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+            )
+
+            for content_chunk in processed_stream:
+                # content_chunk is the string extracted by the content_extractor
+                if content_chunk and isinstance(content_chunk, str):
+                    streaming_text += content_chunk
+                    yield dict(text=content_chunk) if not raw else content_chunk
+                    # Update last_response incrementally
+                    self.last_response = dict(text=streaming_text)
+
             # Update conversation history after stream finishes
-            if message_load: # Only update if something was received
-                 self.conversation.update_chat_history(prompt, message_load)
+            if streaming_text: # Only update if something was received
+                 self.conversation.update_chat_history(prompt, streaming_text)
 
 
         def for_non_stream():
@@ -185,26 +178,30 @@ class TypeGPT(Provider):
                     f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
 
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Request failed - {response.status_code}: {response.text}"
-                )
-            
+            response.raise_for_status() # Check for HTTP errors
+
             try:
-                # curl_cffi response.json() handles decoding
-                response_data = response.json() 
-                # Extract the message content for history and return value
-                if 'choices' in response_data and len(response_data['choices']) > 0:
-                    message = response_data['choices'][0].get('message', {})
-                    content = message.get('content', '')
-                    self.last_response = {"text": content} # Store in expected format
-                    self.conversation.update_chat_history(prompt, content)
-                    return self.last_response
-                else:
-                     # Handle cases where response structure is unexpected
-                     self.last_response = {"text": ""} 
-                     return self.last_response
-            except json.JSONDecodeError as je:
+                response_text = response.text # Get raw text
+
+                # Use sanitize_stream for non-streaming JSON response
+                processed_stream = sanitize_stream(
+                    data=response_text,
+                    to_json=True, # Parse the whole text as JSON
+                    intro_value=None,
+                    # Extractor for non-stream structure
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('message', {}).get('content') if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False
+                )
+
+                # Extract the single result
+                content = ""
+                for extracted_content in processed_stream:
+                    content = extracted_content if isinstance(extracted_content, str) else ""
+
+                self.last_response = {"text": content} # Store in expected format
+                self.conversation.update_chat_history(prompt, content)
+                return self.last_response
+            except (json.JSONDecodeError, Exception) as je: # Catch potential JSON errors or others
                  raise exceptions.FailedToGenerateResponseError(f"Failed to decode JSON response: {je} - Response text: {response.text}")
 
 
@@ -290,4 +287,3 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-

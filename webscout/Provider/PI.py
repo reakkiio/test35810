@@ -5,7 +5,7 @@ import json
 import re
 import threading
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from typing import Dict, Union, Any, Optional
@@ -121,6 +121,13 @@ class PiAI(Provider):
 
         if self.is_conversation:
             self.start_conversation()
+
+    @staticmethod
+    def _pi_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts text content from PiAI stream JSON objects."""
+        if isinstance(chunk, dict) and 'text' in chunk and chunk['text'] is not None:
+            return chunk.get("text")
+        return None
 
     def start_conversation(self) -> str:
         """
@@ -245,17 +252,22 @@ class PiAI(Provider):
                     if line_bytes:
                         line = line_bytes.decode('utf-8')
                         full_raw_data_for_sids += line + "\n" # Accumulate for SID extraction
+                        
                         if line.startswith("data: "):
+                            json_line_str = line[6:] # Get the JSON part as string
                             try:
-                                parsed_data = json.loads(line[6:])
-                                if 'text' in parsed_data and parsed_data['text'] is not None:
-                                    chunk_text = parsed_data['text']
+                                # Process this single JSON line string with sanitize_stream
+                                processed_gen = sanitize_stream(
+                                    data=json_line_str,
+                                    to_json=True,
+                                    content_extractor=self._pi_extractor
+                                )
+                                chunk_text = next(processed_gen, None) # Get the single extracted text item
+                                if chunk_text and isinstance(chunk_text, str):
                                     streaming_text += chunk_text
-                                    # Yield raw JSON object or dict with aggregated text
-                                    yield parsed_data if raw else dict(text=streaming_text)
-                            except (json.JSONDecodeError, UnicodeDecodeError):
-                                continue
-
+                                    yield {"text": streaming_text} # Always yield dict with aggregated text
+                            except (StopIteration, json.JSONDecodeError, UnicodeDecodeError):
+                                continue # Skip if sanitize_stream fails or yields nothing
                 # Extract SIDs after processing the stream
                 sids = re.findall(r'"sid":"(.*?)"', full_raw_data_for_sids)
                 second_sid = sids[1] if len(sids) >= 2 else None
@@ -284,13 +296,10 @@ class PiAI(Provider):
         else:
             # For non-stream, collect all responses and return the final one
             final_text = ""
-            # Ensure raw=False so process_stream yields dicts
+            # process_stream always yields dicts now
             for res in process_stream():
                  if isinstance(res, dict) and "text" in res:
                      final_text = res["text"] # Keep updating with the latest aggregated text
-                 # Handle raw JSON object case if raw=True was passed
-                 elif raw and isinstance(res, dict) and 'text' in res and res['text'] is not None:
-                     final_text += res['text'] # Append chunks if raw
 
             # last_response and history are updated within process_stream
             # Return the final aggregated response dict or raw text

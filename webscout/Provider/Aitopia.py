@@ -1,4 +1,5 @@
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import json
 import uuid
 import time
@@ -6,8 +7,8 @@ import hashlib
 from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
+from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -67,9 +68,9 @@ class Aitopia(Provider):
             "user-agent": self.fingerprint["user_agent"]
         }
         
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -129,6 +130,20 @@ class Aitopia(Provider):
         random_str = str(uuid.uuid4()) + str(time.time())
         return hashlib.md5(random_str.encode()).hexdigest()
 
+    @staticmethod
+    def _aitopia_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Aitopia stream JSON objects."""
+        if isinstance(chunk, dict):
+            # Handle Claude 3 Haiku response format
+            if "delta" in chunk and "text" in chunk["delta"]:
+                return chunk["delta"]["text"]
+            # Handle GPT-4o Mini response format
+            elif "choices" in chunk and "0" in chunk["choices"]:
+                return chunk["choices"]["0"]["delta"].get("content")
+            # Add other potential formats here if needed
+        return None
+
+
     def ask(
         self,
         prompt: str,
@@ -184,63 +199,72 @@ class Aitopia(Provider):
         }
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
             try:
-                with requests.post(self.url, headers=self.headers, json=payload, stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
-                    
-                    streaming_text = ""
-                    for line in response.iter_lines():
-                        if line:
-                            line = line.decode('utf-8')
-                            if line.startswith('data: '):
-                                data = line[6:]
-                                if data == '[DONE]':
-                                    break
-                                try:
-                                    json_data = json.loads(data)
-                                    
-                                    # Handle Claude 3 Haiku response format
-                                    if "delta" in json_data and "text" in json_data["delta"]:
-                                        content = json_data["delta"]["text"]
-                                        if content:
-                                            streaming_text += content
-                                            resp = dict(text=content)
-                                            yield resp if raw else resp
-                                    # Handle GPT-4o Mini response format
-                                    elif "choices" in json_data and "0" in json_data["choices"]:
-                                        content = json_data["choices"]["0"]["delta"].get("content", "")
-                                        if content:
-                                            streaming_text += content
-                                            resp = dict(text=content)
-                                            yield resp if raw else resp
-                                except json.JSONDecodeError:
-                                    continue
-                    
+                response = self.session.post(
+                    self.url, headers=self.headers, json=payload, stream=True, timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                response.raise_for_status()
+
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=self._aitopia_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _aitopia_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
+
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            finally:
+                # Update history after stream finishes or fails
+                if streaming_text:
                     self.last_response = {"text": streaming_text}
                     self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
-                raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
 
         def for_non_stream():
             try:
-                response = requests.post(self.url, headers=self.headers, json=payload, timeout=self.timeout)
-                if response.status_code != 200:
-                    raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed with status code {response.status_code}"
-                    )
+                response = self.session.post(
+                    self.url, headers=self.headers, json=payload, timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                response.raise_for_status()
 
-                response_data = response.json()
-                if 'choices' in response_data and len(response_data['choices']) > 0:
-                    content = response_data['choices'][0].get('message', {}).get('content', '')
+                response_text_raw = response.text # Get raw text
+
+                # Use sanitize_stream to parse the non-streaming JSON response
+                # Assuming non-stream uses the GPT format based on original code
+                processed_stream = sanitize_stream(
+                    data=response_text_raw,
+                    to_json=True, # Parse the whole text as JSON
+                    intro_value=None,
+                    content_extractor=lambda chunk: chunk.get("choices", [{}])[0].get("message", {}).get("content") if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False
+                )
+                # Extract the single result
+                content = next(processed_stream, None)
+                content = content if isinstance(content, str) else "" # Ensure it's a string
+
+                if content: # Check if content was successfully extracted
                     self.last_response = {"text": content}
                     self.conversation.update_chat_history(prompt, content)
                     return {"text": content}
                 else:
-                    raise exceptions.FailedToGenerateResponseError("No response content found")
+                    raise exceptions.FailedToGenerateResponseError("No response content found or failed to parse")
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 

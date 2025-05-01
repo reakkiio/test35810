@@ -1,11 +1,11 @@
-from typing import Generator, Union
+from typing import Any, Dict, Generator, Optional, Union
 from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 
 from webscout import exceptions
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 
@@ -75,6 +75,13 @@ class GPTWeb(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _gptweb_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from GPTWeb stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("gpt")
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -129,22 +136,21 @@ class GPTWeb(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
             
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8').lstrip('_') # Remove "_"
-                            # Attempt to parse the entire line as JSON
-                            json_data = json.loads(line)  
-                            content = json_data.get("gpt", "")
-                            if content: # Ensure content is not None or empty
-                                full_response = content # API seems to send the full response each time
-                                resp = dict(text=full_response)
-                                # Yield dict or raw string chunk (yielding full response each time)
-                                yield resp if not raw else full_response 
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            # print(f"Skipping invalid JSON line: {line}") # Optional: for debugging
-                            continue # Ignore lines that are not valid JSON or cannot be decoded
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No standard prefix, potential '_' handled by json.loads
+                    to_json=True,     # Stream sends JSON lines
+                    content_extractor=self._gptweb_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the full text extracted by _gptweb_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response = content_chunk # API sends full response each time
+                        resp = dict(text=full_response)
+                        yield resp if not raw else full_response
                 
                 # Update history after stream finishes (using the final full response)
                 self.last_response = dict(text=full_response)

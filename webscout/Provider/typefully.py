@@ -1,10 +1,10 @@
-from typing import Union, Any, Dict
+from typing import Optional, Union, Any, Dict
 import re
 from uuid import uuid4
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -114,6 +114,17 @@ class TypefullyAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _typefully_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the Typefully stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -174,23 +185,22 @@ class TypefullyAI(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     )
-                streaming_response = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        line = line_bytes.decode('utf-8') # Decode bytes
-                        match = re.search(r'0:"(.*?)"', line)
-                        if match:
-                            # Decode potential unicode escapes
-                            content = match.group(1).encode().decode('unicode_escape') 
-                            streaming_response += content
-                            # Yield dict or raw string
-                            yield content if raw else dict(text=content)
-                        elif line.startswith('e:') or line.startswith('d:'):
-                            # End of response
-                            break
+                streaming_text = ""
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is not JSON
+                    content_extractor=self._typefully_extractor, # Use the specific extractor
+                    end_marker="e:", # Stop processing if "e:" line is encountered (adjust if needed)
+                )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
                 # Update history and last response after stream finishes
-                self.last_response.update(dict(text=streaming_response))
+                self.last_response.update(dict(text=streaming_text))
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)
                 )
@@ -271,13 +281,12 @@ class TypefullyAI(Provider):
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
         # Handle potential unicode escapes in the final text
+        # Formatting is now handled by the extractor
         text = response.get("text", "")
         try:
-            # Attempt to decode escapes, return original if fails
-            # Already decoded in ask method, just handle formatting
             formatted_text = text.replace('\\n', '\n').replace('\\n\\n', '\n\n')
             return formatted_text
-        except Exception: # Catch potential errors during formatting
+        except Exception: # Catch potential errors during newline replacement
              return text # Return original text if formatting fails
 
 
@@ -319,4 +328,3 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-

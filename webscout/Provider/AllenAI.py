@@ -156,19 +156,15 @@ class AllenAI(Provider):
             err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
             return {"client": temp_id, "error": f"{type(e).__name__}: {e} - {err_text}"}
     
-
-    def parse_stream(self, raw_data):
-        """Parse the raw streaming data according to the JS implementation"""
-        result = ""
-        for line in raw_data.splitlines():
-            try:
-                parsed = json.loads(line)
-                # Check if message starts with msg_ pattern
-                if parsed.get("message", "").startswith("msg_"):
-                    result += parsed.get("content", "")
-            except:
-                continue
-        return result
+    @staticmethod
+    def _allenai_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from AllenAI stream JSON objects."""
+        if isinstance(chunk, dict):
+            if chunk.get("message", "").startswith("msg_") and "content" in chunk:
+                return chunk.get("content")
+            elif "message" in chunk and chunk.get("content"): # Legacy handling
+                return chunk.get("content")
+        return None
 
     def ask(
         self,
@@ -269,57 +265,49 @@ class AllenAI(Provider):
             )
             response.raise_for_status() # Check for HTTP errors
             
-            # Iterate over bytes and decode manually
-            for chunk_bytes in response.iter_content(chunk_size=None): # Process byte chunks
-                if not chunk_bytes:
-                    continue
-                    
-                try:
-                    decoded = chunk_bytes.decode('utf-8')
-                    for line in decoded.splitlines(): # Process lines within the chunk
-                        line = line.strip()
-                        if not line:
-                            continue
-                        
-                        data = json.loads(line)
-                        
-                        # Check for message pattern from JS implementation
-                        if isinstance(data, dict):
-                            content_found = False
-                            if data.get("message", "").startswith("msg_") and "content" in data:
-                                content = data.get("content", "")
-                                content_found = True
-                            # Legacy handling for older API
-                            elif "message" in data and data.get("content"):
-                                content = data.get("content")
-                                content_found = True
-                            
-                            if content_found and content:
-                                streaming_text += content
-                                resp = dict(text=content)
-                                yield resp if not raw else content
-                            
-                            # Update parent ID if present
-                            if data.get("id"):
-                                current_parent = data.get("id")
-                            elif data.get("children"):
-                                for child in data["children"]:
-                                    if child.get("role") == "assistant":
-                                        current_parent = child.get("id")
-                                        break
-                            
-                            # Handle completion
-                            if data.get("final") or data.get("finish_reason") == "stop":
-                                if current_parent:
-                                    self.parent = current_parent
-                                
-                                # Update conversation history
-                                self.conversation.update_chat_history(prompt, streaming_text)
-                                self.last_response = {"text": streaming_text}
-                                return # End the generator
+            # Use sanitize_stream
+            processed_stream = sanitize_stream(
+                data=response.iter_content(chunk_size=None), # Pass byte iterator
+                intro_value=None, # No prefix
+                to_json=True,     # Stream sends JSON lines
+                content_extractor=self._allenai_extractor, # Use the specific extractor
+                yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+            )
 
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    continue # Ignore lines/chunks that are not valid JSON or cannot be decoded
+            for content_chunk in processed_stream:
+                # content_chunk is the string extracted by _allenai_extractor
+                if content_chunk and isinstance(content_chunk, str):
+                    streaming_text += content_chunk
+                    resp = dict(text=content_chunk)
+                    yield resp if not raw else content_chunk
+
+            # Try to extract parent ID from the *last* raw line (less reliable than before)
+            # This part is tricky as sanitize_stream consumes the raw lines.
+            # We might need to re-fetch or adjust if parent ID is critical per stream.
+            # For now, we'll rely on the non-stream request to update parent ID more reliably.
+            # Example placeholder logic (might not work reliably):
+            try:
+                last_line_data = json.loads(response.text.splitlines()[-1]) # Get last line if possible
+                if last_line_data.get("id"):
+                    current_parent = last_line_data.get("id")
+                elif last_line_data.get("children"):
+                    for child in last_line_data["children"]: # Use last_line_data here
+                        if child.get("role") == "assistant":
+                            current_parent = child.get("id")
+                            break
+                
+                # Handle completion
+                if last_line_data.get("final") or last_line_data.get("finish_reason") == "stop":
+                    if current_parent:
+                        self.parent = current_parent
+                    
+                    # Update conversation history
+                    self.conversation.update_chat_history(prompt, streaming_text)
+                    self.last_response = {"text": streaming_text} # Update last response here
+                    return # End the generator
+            except Exception as e:
+                # Log the error but continue with the rest of the function
+                print(f"Error processing response data: {str(e)}")
             
             # If loop finishes without returning (e.g., no final message), update history
             if current_parent:
@@ -348,10 +336,19 @@ class AllenAI(Provider):
             )
             response.raise_for_status() # Check for HTTP errors
             
-            # Parse the response as per JS implementation
-            raw_response = response.text
-            parsed_response = self.parse_stream(raw_response) # Use existing parser
-            
+            raw_response = response.text # Get raw text
+
+            # Process the full text using sanitize_stream line by line
+            processed_stream = sanitize_stream(
+                data=raw_response.splitlines(), # Split into lines
+                intro_value=None,
+                to_json=True,
+                content_extractor=self._allenai_extractor,
+                yield_raw_on_error=False
+            )
+            # Aggregate the results
+            parsed_response = "".join(list(processed_stream))
+
             # Update parent ID from the full response if possible (might need adjustment based on actual non-stream response structure)
             # This part is speculative as the non-stream structure isn't fully clear from the stream logic
             try:

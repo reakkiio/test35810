@@ -8,7 +8,7 @@ from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream 
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -146,11 +146,11 @@ class MCPCore(Provider):
             )
             return cookie_string, token
         except FileNotFoundError:
-            raise exceptions.InvalidAuthenticationError(
+            raise exceptions.FailedToGenerateResponseError(
                 f"Error: Cookies file not found at {self.cookies_path}!"
             )
         except json.JSONDecodeError:
-            raise exceptions.InvalidAuthenticationError(
+            raise exceptions.FailedToGenerateResponseError(
                 f"Error: Invalid JSON format in cookies file: {self.cookies_path}!"
             )
 
@@ -207,24 +207,21 @@ class MCPCore(Provider):
                 )
                 response.raise_for_status()
 
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8').strip()
-                            if line.startswith("data: "):
-                                json_str = line[6:]
-                                if json_str == "[DONE]":
-                                    break
-                                json_data = json.loads(json_str)
-                                if 'choices' in json_data and len(json_data['choices']) > 0:
-                                    delta = json_data['choices'][0].get('delta', {})
-                                    content = delta.get('content')
-                                    if content:
-                                        streaming_text += content
-                                        resp = dict(text=content)
-                                        yield resp if not raw else content
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by the content_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
 
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, self.get_message(self.last_response))

@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -79,6 +79,13 @@ class TwoAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _twoai_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from TwoAI stream JSON objects."""
+        if isinstance(chunk, dict) and chunk.get("typeName") == "LLMChunk":
+            return chunk.get("content")
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -126,22 +133,20 @@ class TwoAI(Provider):
                     )
                     
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8') # Decode bytes
-                            chunk = json.loads(line)
-                            if chunk.get("typeName") == "LLMChunk": # Use .get for safety
-                                content = chunk.get("content", "") # Use .get for safety
-                                streaming_text += content
-                                resp = dict(text=content)
-                                # Yield dict or raw string
-                                yield resp if raw else resp
-                        except json.JSONDecodeError:
-                            continue
-                        except UnicodeDecodeError:
-                            continue
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=True,     # Each line is JSON
+                    content_extractor=self._twoai_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _twoai_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
                 
                 # Update history and last response after stream finishes
                 self.last_response = {"text": streaming_text}

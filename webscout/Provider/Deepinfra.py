@@ -2,11 +2,11 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 import os
-from typing import Any, Dict, Optional, Generator, Union
+from typing import Any, Dict, Optional, Generator, Union, List
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -73,6 +73,13 @@ class DeepInfra(Provider):
         # "Sao10K/L3.3-70B-Euryale-v2.3",  # >>>> NOT WORKING
     ]
 
+    @staticmethod
+    def _deepinfra_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from DeepInfra stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+        return None
+
     def __init__(
         self,
         is_conversation: bool = True,
@@ -91,14 +98,14 @@ class DeepInfra(Provider):
         """Initializes the DeepInfra API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-            
+
         self.url = "https://api.deepinfra.com/v1/openai/chat/completions"
-        
+
         # Initialize LitAgent (keep if needed for other headers or logic)
         self.agent = LitAgent()
         # Fingerprint generation might be less relevant with impersonate
         self.fingerprint = self.agent.generate_fingerprint(browser)
-        
+
         # Use the fingerprint for headers (keep relevant ones)
         self.headers = {
             "Accept": self.fingerprint["accept"], # Keep Accept
@@ -113,7 +120,7 @@ class DeepInfra(Provider):
             "Sec-Fetch-Site": "same-site",
             "X-Deepinfra-Source": "web-embed", # Keep custom headers
         }
-        
+
         # Initialize curl_cffi Session
         self.session = Session()
         # Update curl_cffi session headers and proxies
@@ -147,22 +154,22 @@ class DeepInfra(Provider):
     def refresh_identity(self, browser: str = None):
         """
         Refreshes the browser identity fingerprint.
-        
+
         Args:
             browser: Specific browser to use for the new fingerprint
         """
         browser = browser or self.fingerprint.get("browser_type", "chrome")
         self.fingerprint = self.agent.generate_fingerprint(browser)
-        
+
         # Update headers with new fingerprint (only relevant ones)
         self.headers.update({
             "Accept": self.fingerprint["accept"],
             "Accept-Language": self.fingerprint["accept_language"],
         })
-        
+
         # Update session headers
         self.session.headers.update(self.headers) # Update only relevant headers
-        
+
         return self.fingerprint
 
     def ask(
@@ -197,68 +204,74 @@ class DeepInfra(Provider):
             try:
                 # Use curl_cffi session post with impersonate
                 response = self.session.post(
-                    self.url, 
+                    self.url,
                     # headers are set on the session
-                    data=json.dumps(payload), 
-                    stream=True, 
+                    data=json.dumps(payload),
+                    stream=True,
                     timeout=self.timeout,
                     impersonate="chrome110" # Use a common impersonation profile
                 )
                 response.raise_for_status() # Check for HTTP errors
-                    
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8').strip()
-                            if line.startswith("data: "):
-                                json_str = line[6:]
-                                if json_str == "[DONE]":
-                                    break
-                                json_data = json.loads(json_str)
-                                if 'choices' in json_data:
-                                    choice = json_data['choices'][0]
-                                    if 'delta' in choice and 'content' in choice['delta']:
-                                        content = choice['delta']['content']
-                                        if content: # Ensure content is not None or empty
-                                            streaming_text += content
-                                            resp = dict(text=content)
-                                            # Yield dict or raw string chunk
-                                            yield resp if not raw else content
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue # Ignore lines that are not valid JSON or cannot be decoded
-                    
-                # Update history after stream finishes
-                self.last_response = {"text": streaming_text}
-                self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except CurlError as e: # Catch CurlError
+
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=self._deepinfra_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _deepinfra_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
+
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
-                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
-                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)} - {err_text}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {str(e)}") from e
+            finally:
+                # Update history after stream finishes or fails
+                if streaming_text:
+                    self.last_response = {"text": streaming_text}
+                    self.conversation.update_chat_history(prompt, streaming_text)
 
 
         def for_non_stream():
             try:
                 # Use curl_cffi session post with impersonate for non-streaming
                 response = self.session.post(
-                    self.url, 
+                    self.url,
                     # headers are set on the session
-                    data=json.dumps(payload), 
+                    data=json.dumps(payload),
                     timeout=self.timeout,
                     impersonate="chrome110" # Use a common impersonation profile
                 )
                 response.raise_for_status() # Check for HTTP errors
 
-                response_data = response.json()
-                if 'choices' in response_data and len(response_data['choices']) > 0:
-                    content = response_data['choices'][0].get('message', {}).get('content', '')
-                    self.last_response = {"text": content}
-                    self.conversation.update_chat_history(prompt, content)
-                    return self.last_response if not raw else content # Return dict or raw string
-                else:
-                    raise exceptions.FailedToGenerateResponseError("No response content found")
+                response_text = response.text # Get raw text
+
+                # Use sanitize_stream to parse the non-streaming JSON response
+                processed_stream = sanitize_stream(
+                    data=response_text,
+                    to_json=True, # Parse the whole text as JSON
+                    intro_value=None,
+                    # Extractor for non-stream structure
+                    content_extractor=lambda chunk: chunk.get("choices", [{}])[0].get("message", {}).get("content") if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False
+                )
+                # Extract the single result
+                content = next(processed_stream, None)
+                content = content if isinstance(content, str) else "" # Ensure it's a string
+
+                self.last_response = {"text": content}
+                self.conversation.update_chat_history(prompt, content)
+                return self.last_response if not raw else content # Return dict or raw string
+
             except CurlError as e: # Catch CurlError
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
             except Exception as e: # Catch other potential exceptions (like HTTPError, JSONDecodeError)
@@ -311,7 +324,7 @@ if __name__ == "__main__":
             response_text = ""
             for chunk in response:
                 response_text += chunk
-            
+
             if response_text and len(response_text.strip()) > 0:
                 status = "✓"
                 # Clean and truncate response

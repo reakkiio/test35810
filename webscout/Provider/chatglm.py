@@ -1,11 +1,12 @@
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import json
 from typing import Any, Dict, Optional, Generator, List, Union
 import uuid
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -29,7 +30,7 @@ class ChatGLM(Provider):
         plus_model: bool = True,
     ):
         """Initializes the ChatGLM API client."""
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://chatglm.cn/chatglm/mainchat-api/guest/stream"
@@ -55,7 +56,7 @@ class ChatGLM(Provider):
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
         self.session.headers.update(self.headers)
-        Conversation.intro = (
+        Conversation.intro = ( # type: ignore
             AwesomePrompts().get_act(
                 act, raise_not_found=True, default=None, case_insensitive=True
             )
@@ -66,7 +67,16 @@ class ChatGLM(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
+
+    @staticmethod
+    def _chatglm_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from ChatGLM stream JSON objects."""
+        if isinstance(chunk, dict):
+            parts = chunk.get('parts', [])
+            if parts and isinstance(parts[0].get('content'), list) and parts[0]['content']:
+                return parts[0]['content'][0].get('text')
+        return None
 
     def ask(
         self,
@@ -119,44 +129,44 @@ class ChatGLM(Provider):
         }
 
         def for_stream():
+            streaming_text = "" # Initialize outside try block
+            last_processed_content = "" # Track the last processed content
             try:
-                with self.session.post(
-                    self.api_endpoint, json=payload, stream=True, timeout=self.timeout
-                ) as response:
-                    response.raise_for_status()
-                    
-                    streaming_text = ""
-                    last_processed_content = "" # Track the last processed content
-                    for chunk in response.iter_lines():
-                        if chunk:
-                            decoded_chunk = chunk.decode('utf-8')
-                            if decoded_chunk.startswith('data: '):
-                                try:
-                                    json_data = json.loads(decoded_chunk[6:])
-                                    parts = json_data.get('parts', [])
-                                    if parts:
-                                        content = parts[0].get('content', [])
-                                        if content:
-                                            text = content[0].get('text', '')
-                                            new_text = text[len(last_processed_content):]
-                                            if new_text:  # Check for new content
-                                                streaming_text += new_text
-                                                last_processed_content = text
-                                                yield new_text if raw else dict(text=new_text)
-                                except json.JSONDecodeError:
-                                    continue
+                response = self.session.post(
+                    self.api_endpoint, json=payload, stream=True, timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                response.raise_for_status()
 
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._chatglm_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for current_full_text in processed_stream:
+                    # current_full_text is the full text extracted by _chatglm_extractor
+                    if current_full_text and isinstance(current_full_text, str):
+                        new_text = current_full_text[len(last_processed_content):]
+                        if new_text: # Check for new content
+                            streaming_text += new_text
+                            last_processed_content = current_full_text # Update tracker
+                            yield new_text if raw else dict(text=new_text)
+
+            except CurlError as e:
+                raise exceptions.ProviderConnectionError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
+            finally:
+                # Update history after stream finishes or fails
+                if streaming_text:
                     self.last_response.update(dict(text=streaming_text))
                     self.conversation.update_chat_history(
                         prompt, self.get_message(self.last_response)
                     )
-
-            except requests.exceptions.RequestException as e:
-                raise exceptions.ProviderConnectionError(f"Request failed: {e}")
-            except json.JSONDecodeError as e:
-                raise exceptions.InvalidResponseError(f"Failed to decode JSON: {e}")
-            except Exception as e:
-                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred: {e}")
 
         def for_non_stream():
             for _ in for_stream():

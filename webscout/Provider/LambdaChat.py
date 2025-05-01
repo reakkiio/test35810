@@ -7,8 +7,8 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional, Union, Generator
 
-from webscout.AIutel import Conversation
-from webscout.AIbase import Provider
+from webscout.AIutel import Conversation, sanitize_stream
+from webscout.AIbase import Provider # Import sanitize_stream
 from webscout import exceptions
 from webscout.litagent import LitAgent
 
@@ -182,62 +182,21 @@ class LambdaChat(Provider):
         boundary += "".join(random.choice(boundary_chars) for _ in range(16))
         return boundary
     
-    def process_response(self, response, prompt: str):
-        """Process streaming response and extract content."""
-        full_text = ""
-        sources = None
+    @staticmethod
+    def _lambdachat_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from LambdaChat stream JSON objects."""
+        if not isinstance(chunk, dict) or "type" not in chunk:
+            return None
+
         reasoning_text = ""
-        has_reasoning = False
-        
-        for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-                
-            try:
-                # Parse each line as JSON
-                data = json.loads(line)
-                
-                # Handle different response types
-                if "type" not in data:
-                    continue
-                    
-                if data["type"] == "stream" and "token" in data:
-                    token = data["token"].replace("\u0000", "")
-                    full_text += token
-                    resp = {"text": token}
-                    yield resp
-                elif data["type"] == "finalAnswer":
-                    final_text = data.get("text", "")
-                    if final_text and not full_text:
-                        full_text = final_text
-                        resp = {"text": final_text}
-                        yield resp
-                elif data["type"] == "webSearch" and "sources" in data:
-                    sources = data["sources"]
-                elif data["type"] == "reasoning":
-                    has_reasoning = True
-                    if data.get("subtype") == "stream" and "token" in data:
-                        reasoning_text += data["token"]
-                    
-                    # If we have reasoning, prepend it to the next text output
-                    if reasoning_text and not full_text:
-                        resp = {"text": f"<think>\n{reasoning_text}\n</think>\n", "is_reasoning": True}
-                        yield resp
-                    
-            except json.JSONDecodeError:
-                continue
-        
-        # Update conversation history only for saving to file if needed
-        if full_text and self.conversation.file:
-            if has_reasoning:
-                full_text_with_reasoning = f"<think>\n{reasoning_text}\n</think>\n{full_text}"
-                self.last_response = {"text": full_text_with_reasoning}
-                self.conversation.update_chat_history(prompt, full_text_with_reasoning)
-            else:
-                self.last_response = {"text": full_text}
-                self.conversation.update_chat_history(prompt, full_text)
-        
-        return full_text
+        if chunk["type"] == "stream" and "token" in chunk:
+            return chunk["token"].replace("\u0000", "")
+        elif chunk["type"] == "finalAnswer":
+            return chunk.get("text")
+        elif chunk["type"] == "reasoning" and chunk.get("subtype") == "stream" and "token" in chunk:
+            # Prepend reasoning with <think> tags? Or handle separately? For now, just return token.
+            return chunk["token"] # Or potentially format as f"<think>{chunk['token']}</think>"
+        return None
     
     def ask(
         self,
@@ -296,6 +255,7 @@ class LambdaChat(Provider):
         multipart_headers["Content-Length"] = str(len(body))
         
         def for_stream():
+            streaming_text = "" # Initialize for history
             try:
                 # Try with multipart/form-data first
                 response = None
@@ -327,8 +287,21 @@ class LambdaChat(Provider):
                 
                 response.raise_for_status() # Check status after potential fallback
                 
-                # Process the streaming response
-                yield from self.process_response(response, prompt)
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No prefix
+                    to_json=True,     # Stream sends JSON lines
+                    content_extractor=self._lambdachat_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _lambdachat_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk # Aggregate text for history
+                        resp = {"text": content_chunk}
+                        yield resp if not raw else content_chunk
                 
             except (CurlError, exceptions.FailedToGenerateResponseError, Exception) as e: # Catch errors from both attempts
                 # Handle specific exceptions if needed
@@ -353,6 +326,10 @@ class LambdaChat(Provider):
                 # If we get here, all models failed
                 raise exceptions.FailedToGenerateResponseError(f"Request failed after trying fallback: {str(e)}") from e
 
+            # Update history after stream finishes
+            if streaming_text and self.conversation.file:
+                self.last_response = {"text": streaming_text}
+                self.conversation.update_chat_history(prompt, streaming_text)
 
         def for_non_stream():
             # Aggregate the stream using the updated for_stream logic

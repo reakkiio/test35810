@@ -1,10 +1,5 @@
-import time
-import uuid
-import json
 from typing import Any, Dict, Optional, Generator, Union
-from dataclasses import dataclass, asdict
-from datetime import date
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -95,6 +90,15 @@ class Netwrck(Provider):
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
 
+    @staticmethod
+    def _netwrck_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Removes surrounding quotes and handles potential escapes."""
+        if isinstance(chunk, str):
+            text = chunk.strip('"')
+            # Handle potential unicode escapes if they appear
+            # text = text.encode().decode('unicode_escape') # Uncomment if needed
+            return text
+        return None
     def ask(
         self,
         prompt: str,
@@ -136,21 +140,18 @@ class Netwrck(Provider):
                 response.raise_for_status() # Check for HTTP errors
 
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            decoded_line = line_bytes.decode('utf-8').strip('"')
-                            # Handle potential escape sequences if necessary
-                            # decoded_line = decoded_line.encode().decode('unicode_escape') # Uncomment if needed
-                            streaming_text += decoded_line
-                            resp = {"text": decoded_line}
-                            # Yield dict or raw string
-                            yield resp if not raw else decoded_line
-                        except UnicodeDecodeError:
-                            # Handle potential decoding errors if chunks split mid-character
-                            continue 
-
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No prefix
+                    to_json=False,    # It's text
+                    content_extractor=self._netwrck_extractor, # Use the quote stripper
+                    yield_raw_on_error=True
+                )
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield {"text": content_chunk} if not raw else content_chunk
                 # Update history after stream finishes
                 self.last_response = {"text": streaming_text} # Store aggregated text
                 self.conversation.update_chat_history(payload["query"], streaming_text)
@@ -174,11 +175,19 @@ class Netwrck(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
                 
-                # Use response.text which is already decoded
-                text = response.text.strip('"')
-                # Handle potential escape sequences if necessary
-                # text = text.encode().decode('unicode_escape') # Uncomment if needed
-                self.last_response = {"text": text}
+                response_text_raw = response.text # Get raw text
+
+                # Process the text using sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response_text_raw,
+                    intro_value=None,
+                    to_json=False,
+                    content_extractor=self._netwrck_extractor
+                )
+                # Aggregate the single result
+                text = "".join(list(processed_stream))
+
+                self.last_response = {"text": text} # Store processed text
                 self.conversation.update_chat_history(prompt, text)
 
                 # Return dict or raw string

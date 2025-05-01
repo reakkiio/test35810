@@ -5,7 +5,7 @@ import uuid
 import re
 from typing import Any, Dict, Optional, Generator, Union
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
@@ -109,6 +109,17 @@ class UncovrAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _uncovr_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the UncovrAI stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.match(r'^0:\s*"?(.*?)"?$', chunk) # Match 0: maybe optional quotes
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def refresh_identity(self, browser: str = None):
         """
         Refreshes the browser identity fingerprint.
@@ -202,27 +213,21 @@ class UncovrAI(Provider):
                         raise exceptions.FailedToGenerateResponseError(
                             f"Request failed with status code {response.status_code} - {response.text}"
                         )
-                
+
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8')
-                            # Use regex to match content messages
-                            content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
-                            if content_match:  # Content message
-                                content = content_match.group(1).encode().decode('unicode_escape') # Decode escapes
-                                streaming_text += content
-                                resp = dict(text=content)
-                                yield resp if raw else resp
-                            # Check for error messages
-                            error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
-                            if error_match:
-                                error_msg = error_match.group(1)
-                                raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is not JSON
+                    content_extractor=self._uncovr_extractor, # Use the specific extractor
+                    yield_raw_on_error=True # Keep yielding even if extractor fails, for potential error messages? (Adjust if needed)
+                )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
                 
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)
@@ -262,25 +267,25 @@ class UncovrAI(Provider):
                             f"Request failed with status code {response.status_code} - {response.text}"
                         )
 
-                # Process the non-streamed response content (assuming it's similar line format)
-                full_response = ""
-                # Use response.text which should contain the full body for non-streamed curl_cffi requests
-                for line in response.text.splitlines(): 
-                    if line:
-                        try:
-                            # line is already decoded string
-                            content_match = re.match(r'^0:\s*"?(.*?)"?$', line)
-                            if content_match:
-                                content = content_match.group(1).encode().decode('unicode_escape') # Decode escapes
-                                full_response += content
-                            # Check for error messages
-                            error_match = re.match(r'^2:\[{"type":"error","error":"(.*?)"}]$', line)
-                            if error_match:
-                                error_msg = error_match.group(1)
-                                raise exceptions.FailedToGenerateResponseError(f"API Error: {error_msg}")
-                        except (json.JSONDecodeError): # UnicodeDecodeError less likely here
-                            continue
+                response_text = response.text # Get the full response text
+                
+                # Use sanitize_stream to process the non-streaming text
+                # It won't parse as JSON, but will apply the extractor line by line
+                processed_stream = sanitize_stream(
+                    data=response_text.splitlines(), # Split into lines first
+                    intro_value=None,
+                    to_json=False,
+                    content_extractor=self._uncovr_extractor,
+                    yield_raw_on_error=True 
+                )
 
+                # Aggregate the results from the generator
+                full_response = ""
+                for content in processed_stream:
+                    if content and isinstance(content, str):
+                        full_response += content
+
+                # Check if aggregation resulted in empty response (might indicate error not caught by extractor)
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
                 return {"text": full_response}
@@ -323,7 +328,9 @@ class UncovrAI(Provider):
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        # Formatting handled by extractor
+        text = response.get("text", "")
+        return text.replace('\\n', '\n').replace('\\n\\n', '\n\n') # Keep newline replacement
 
 if __name__ == "__main__":
     # Ensure curl_cffi is installed
@@ -359,4 +366,3 @@ if __name__ == "__main__":
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-

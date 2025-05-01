@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -183,33 +183,25 @@ class SearchChatAI(Provider):
                         )
                     
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        line = line_bytes.decode('utf-8')
-                        if line.startswith('data: '):
-                            data_str = line[6:]  # Remove 'data: ' prefix
-                            
-                            if data_str == '[DONE]':
-                                break
-                                
-                            try:
-                                data = json.loads(data_str)
-                                if "choices" in data and len(data["choices"]) > 0:
-                                    delta = data["choices"][0].get("delta", {})
-                                    if "content" in delta and delta["content"] is not None:
-                                        content = delta["content"]
-                                        streaming_text += content
-                                        resp = dict(text=content)
-                                        # Yield dict or raw string
-                                        yield resp if not raw else content
-                            except (json.JSONDecodeError, UnicodeDecodeError):
-                                continue
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by the content_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
                 
                 # Update history and last response after stream finishes
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)
-                    
             except CurlError as e: # Catch CurlError
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
             except Exception as e: # Catch other potential exceptions

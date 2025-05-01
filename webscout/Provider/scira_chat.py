@@ -1,11 +1,12 @@
 from os import system
-import requests
+from curl_cffi import CurlError
+from curl_cffi.requests import Session
 import json
 import uuid
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
@@ -17,15 +18,13 @@ class SciraAI(Provider):
     """
 
     AVAILABLE_MODELS = {
-        "scira-default": "Grok3",
-        "scira-grok-3-mini": "Grok3-mini", # thinking model
+        "scira-default": "Grok3-mini", # thinking model
+        "scira-grok-3": "Grok3", 
         "scira-vision" : "Grok2-Vision", # vision model
         "scira-4.1-mini": "GPT4.1-mini",
         "scira-qwq": "QWQ-32B",
         "scira-o4-mini": "o4-mini",
         "scira-google": "gemini 2.5 flash"
-
-
     }
 
     def __init__(
@@ -92,9 +91,9 @@ class SciraAI(Provider):
             "Sec-Fetch-Site": "same-origin"
         }
 
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -150,12 +149,23 @@ class SciraAI(Provider):
 
         return self.fingerprint
 
+    @staticmethod
+    def _scira_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the Scira stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def ask(
         self,
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Any]: # Note: Stream parameter removed as API doesn't seem to support it
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -181,10 +191,16 @@ class SciraAI(Provider):
         }
 
         try:
-            response = self.session.post(self.url, json=payload, timeout=self.timeout)
+            # Use curl_cffi post with impersonate
+            response = self.session.post(
+                self.url,
+                json=payload,
+                timeout=self.timeout,
+                impersonate="chrome120" # Add impersonate
+            )
             if response.status_code != 200:
                 # Try to get response content for better error messages
-                try:
+                try: # Use try-except for reading response content
                     error_content = response.text
                 except:
                     error_content = "<could not read response content>"
@@ -192,7 +208,10 @@ class SciraAI(Provider):
                 if response.status_code in [403, 429]:
                     print(f"Received status code {response.status_code}, refreshing identity...")
                     self.refresh_identity()
-                    response = self.session.post(self.url, json=payload, timeout=self.timeout)
+                    response = self.session.post(
+                        self.url, json=payload, timeout=self.timeout,
+                        impersonate="chrome120" # Add impersonate to retry
+                    )
                     if not response.ok:
                         raise exceptions.FailedToGenerateResponseError(
                             f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}"
@@ -203,28 +222,27 @@ class SciraAI(Provider):
                         f"Request failed with status code {response.status_code}. Response: {error_content}"
                     )
 
+            response_text_raw = response.text # Get raw response text
+
+            # Process the text using sanitize_stream line by line
+            processed_stream = sanitize_stream(
+                data=response_text_raw.splitlines(), # Split into lines
+                intro_value=None, # No simple prefix
+                to_json=False,    # Content is not JSON
+                content_extractor=self._scira_extractor # Use the specific extractor
+            )
+
+            # Aggregate the results from the generator
             full_response = ""
-            debug_lines = []
+            for content in processed_stream:
+                if content and isinstance(content, str):
+                    full_response += content
 
-            # Collect the first few lines for debugging
-            for i, line in enumerate(response.iter_lines()):
-                if line:
-                    try:
-                        line_str = line.decode('utf-8')
-                        debug_lines.append(line_str)
-
-                        # Format 2: 0:"content" (quoted format)
-                        match = re.search(r'0:"(.*?)"', line_str)
-                        if match:
-                            content = match.group(1)
-                            full_response += content
-                            continue
-
-
-                    except: pass
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
             return {"text": full_response}
+        except CurlError as e: # Catch CurlError
+            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
         except Exception as e:
             raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
@@ -242,7 +260,8 @@ class SciraAI(Provider):
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        # Extractor handles formatting
+        return response.get("text", "").replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
     print("-" * 100)

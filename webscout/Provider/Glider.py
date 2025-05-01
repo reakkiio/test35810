@@ -1,8 +1,8 @@
-import requests
+from curl_cffi.requests import Session, CurlError # Import curl_cffi
 import json
-from typing import Union, Any, Dict, Generator, Optional
+from typing import Union, Any, Dict, Generator, Optional, List
 
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent as Lit
@@ -39,7 +39,7 @@ class GliderAI(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {', '.join(self.AVAILABLE_MODELS)}")
         
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://glider.so/api/chat"
@@ -57,7 +57,7 @@ class GliderAI(Provider):
             "user-agent": Lit().random(),
         }
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
+        self.session.proxies = proxies # Assign proxies directly
 
         self.__available_optimizers = (
             method for method in dir(Optimizers)
@@ -75,6 +75,14 @@ class GliderAI(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+
+    @staticmethod
+    def _glider_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Glider stream JSON objects."""
+        if isinstance(chunk, dict):
+            # Handle both standard and DeepSeek response formats within choices
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+        return None
 
     def ask(
         self,
@@ -113,30 +121,32 @@ class GliderAI(Provider):
         }
 
         def for_stream():
-            response = self.session.post(
-                self.api_endpoint, json=payload, stream=True, timeout=self.timeout
-            )
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
-                )
             streaming_text = ""
-            for value in response.iter_lines(decode_unicode=True):
-                if value:
-                    if value.startswith("data: "):
-                        try:
-                            data = json.loads(value[6:])
-                            # Handle both standard and DeepSeek response formats
-                            if "choices" in data and len(data["choices"]) > 0:
-                                choice = data["choices"][0]
-                                if "delta" in choice and "content" in choice["delta"]:
-                                    content = choice["delta"]["content"]
-                                    if content:
-                                        streaming_text += content
-                                        yield content if raw else {"text": content}
-                        except json.JSONDecodeError:
-                            if "stop" in value:
-                                break
+            try:
+                response = self.session.post(
+                    self.api_endpoint, json=payload, stream=True, timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                response.raise_for_status()
+
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._glider_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _glider_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield content_chunk if raw else {"text": content_chunk}
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
             self.last_response.update(dict(text=streaming_text))
             self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
 

@@ -4,7 +4,7 @@ from typing import Union, Any, Dict
 from webscout.AIbase import Provider # Import Provider base class
 from webscout import exceptions # Import custom exceptions
 from webscout.conversation import Conversation
-from webscout.optimizers import Optimizers
+from webscout.AIutel import Optimizers, sanitize_stream # Import sanitize_stream
 from webscout.prompt_manager import AwesomePrompts
 from webscout.litagent import LitAgent
 
@@ -131,13 +131,22 @@ class TeachAnything(Provider):
             )
             response.raise_for_status() # Check for HTTP errors
 
-            # Use response.text which is already decoded
-            resp_text = response.text
-            # The response is plain text, wrap it in the expected dict format
-            self.last_response = {"text": resp_text}
-            self.conversation.update_chat_history(
-                prompt, resp_text
+            resp_text_raw = response.text # Get raw response text
+
+            # Process the text using sanitize_stream (even though it's not streaming)
+            # This keeps the pattern consistent, though it won't do much here
+            processed_stream = sanitize_stream(
+                data=resp_text_raw,
+                intro_value=None, # No prefix
+                to_json=False     # It's plain text
             )
+
+            # Extract the single result from the generator
+            resp_text = "".join(list(processed_stream)) # Aggregate potential chunks (should be one)
+
+            self.last_response = {"text": resp_text}
+            self.conversation.update_chat_history(prompt, resp_text)
+
             # Return dict or raw string based on raw flag
             return resp_text if raw else self.last_response
 

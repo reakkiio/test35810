@@ -1,9 +1,9 @@
 from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
-from typing import Union, Any, Dict, Generator
+from typing import Optional, Union, Any, Dict, Generator
 
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent as Lit
@@ -77,6 +77,13 @@ class IBMGranite(Provider):
         self.conversation = Conversation(is_conversation, self.max_tokens_to_sample, filepath, update_file)
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _granite_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from IBM Granite stream JSON lists [3, "text"]."""
+        if isinstance(chunk, list) and len(chunk) == 2 and chunk[0] == 3 and isinstance(chunk[1], str):
+            return chunk[1]
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -127,25 +134,21 @@ class IBMGranite(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
 
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8')
-                            data = json.loads(line)
-                            # Check the specific format [3, "text_chunk"]
-                            if isinstance(data, list) and len(data) == 2 and data[0] == 3 and isinstance(data[1], str):
-                                content = data[1]
-                                if content: # Ensure content is not None or empty
-                                    streaming_text += content
-                                    resp = dict(text=content)
-                                    # Yield dict or raw string chunk
-                                    yield resp if not raw else content
-                            else:
-                                # Skip unrecognized lines/formats
-                                pass
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue # Ignore lines that are not valid JSON or cannot be decoded
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No prefix
+                    to_json=True,     # Stream sends JSON lines (which are lists)
+                    content_extractor=self._granite_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _granite_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
                 
                 # Update history after stream finishes
                 self.last_response = dict(text=streaming_text)

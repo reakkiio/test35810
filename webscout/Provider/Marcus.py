@@ -5,7 +5,7 @@ from typing import Union, Any, Dict, Optional, Generator
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 
@@ -103,18 +103,18 @@ class Marcus(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
                 
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            decoded_line = line_bytes.decode('utf-8')
-                            streaming_text += decoded_line # Aggregate text
-                            resp = {"text": decoded_line}
-                            # Yield dict or raw string chunk
-                            yield resp if not raw else decoded_line
-                        except UnicodeDecodeError:
-                            continue # Ignore decoding errors
+                # Use sanitize_stream to decode bytes and yield text chunks
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No prefix
+                    to_json=False,    # It's plain text
+                    yield_raw_on_error=True
+                )
 
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk # Aggregate text
+                        yield {"text": content_chunk} if not raw else content_chunk
                 # Update history after stream finishes
                 self.last_response = {"text": streaming_text} # Store aggregated text
                 self.conversation.update_chat_history(
@@ -140,8 +140,17 @@ class Marcus(Provider):
                 )
                 response.raise_for_status() # Check for HTTP errors
                 
-                # Use response.text which is already decoded
-                full_response = response.text
+                response_text_raw = response.text # Get raw text
+
+                # Process the text using sanitize_stream (even though it's not streaming)
+                processed_stream = sanitize_stream(
+                    data=response_text_raw,
+                    intro_value=None, # No prefix
+                    to_json=False     # It's plain text
+                )
+                # Aggregate the single result
+                full_response = "".join(list(processed_stream))
+
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
                 # Return dict or raw string

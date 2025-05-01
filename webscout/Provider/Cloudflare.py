@@ -1,13 +1,15 @@
 import json
 from uuid import uuid4
-import webscout
+
+import re # Import re
+from curl_cffi import CurlError
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
-from typing import Union, Any, AsyncGenerator, Dict
-import cloudscraper
+from typing import Optional, Union, Any, AsyncGenerator, Dict
+from curl_cffi.requests import Session
 from webscout.litagent import LitAgent
 
 class Cloudflare(Provider):
@@ -96,7 +98,7 @@ class Cloudflare(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
-        self.scraper = cloudscraper.create_scraper()
+        self.session = Session() # Use curl_cffi Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.chat_endpoint = "https://playground.ai.cloudflare.com/api/inference"
@@ -136,7 +138,7 @@ class Cloudflare(Provider):
         )
 
         # Initialize session and apply proxies
-        self.session = cloudscraper.create_scraper()
+        # self.session = cloudscraper.create_scraper() # Replaced above
         self.session.headers.update(self.headers)
         self.session.proxies = proxies
 
@@ -155,6 +157,19 @@ class Cloudflare(Provider):
 
         # if self.logger:
         #     self.logger.info("Cloudflare initialized successfully")
+
+    @staticmethod
+    def _cloudflare_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Cloudflare stream JSON objects."""
+        # Updated for the 0:"..." format
+        if isinstance(chunk, str):
+            # Use re.search to find the pattern 0:"<content>"
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
 
     def ask(
         self,
@@ -201,37 +216,69 @@ class Cloudflare(Provider):
 
         def for_stream():
             # if self.logger:
-            #     self.logger.debug("Sending streaming request to Cloudflare API...")
-            response = self.scraper.post(
-                self.chat_endpoint,
-                headers=self.headers,
-                cookies=self.cookies,
-                data=json.dumps(payload),
-                stream=True,
-                timeout=self.timeout
-            )
-            if not response.ok:
-                # if self.logger:
-                #     self.logger.error(f"Request failed: ({response.status_code}, {response.reason})")
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason})"
+            #     self.logger.debug("Sending streaming request to Cloudflare API...") 
+            streaming_text = "" # Initialize outside try block
+            try:
+                response = self.session.post(
+                    self.chat_endpoint,
+                    headers=self.headers,
+                    cookies=self.cookies,
+                    data=json.dumps(payload),
+                    stream=True,
+                    timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
                 )
-            streaming_response = ""
-            for line in response.iter_lines(decode_unicode=True):
-                if line.startswith('data: ') and line != 'data: [DONE]':
-                    data = json.loads(line[6:])
-                    content = data.get('response', '')
-                    streaming_response += content
-                    yield content if raw else dict(text=content)
-            self.last_response.update(dict(text=streaming_response))
+                response.raise_for_status()
+
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None,
+                    to_json=False, 
+                    skip_markers=None,
+                    content_extractor=self._cloudflare_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
+
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
+            finally:
+                # Update history after stream finishes or fails
+                self.last_response.update(dict(text=streaming_text))
+                self.conversation.update_chat_history(prompt, streaming_text)
+
+        def for_non_stream():
+            # Aggregate the stream using the updated for_stream logic
+            full_text = ""
+            last_response_dict = {}
             self.conversation.update_chat_history(prompt, self.get_message(self.last_response))
             # if self.logger:
             #     self.logger.info("Streaming response completed successfully")
+            try:
+                # Ensure raw=False so for_stream yields dicts
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                        full_text += chunk_data["text"]
+                        last_response_dict = {"text": full_text} # Keep track of last dict structure
+                    # Handle raw string case if raw=True was passed
+                    elif raw and isinstance(chunk_data, str):
+                         full_text += chunk_data
+                         last_response_dict = {"text": full_text} # Update dict even for raw
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not full_text:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
-        def for_non_stream():
-            for _ in for_stream():
-                pass
-            return self.last_response
+            # last_response and history are updated within for_stream's finally block
+            # Return the final aggregated response dict or raw text
+            return full_text if raw else last_response_dict
 
         return for_stream() if stream else for_non_stream()
 

@@ -1,10 +1,12 @@
-import requests
+from curl_cffi.requests import Session, CurlError, Response # Import curl_cffi
 import json
 import os
-from typing import Any, Dict, Optional, Generator, Union
+from typing import Any, Dict, Optional, Generator, Union, List
+
+import requests
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts, sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
@@ -550,6 +552,13 @@ class ElectronHub(Provider):
             # Fallback to default models list if fetching fails
             pass
 
+    @staticmethod
+    def _electronhub_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from ElectronHub stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+        return None
+
     def __init__(
         self,
         is_conversation: bool = True,
@@ -593,9 +602,9 @@ class ElectronHub(Provider):
         if api_key:
             self.headers['Authorization'] = f'Bearer {api_key}'
         self.system_prompt = system_prompt
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens = max_tokens
@@ -663,41 +672,38 @@ class ElectronHub(Provider):
 
         def for_stream():
             try:
-                with requests.post(self.url, headers=self.headers, data=json.dumps(payload), stream=True, timeout=self.timeout) as response:
-                    if response.status_code != 200:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Request failed with status code {response.status_code}"
-                        )
-                    
-                    streaming_text = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            line = line.strip()
-                            if line.startswith("data: "):
-                                json_str = line[6:]
-                                if json_str == "[DONE]":
-                                    break
-                                try:
-                                    json_data = json.loads(json_str)
-                                    if 'choices' in json_data:
-                                        choice = json_data['choices'][0]
-                                        if 'delta' in choice and 'content' in choice['delta']:
-                                            content = choice['delta']['content']
-                                            # Fix: Check if content is not None before concatenating
-                                            if content is not None:
-                                                streaming_text += content
-                                                resp = dict(text=content)
-                                                yield resp if raw else resp
-                                except json.JSONDecodeError:
-                                    continue
-                                except Exception as e:
-                                    print(f"Error processing chunk: {e}")
-                                    continue
-                    
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except requests.RequestException as e:
+                response = self.session.post(
+                    self.url, headers=self.headers, data=json.dumps(payload), stream=True, timeout=self.timeout,
+                    impersonate="chrome120" # Add impersonate
+                )
+                response.raise_for_status()
+
+                streaming_text = ""
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    content_extractor=self._electronhub_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _electronhub_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
+
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
+            except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {str(e)}")
+            finally:
+                # Update history after stream finishes or fails
+                if streaming_text:
+                    self.conversation.update_chat_history(prompt, streaming_text)
 
         def for_non_stream():
             collected_response = ""
@@ -710,7 +716,9 @@ class ElectronHub(Provider):
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Error during non-stream processing: {str(e)}")
             
+            # Update history and last_response after aggregation
             self.last_response = {"text": collected_response}
+            self.conversation.update_chat_history(prompt, collected_response)
             return self.last_response
 
         return for_stream() if stream else for_non_stream()

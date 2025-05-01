@@ -10,7 +10,7 @@ from datetime import date
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import WEBS, exceptions
 # from webscout.litagent import LitAgent
@@ -105,6 +105,17 @@ class ChatGPTClone(Provider):
         self.session.headers.update(self.headers)
         return self.impersonate
 
+    @staticmethod
+    def _chatgptclone_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the ChatGPTClone stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"((?:[^\\"]|\\.)*)"', chunk) # Use the existing regex
+            if match:
+                content = match.group(1)
+                # Decode JSON string escapes and then unicode escapes
+                decoded_content = json.loads(f'"{content}"').encode().decode('unicode_escape')
+                return decoded_content
+        return None
     def ask(
         self,
         prompt: str,
@@ -154,44 +165,31 @@ class ChatGPTClone(Provider):
 
         def for_stream():
             response = _make_request()
-            streaming_text = ""
-            buffer = ""
+            streaming_text = "" # Initialize outside try block
             try:
-                for line in response.iter_content():
-                    if line:
-                        # decode bytes to str before concatenation
-                        if isinstance(line, bytes):
-                            line = line.decode("utf-8", errors="replace")
-                        buffer += line
-                        match = re.search(r'0:"((?:[^\\"]|\\.)*)"', buffer)
-                        if match:
-                            content = match.group(1)
-                            try:
-                                decoded_content = json.loads(f'"{content}"')
-                            except json.JSONDecodeError:
-                                decoded_content = content.encode().decode('unicode_escape')
-                            streaming_text += decoded_content
-                            yield decoded_content if raw else dict(text=decoded_content)
-                            buffer = ""
-                        elif len(buffer) > 1024:
-                            buffer = ""
-                if buffer:
-                    match = re.search(r'0:"((?:[^\\"]|\\.)*)"', buffer)
-                    if match:
-                        content = match.group(1)
-                        try:
-                            decoded_content = json.loads(f'"{content}"')
-                        except json.JSONDecodeError:
-                            decoded_content = content.encode().decode('unicode_escape')
-                        streaming_text += decoded_content
-                        yield decoded_content if raw else dict(text=decoded_content)
-                self.last_response.update(dict(text=streaming_text))
-                self.conversation.update_chat_history(prompt, streaming_text)
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is text after extraction
+                    content_extractor=self._chatgptclone_extractor, # Use the specific extractor
+                    yield_raw_on_error=True # Yield even if extractor fails (might get metadata lines)
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _chatgptclone_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
+
             except RequestsError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Stream interrupted by request error: {e}") from e
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Error processing stream: {e}") from e
             finally:
+                # Update history after stream finishes or fails
+                self.last_response.update(dict(text=streaming_text))
+                self.conversation.update_chat_history(prompt, streaming_text)
                 response.close()
 
         def for_non_stream():
@@ -227,7 +225,8 @@ class ChatGPTClone(Provider):
         assert isinstance(response, dict)
         if not isinstance(response, dict) or "text" not in response:
             return str(response)
-        formatted_text = response["text"]
+        # Extractor handles formatting
+        formatted_text = response.get("text", "")
         return formatted_text
 
 if __name__ == "__main__":

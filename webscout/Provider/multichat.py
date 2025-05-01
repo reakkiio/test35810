@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any, Dict, Union
 from datetime import datetime
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent 
@@ -279,8 +279,18 @@ class MultiChatAI(Provider):
         response = self._make_request(payload)
         try:
             # Use response.text which is already decoded
-            full_response = response.text.strip()
-            self.last_response = {"text": full_response}
+            response_text_raw = response.text # Get raw text
+
+            # Process the text using sanitize_stream (even though it's not streaming)
+            processed_stream = sanitize_stream(
+                data=response_text_raw,
+                intro_value=None, # No prefix
+                to_json=False     # It's plain text
+            )
+            # Aggregate the single result
+            full_response = "".join(list(processed_stream)).strip()
+
+            self.last_response = {"text": full_response} # Store processed text
             self.conversation.update_chat_history(prompt, full_response)
             # Return dict or raw string based on raw flag
             return full_response if raw else self.last_response

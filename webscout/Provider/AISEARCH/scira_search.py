@@ -69,17 +69,14 @@ class Scira(AISearch):
     """
 
     AVAILABLE_MODELS = {
-        "scira-default": "Grok3",
-        "scira-grok-3-mini": "Grok3-mini", # thinking model
+        "scira-default": "Grok3-mini", # thinking model
+        "scira-grok-3": "Grok3", 
         "scira-vision" : "Grok2-Vision", # vision model
         "scira-4.1-mini": "GPT4.1-mini",
         "scira-qwq": "QWQ-32B",
         "scira-o4-mini": "o4-mini",
         "scira-google": "gemini 2.5 flash"
-
-
     }
-
     def __init__(
         self,
         timeout: int = 60,

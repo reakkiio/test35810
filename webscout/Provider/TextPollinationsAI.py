@@ -2,7 +2,9 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Generator, Optional, List
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+
+import requests
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent as Lit
@@ -13,32 +15,30 @@ class TextPollinationsAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "openai",              # OpenAI GPT-4.1-nano (Azure) - vision capable
-        "openai-large",        # OpenAI GPT-4.1 mini (Azure) - vision capable
-        "openai-reasoning",    # OpenAI o4-mini (Azure) - vision capable, reasoning
-        "qwen-coder",          # Qwen 2.5 Coder 32B (Scaleway)
-        "llama",               # Llama 3.3 70B (Cloudflare)
-        "llamascout",          # Llama 4 Scout 17B (Cloudflare)
-        "mistral",             # Mistral Small 3 (Scaleway) - vision capable
-        "unity",               # Unity Mistral Large (Scaleway) - vision capable, uncensored
-        "midijourney",         # Midijourney (Azure)
-        "rtist",               # Rtist (Azure)
-        "searchgpt",           # SearchGPT (Azure) - vision capable
-        "evil",                # Evil (Scaleway) - vision capable, uncensored
-        "deepseek-reasoning",  # DeepSeek-R1 Distill Qwen 32B (Cloudflare) - reasoning
-        "deepseek-reasoning-large", # DeepSeek R1 - Llama 70B (Scaleway) - reasoning
-        "phi",                 # Phi-4 Instruct (Cloudflare) - vision and audio capable
-        "llama-vision",        # Llama 3.2 11B Vision (Cloudflare) - vision capable
-        "gemini",              # gemini-2.5-flash-preview-04-17 (Azure) - vision and audio capable
-        "hormoz",              # Hormoz 8b (Modal)
-        "hypnosis-tracy",      # Hypnosis Tracy 7B (Azure) - audio capable
-        "deepseek",            # DeepSeek-V3 (DeepSeek)
-        "sur",                 # Sur AI Assistant (Mistral) (Scaleway) - vision capable
-        "openai-audio",        # OpenAI GPT-4o-audio-preview (Azure) - vision and audio capable
+        "openai",
+        "openai-large",
+        "qwen-coder",
+        "llama",
+        "llamascout",
+        "mistral",
+        "unity",
+        "midijourney",
+        "rtist",
+        "searchgpt",
+        "evil",
+        "deepseek-reasoning",
+        "deepseek-reasoning-large",
+        "phi",
+        "llama-vision",
+        "hormoz",
+        "hypnosis-tracy",
+        "deepseek",
+        "sur",
+        "openai-audio",
     ]
+    _models_url = "https://text.pollinations.ai/models"
 
-    def __init__(
-        self,
+    def __init__(self,
         is_conversation: bool = True,
         max_tokens: int = 8096, # Note: max_tokens is not directly used by this API endpoint
         timeout: int = 30,
@@ -52,10 +52,6 @@ class TextPollinationsAI(Provider):
         system_prompt: str = "You are a helpful AI assistant.",
     ):
         """Initializes the TextPollinationsAI API client."""
-        if model not in self.AVAILABLE_MODELS:
-            raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-
-        # Initialize curl_cffi Session
         self.session = Session()
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -65,6 +61,10 @@ class TextPollinationsAI(Provider):
         self.last_response = {}
         self.model = model
         self.system_prompt = system_prompt
+
+        # Validate against the hardcoded list
+        if model not in self.AVAILABLE_MODELS:
+            raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
         self.headers = {
             'Accept': '*/*',
@@ -95,6 +95,7 @@ class TextPollinationsAI(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+
 
     def ask(
         self,
@@ -148,40 +149,34 @@ class TextPollinationsAI(Provider):
                         f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     )
 
-                full_response = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        line = line_bytes.decode('utf-8').strip()
-                        if line == "data: [DONE]":
-                            break
-                        if line.startswith('data: '):
-                            try:
-                                json_data = json.loads(line[6:])
-                                if 'choices' in json_data and len(json_data['choices']) > 0:
-                                    choice = json_data['choices'][0]
-                                    if 'delta' in choice:
-                                        if 'content' in choice['delta'] and choice['delta']['content'] is not None:
-                                            content = choice['delta']['content']
-                                            full_response += content
-                                            # Yield dict or raw string
-                                            yield content if raw else dict(text=content)
-                                        elif 'tool_calls' in choice['delta']:
-                                            # Handle tool calls in streaming response
-                                            tool_calls = choice['delta']['tool_calls']
-                                            # Yield dict or raw list
-                                            yield tool_calls if raw else dict(tool_calls=tool_calls)
-                            except json.JSONDecodeError:
-                                continue
-                            except UnicodeDecodeError:
-                                continue
+                streaming_text = ""
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    skip_markers=["[DONE]"],
+                    # Extractor handles both content and tool_calls
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta') if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+                )
+
+                for delta in processed_stream:
+                    # delta is the extracted 'delta' object or None
+                    if delta and isinstance(delta, dict):
+                        if 'content' in delta and delta['content'] is not None:
+                            content = delta['content']
+                            streaming_text += content
+                            yield content if raw else dict(text=content)
+                        elif 'tool_calls' in delta:
+                            tool_calls = delta['tool_calls']
+                            yield tool_calls if raw else dict(tool_calls=tool_calls)
 
                 # Update history and last response after stream finishes
-                # Note: last_response might only contain text, not tool calls if they occurred
-                self.last_response.update(dict(text=full_response))
-                if full_response: # Only update history if text was received
+                self.last_response.update(dict(text=streaming_text)) # Store aggregated text
+                if streaming_text: # Only update history if text was received
                     self.conversation.update_chat_history(
-                        prompt, full_response # Use the fully aggregated text
+                        prompt, streaming_text # Use the fully aggregated text
                     )
             except CurlError as e: # Catch CurlError
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
@@ -193,22 +188,27 @@ class TextPollinationsAI(Provider):
             # Aggregate the stream using the updated for_stream logic
             final_content = ""
             tool_calls_aggregated = None # To store potential tool calls
-            for chunk_data in for_stream():
-                if isinstance(chunk_data, dict):
-                    if "text" in chunk_data:
-                        final_content += chunk_data["text"]
-                    elif "tool_calls" in chunk_data:
-                        # Aggregate tool calls (simple aggregation, might need refinement)
-                        if tool_calls_aggregated is None:
-                            tool_calls_aggregated = []
-                        tool_calls_aggregated.extend(chunk_data["tool_calls"])
-                elif isinstance(chunk_data, str): # Handle raw stream case
-                    final_content += chunk_data
-                # Handle raw tool calls list if raw=True
-                elif isinstance(chunk_data, list) and raw:
-                     if tool_calls_aggregated is None:
-                         tool_calls_aggregated = []
-                     tool_calls_aggregated.extend(chunk_data)
+            try: # Add try block for potential errors during aggregation
+                for chunk_data in for_stream():
+                    if isinstance(chunk_data, dict):
+                        if "text" in chunk_data:
+                            final_content += chunk_data["text"]
+                        elif "tool_calls" in chunk_data:
+                            # Aggregate tool calls (simple aggregation, might need refinement)
+                            if tool_calls_aggregated is None:
+                                tool_calls_aggregated = []
+                            tool_calls_aggregated.extend(chunk_data["tool_calls"])
+                    elif isinstance(chunk_data, str): # Handle raw stream case
+                        final_content += chunk_data
+                    # Handle raw tool calls list if raw=True
+                    elif isinstance(chunk_data, list) and raw:
+                         if tool_calls_aggregated is None:
+                             tool_calls_aggregated = []
+                         tool_calls_aggregated.extend(chunk_data)
+            except Exception as e:
+                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
+                 if not final_content and not tool_calls_aggregated:
+                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
 
             # last_response and history are updated within for_stream (for text)
@@ -263,6 +263,7 @@ class TextPollinationsAI(Provider):
         elif "tool_calls" in response:
             # For tool calls, return a string representation
             return json.dumps(response["tool_calls"])
+        return "" # Return empty string if neither text nor tool_calls found
 
 if __name__ == "__main__":
     # Ensure curl_cffi is installed
@@ -273,6 +274,7 @@ if __name__ == "__main__":
     # Test all available models
     working = 0
     total = len(TextPollinationsAI.AVAILABLE_MODELS)
+
 
     for model in TextPollinationsAI.AVAILABLE_MODELS:
         try:

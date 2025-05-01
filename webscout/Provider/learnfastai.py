@@ -1,12 +1,12 @@
 import os
 import json
-from typing import Optional, Union, Generator
+from typing import Any, Dict, Optional, Union, Generator
 import uuid
 from curl_cffi.requests import Session
 from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
@@ -78,6 +78,13 @@ class LearnFast(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+
+    @staticmethod
+    def _learnfast_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts message content from LearnFast stream JSON objects."""
+        if isinstance(chunk, dict) and chunk.get('code') == 200 and chunk.get('data'):
+            return chunk['data'].get('message')
+        return None
 
     def generate_unique_id(self) -> str:
         """Generate a 32-character hexadecimal unique ID."""
@@ -209,24 +216,22 @@ class LearnFast(Provider):
                 )
                 response.raise_for_status()  # Check for HTTP errors
 
-                # Process the streamed response
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8').strip()
-                            if line == "[DONE]":
-                                break
-                            json_response = json.loads(line)
-                            if json_response.get('code') == 200 and json_response.get('data'):
-                                message = json_response['data'].get('message', '')
-                                if message:
-                                    full_response += message
-                                    resp = {"text": message}
-                                    # Yield dict or raw string chunk
-                                    yield resp if not raw else message
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            pass # Ignore lines that are not valid JSON or cannot be decoded
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No prefix
+                    to_json=True,     # Stream sends JSON lines
+                    skip_markers=["[DONE]"],
+                    content_extractor=self._learnfast_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _learnfast_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response += content_chunk
+                        resp = {"text": content_chunk}
+                        yield resp if not raw else content_chunk
                 
                 # Update history after stream finishes
                 self.last_response = {"text": full_response}

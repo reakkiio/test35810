@@ -4,7 +4,7 @@ import json
 from typing import Union, Any, Dict, Generator, Optional
 
 from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
+from webscout.AIutel import Conversation, sanitize_stream # Import sanitize_stream
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
@@ -102,6 +102,13 @@ class NousHermes(Provider):
             print(f"Warning: Error loading cookies: {e}")
             return None
 
+    @staticmethod
+    def _hermes_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Hermes stream JSON objects."""
+        if isinstance(chunk, dict) and chunk.get('type') == 'llm_response':
+            return chunk.get('content')
+        return None
+
 
     def ask(
         self,
@@ -145,36 +152,36 @@ class NousHermes(Provider):
             "top_p": self.top_p,
         }
         def for_stream():
-            full_response = ""
+            streaming_text = "" # Initialize outside try block
             try:
                 response = self.session.post(
                     self.api_endpoint, 
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate="chrome110"
+                    impersonate="chrome110" # Keep impersonate
                 )
                 response.raise_for_status()
 
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            decoded_line = line_bytes.decode('utf-8')
-                            if decoded_line.startswith('data: '):
-                                data_str = decoded_line.replace('data: ', '', 1)
-                                data = json.loads(data_str)
-                                if data.get('type') == 'llm_response':
-                                    content = data.get('content', '')
-                                    if content:
-                                        full_response += content
-                                        resp = dict(text=content)
-                                        yield resp if not raw else content
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._hermes_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
 
-                self.last_response = dict(text=full_response)
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _hermes_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        resp = dict(text=content_chunk)
+                        yield resp if not raw else content_chunk
+
+                self.last_response = dict(text=streaming_text) # Use streaming_text
                 self.conversation.update_chat_history(
-                    prompt, full_response
+                    prompt, streaming_text # Use streaming_text
                 )
 
             except CurlError as e:

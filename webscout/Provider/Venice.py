@@ -1,13 +1,13 @@
 from curl_cffi import CurlError
 from curl_cffi.requests import Session # Import Session
 import json
-from typing import Generator, Dict, Any, List, Union
+from typing import Generator, Dict, Any, List, Optional, Union
 from uuid import uuid4
 import random
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -104,6 +104,14 @@ class Venice(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _venice_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Venice stream JSON objects."""
+        if isinstance(chunk, dict) and chunk.get("kind") == "content":
+            return chunk.get("content")
+        return None
+
+
     def ask(
         self,
         prompt: str,
@@ -158,26 +166,20 @@ class Venice(Provider):
                     )
                     
                 streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line in response.iter_lines(): # Removed decode_unicode
-                    if not line:
-                        continue
-                    
-                    try:
-                        # Decode bytes to string
-                        line_data = line.decode('utf-8').strip()
-                        if '"kind":"content"' in line_data:
-                            data = json.loads(line_data)
-                            if 'content' in data:
-                                content = data['content']
-                                streaming_text += content
-                                resp = dict(text=content)
-                                # Yield content or dict based on raw flag
-                                yield content if raw else resp 
-                    except json.JSONDecodeError:
-                        continue
-                    except UnicodeDecodeError:
-                        continue
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=True,     # Each line is JSON
+                    content_extractor=self._venice_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _venice_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
                 
                 # Update history and last response after stream finishes
                 self.conversation.update_chat_history(prompt, streaming_text)

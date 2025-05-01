@@ -1,10 +1,11 @@
 
 import re
-import requests
+import curl_cffi
+from curl_cffi.requests import Session
 import json
 import os
 from typing import Any, Dict, Optional, Generator, List, Union
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
+from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent as UserAgent
@@ -17,7 +18,9 @@ class Cerebras(Provider):
     AVAILABLE_MODELS = [
         "llama3.1-8b",
         "llama-3.3-70b",
-        "deepseek-r1-distill-llama-70b"
+        "deepseek-r1-distill-llama-70b",
+        "llama-4-scout-17b-16e-instruct"
+
     ]
 
     def __init__(
@@ -49,6 +52,8 @@ class Cerebras(Provider):
         self.max_tokens_to_sample = max_tokens
         self.last_response = {}
 
+        self.session = Session() # Initialize curl_cffi session
+
         # Get API key first
         try:
             self.api_key = self.get_demo_api_key(cookie_path)
@@ -74,6 +79,9 @@ class Cerebras(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+        
+        # Apply proxies to the session
+        self.session.proxies = proxies
 
     # Rest of the class implementation remains the same...
     @staticmethod
@@ -88,7 +96,14 @@ class Cerebras(Provider):
         """Refines the input text by removing surrounding quotes."""
         return text.strip('"')
 
-    def get_demo_api_key(self, cookie_path: str) -> str:
+    @staticmethod
+    def _cerebras_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Cerebras stream JSON objects."""
+        if isinstance(chunk, dict):
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+        return None
+
+    def get_demo_api_key(self, cookie_path: str) -> str: # Keep this using requests or switch to curl_cffi
         """Retrieves the demo API key using the provided cookie."""
         try:
             with open(cookie_path, "r") as file:
@@ -114,17 +129,19 @@ class Cerebras(Provider):
         }
 
         try:
-            response = requests.post(
+            # Use the initialized curl_cffi session
+            response = self.session.post(
                 "https://inference.cerebras.ai/api/graphql",
                 cookies=cookies,
                 headers=headers,
                 json=json_data,
                 timeout=self.timeout,
+                impersonate="chrome120" # Add impersonate
             )
             response.raise_for_status()
-            api_key = response.json()["data"]["GetMyDemoApiKey"]
+            api_key = response.json().get("data", {}).get("GetMyDemoApiKey")
             return api_key
-        except requests.exceptions.RequestException as e:
+        except curl_cffi.CurlError as e:
             raise exceptions.APIConnectionError(f"Failed to retrieve API key: {e}")
         except KeyError:
             raise exceptions.InvalidResponseError("API key not found in response.")
@@ -144,41 +161,48 @@ class Cerebras(Provider):
         }
 
         try:
-            response = requests.post(
+            # Use the initialized curl_cffi session
+            response = self.session.post(
                 "https://api.cerebras.ai/v1/chat/completions",
                 headers=headers,
                 json=payload,
                 stream=stream,
-                timeout=self.timeout
+                timeout=self.timeout,
+                impersonate="chrome120" # Add impersonate
             )
             response.raise_for_status()
 
             if stream:
                 def generate_stream():
-                    for line in response.iter_lines():
-                        if line:
-                            line = line.decode('utf-8')
-                            if line.startswith('data:'):
-                                try:
-                                    data = json.loads(line[6:])
-                                    if data.get('choices') and data['choices'][0].get('delta', {}).get('content'):
-                                        content = data['choices'][0]['delta']['content']
-                                        yield content
-                                except json.JSONDecodeError:
-                                    continue
+                    # Use sanitize_stream
+                    processed_stream = sanitize_stream(
+                        data=response.iter_content(chunk_size=None), # Pass byte iterator
+                        intro_value="data:",
+                        to_json=True,     # Stream sends JSON
+                        content_extractor=self._cerebras_extractor, # Use the specific extractor
+                        yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                    )
+                    for content_chunk in processed_stream:
+                        if content_chunk and isinstance(content_chunk, str):
+                            yield content_chunk # Yield the extracted text chunk
 
                 return generate_stream()
             else:
                 response_json = response.json()
-                return response_json['choices'][0]['message']['content']
+                # Extract content for non-streaming response
+                content = response_json.get("choices", [{}])[0].get("message", {}).get("content")
+                return content if content else "" # Return empty string if not found
 
-        except requests.exceptions.RequestException as e:
+        except curl_cffi.CurlError as e:
+            raise exceptions.APIConnectionError(f"Request failed (CurlError): {e}") from e
+        except Exception as e: # Catch other potential errors
             raise exceptions.APIConnectionError(f"Request failed: {e}")
 
     def ask(
         self,
         prompt: str,
         stream: bool = False,
+        raw: bool = False, # Add raw parameter for consistency
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[Dict, Generator]:
@@ -199,11 +223,23 @@ class Cerebras(Provider):
 
         try:
             response = self._make_request(messages, stream)
-            if stream:
-                return response
             
-            self.last_response = response
-            return response
+            if stream:
+                # Wrap the generator to yield dicts or raw strings
+                def stream_wrapper():
+                    full_text = ""
+                    for chunk in response:
+                        full_text += chunk
+                        yield chunk if raw else {"text": chunk}
+                    # Update history after stream finishes
+                    self.last_response = {"text": full_text}
+                    self.conversation.update_chat_history(prompt, full_text)
+                return stream_wrapper()
+            else:
+                # Non-streaming response is already the full text string
+                self.last_response = {"text": response}
+                self.conversation.update_chat_history(prompt, response)
+                return self.last_response if not raw else response # Return dict or raw string
 
         except Exception as e:
             raise exceptions.FailedToGenerateResponseError(f"Error during request: {e}")
@@ -216,14 +252,24 @@ class Cerebras(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator]:
         """Chat with the model."""
-        response = self.ask(prompt, stream, optimizer, conversationally)
+        # Ask returns a generator for stream=True, dict/str for stream=False
+        response_gen_or_dict = self.ask(prompt, stream, raw=False, optimizer=optimizer, conversationally=conversationally)
+        
         if stream:
-            return response
-        return response
+            # Wrap the generator from ask() to get message text
+            def stream_wrapper():
+                for chunk_dict in response_gen_or_dict:
+                    yield self.get_message(chunk_dict)
+            return stream_wrapper()
+        else:
+            # Non-streaming response is already a dict
+            return self.get_message(response_gen_or_dict)
 
     def get_message(self, response: str) -> str:
         """Retrieves message from response."""
-        return response
+        # Updated to handle dict input from ask()
+        assert isinstance(response, dict), "Response should be of dict data-type only for get_message"
+        return response.get("text", "")
 
 
 if __name__ == "__main__":
@@ -231,7 +277,7 @@ if __name__ == "__main__":
     
     # Example usage
     cerebras = Cerebras(
-        cookie_path='cookie.json',
+        cookie_path=r'cookies.json',
         model='llama3.1-8b',
         system_prompt="You are a helpful AI assistant."
     )

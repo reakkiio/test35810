@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict, Optional, Generator, Union
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -78,6 +78,13 @@ class SonusAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
+    @staticmethod
+    def _sonus_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from Sonus stream JSON objects."""
+        if isinstance(chunk, dict) and "content" in chunk:
+            return chunk.get("content")
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -124,30 +131,22 @@ class SonusAI(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         f"Request failed with status code {response.status_code} - {response.text}"
                     )
-                    
-                streaming_text = ""
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            # Decode the line and remove 'data: ' prefix if present
-                            line = line_bytes.decode('utf-8')
-                            if line.startswith('data: '):
-                                line = line[6:]
-                            
-                            # Handle potential empty lines after prefix removal
-                            if not line.strip():
-                                continue
 
-                            data = json.loads(line)
-                            if "content" in data:
-                                content = data["content"]
-                                streaming_text += content
-                                resp = dict(text=content)
-                                # Yield dict or raw string
-                                yield resp if raw else resp
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue
+                streaming_text = ""
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._sonus_extractor, # Use the specific extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for content_chunk in processed_stream:
+                    # content_chunk is the string extracted by _sonus_extractor
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk) if not raw else content_chunk
                 
                 # Update history and last response after stream finishes
                 self.last_response = {"text": streaming_text}
@@ -173,23 +172,22 @@ class SonusAI(Provider):
                         f"Request failed with status code {response.status_code} - {response.text}"
                     )
 
+                response_text_raw = response.text # Get raw text
+
+                # Use sanitize_stream to process the non-streaming text
+                processed_stream = sanitize_stream(
+                    data=response_text_raw.splitlines(), # Split into lines
+                    intro_value="data:",
+                    to_json=True,
+                    content_extractor=self._sonus_extractor,
+                    yield_raw_on_error=False
+                )
+
+                # Aggregate the results
                 full_response = ""
-                # Process the full response text which might contain multiple JSON objects
-                # Split by lines and process each potential JSON object
-                for line in response.text.splitlines():
-                    if line:
-                        try:
-                            if line.startswith('data: '):
-                                line = line[6:]
-                            
-                            if not line.strip():
-                                continue
-                                
-                            data = json.loads(line)
-                            if "content" in data:
-                                full_response += data["content"]
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            continue
+                for content in processed_stream:
+                    if content and isinstance(content, str):
+                        full_response += content
 
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)

@@ -1,13 +1,10 @@
-from os import system
-import requests
-import json
+from curl_cffi.requests import Session 
 import uuid
 import re
-from datetime import datetime
-from typing import Any, Dict, Optional, Union, Generator
+from typing import Any, Dict, Optional, Union
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -98,9 +95,9 @@ class StandardInputAI(Provider):
             "ph_phc_f3wUUyCfmKlKtkc2pfT7OsdcW2mBEVGN2A87yEYbG3c_posthog": '''%7B%22distinct_id%22%3A%220195c7cc-ac8f-79ff-b901-e14a78fc2a67%22%2C%22%24sesid%22%3A%5B1744688627860%2C%220196377f-9f12-77e6-a9ea-0e9669423803%22%2C1744687832850%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fstandard-input.com%2F%22%7D%7D'''
         }
 
-        self.session = requests.Session()
+        self.session = Session() # Use curl_cffi Session
         self.session.headers.update(self.headers)
-        self.session.proxies.update(proxies)
+        self.session.proxies = proxies # Assign proxies directly
 
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -153,6 +150,17 @@ class StandardInputAI(Provider):
 
         return self.fingerprint
 
+    @staticmethod
+    def _standardinput_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the StandardInput stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
+            if match:
+                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"')
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -183,45 +191,48 @@ class StandardInputAI(Provider):
         }
 
         try:
-            response = self.session.post(self.url, cookies=self.cookies, json=payload, stream=True, timeout=self.timeout)
+            # Use curl_cffi post with impersonate
+            response = self.session.post(
+                self.url,
+                cookies=self.cookies,
+                json=payload,
+                stream=True,
+                timeout=self.timeout,
+                impersonate="chrome120" # Add impersonate
+            )
+
             if response.status_code != 200:
-                # Try to get response content for better error messages
                 try:
                     error_content = response.text
                 except:
                     error_content = "<could not read response content>"
 
                 if response.status_code in [403, 429]:
-                    print(f"Received status code {response.status_code}, refreshing identity...")
                     self.refresh_identity()
-                    response = self.session.post(self.url, cookies=self.cookies, json=payload, stream=True, timeout=self.timeout)
+                    response = self.session.post(
+                        self.url, cookies=self.cookies, json=payload, stream=True,
+                        timeout=self.timeout, impersonate="chrome120"
+                    )
                     if not response.ok:
                         raise exceptions.FailedToGenerateResponseError(
                             f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}"
                         )
-                    print("Identity refreshed successfully.")
                 else:
                     raise exceptions.FailedToGenerateResponseError(
                         f"Request failed with status code {response.status_code}. Response: {error_content}"
                     )
 
             full_response = ""
-            debug_lines = []
-
-            # Process the streaming response
-            for i, line in enumerate(response.iter_lines(decode_unicode=True)):
-                if line:
-                    try:
-                        line_str = line
-                        debug_lines.append(line_str)
-
-                        # Extract content from the response
-                        match = re.search(r'0:"(.*?)"', line_str)
-                        if match:
-                            content = match.group(1)
-                            full_response += content
-                            continue
-                    except: pass
+            # Use sanitize_stream
+            processed_stream = sanitize_stream(
+                data=response.iter_content(chunk_size=None), # Pass byte iterator
+                intro_value=None, # No simple prefix
+                to_json=False,    # Content is not JSON
+                content_extractor=self._standardinput_extractor # Use the specific extractor
+            )
+            for content_chunk in processed_stream:
+                if content_chunk and isinstance(content_chunk, str):
+                    full_response += content_chunk
 
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
@@ -243,7 +254,8 @@ class StandardInputAI(Provider):
 
     def get_message(self, response: dict) -> str:
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        # Extractor handles formatting
+        return response.get("text", "").replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
     print("-" * 100)

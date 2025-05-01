@@ -35,6 +35,8 @@ MODEL_CONFIGS = {
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.0-pro-exp-02-05",
+            "gemini-2.5-flash-preview-04-17",
+
         
         ],
     },
@@ -82,6 +84,7 @@ MODEL_CONFIGS = {
         ],
     },
 }
+
 
 class Completions(BaseCompletions):
     def __init__(self, client: 'ExaChat'):
@@ -292,6 +295,7 @@ class ExaChat(OpenAICompatibleProvider):
         "gemini-2.0-flash-thinking-exp-01-21",
         "gemini-2.5-pro-exp-03-25",
         "gemini-2.0-pro-exp-02-05",
+        "gemini-2.5-flash-preview-04-17",
         
         # OpenRouter Models
         "mistralai/mistral-small-3.1-24b-instruct:free",

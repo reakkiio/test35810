@@ -268,28 +268,26 @@ class TextPollinations(OpenAICompatibleProvider):
     """
 
     AVAILABLE_MODELS = [
-        "openai",              # OpenAI GPT-4.1-nano (Azure) - vision capable
-        "openai-large",        # OpenAI GPT-4.1 mini (Azure) - vision capable
-        "openai-reasoning",    # OpenAI o4-mini (Azure) - vision capable, reasoning
-        "qwen-coder",          # Qwen 2.5 Coder 32B (Scaleway)
-        "llama",               # Llama 3.3 70B (Cloudflare)
-        "llamascout",          # Llama 4 Scout 17B (Cloudflare)
-        "mistral",             # Mistral Small 3 (Scaleway) - vision capable
-        "unity",               # Unity Mistral Large (Scaleway) - vision capable, uncensored
-        "midijourney",         # Midijourney (Azure)
-        "rtist",               # Rtist (Azure)
-        "searchgpt",           # SearchGPT (Azure) - vision capable
-        "evil",                # Evil (Scaleway) - vision capable, uncensored
-        "deepseek-reasoning",  # DeepSeek-R1 Distill Qwen 32B (Cloudflare) - reasoning
-        "deepseek-reasoning-large", # DeepSeek R1 - Llama 70B (Scaleway) - reasoning
-        "phi",                 # Phi-4 Instruct (Cloudflare) - vision and audio capable
-        "llama-vision",        # Llama 3.2 11B Vision (Cloudflare) - vision capable
-        "gemini",              # gemini-2.5-flash-preview-04-17 (Azure) - vision and audio capable
-        "hormoz",              # Hormoz 8b (Modal)
-        "hypnosis-tracy",      # Hypnosis Tracy 7B (Azure) - audio capable
-        "deepseek",            # DeepSeek-V3 (DeepSeek)
-        "sur",                 # Sur AI Assistant (Mistral) (Scaleway) - vision capable
-        "openai-audio",        # OpenAI GPT-4o-audio-preview (Azure) - vision and audio capable
+        "openai",
+        "openai-large",
+        "qwen-coder",
+        "llama",
+        "llamascout",
+        "mistral",
+        "unity",
+        "midijourney",
+        "rtist",
+        "searchgpt",
+        "evil",
+        "deepseek-reasoning",
+        "deepseek-reasoning-large",
+        "phi",
+        "llama-vision",
+        "hormoz",
+        "hypnosis-tracy",
+        "deepseek",
+        "sur",
+        "openai-audio",
     ]
 
     def __init__(

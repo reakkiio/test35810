@@ -9,7 +9,7 @@ from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
 
@@ -178,6 +178,14 @@ class GROQ(Provider):
         # Set proxies for curl_cffi session
         self.session.proxies = proxies
     
+    @staticmethod
+    def _groq_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[Dict]:
+        """Extracts the 'delta' object from Groq stream JSON chunks."""
+        if isinstance(chunk, dict):
+            # Return the delta object itself, or None if not found
+            return chunk.get("choices", [{}])[0].get("delta")
+        return None
+
     @classmethod
     def update_available_models(cls, api_key=None):
         """Update the available models list from Groq API"""
@@ -262,24 +270,27 @@ class GROQ(Provider):
                         f"Failed to generate response - ({response.status_code}) - {response.text}"
                     )
 
-                message_load = ""
-                for value in response.iter_lines(
-                    decode_unicode=True,
-                    delimiter="" if raw else "data:",
-                    chunk_size=self.stream_chunk_size,
-                ):
-                    try:
-                        resp = json.loads(value)
-                        incomplete_message = self.get_message(resp)
-                        if incomplete_message:
-                            message_load += incomplete_message
-                            resp["choices"][0]["delta"]["content"] = message_load
-                            self.last_response.update(resp)
-                            yield value if raw else resp
-                        elif raw:
-                            yield value
-                    except json.decoder.JSONDecodeError:
-                        pass
+                streaming_text = ""
+                # Use sanitize_stream
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value="data:",
+                    to_json=True,     # Stream sends JSON
+                    content_extractor=self._groq_extractor, # Use the delta extractor
+                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                )
+
+                for delta in processed_stream:
+                    # delta is the extracted 'delta' object or None
+                    if delta and isinstance(delta, dict):
+                        content = delta.get("content")
+                        if content:
+                            streaming_text += content
+                            resp = {"text": content} # Yield only the new chunk text
+                            self.last_response = {"choices": [{"delta": {"content": streaming_text}}]} # Update last_response structure
+                            yield resp if not raw else content # Yield dict or raw string chunk
+                        # Note: Tool calls in streaming delta are less common in OpenAI format, usually in final message
+
             except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"CurlError: {str(e)}")
             except Exception as e:
@@ -339,7 +350,24 @@ class GROQ(Provider):
                          # Removed response.reason_phrase
                         f"Failed to generate response - ({response.status_code}) - {response.text}"
                     )
-                resp = response.json()
+                
+                response_text = response.text # Get raw text
+
+                # Use sanitize_stream to parse the non-streaming JSON response
+                processed_stream = sanitize_stream(
+                    data=response_text,
+                    to_json=True, # Parse the whole text as JSON
+                    intro_value=None,
+                    # Extractor for non-stream structure (returns the whole parsed dict)
+                    content_extractor=lambda chunk: chunk if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False
+                )
+                
+                # Extract the single result (the parsed JSON dictionary)
+                resp = next(processed_stream, None)
+                if resp is None:
+                    raise exceptions.FailedToGenerateResponseError("Failed to parse non-stream JSON response")
+
             except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"CurlError: {str(e)}")
             except Exception as e:

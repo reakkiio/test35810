@@ -42,7 +42,7 @@
 > **Webscout supports three types of compatibility:**
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
-> - **Local LLM Compatibility:** Run local models with [Inferno](webscout/Local/README.md), an OpenAI-compatible server
+> - **Local LLM Compatibility:** Run local models with [Inferno](https://github.com/HelpingAI/inferno), an OpenAI-compatible server (now a standalone package)
 >
 > Choose the approach that best fits your needs! For OpenAI compatibility, check the [OpenAI Providers README](webscout/Provider/OPENAI/README.md).
 
@@ -73,7 +73,7 @@
 * **AI Powerhouse:** Access and interact with various AI models through three compatibility options:
   * **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
   * **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces
-  * **[Local LLMs with Inferno](webscout/Local/README.md):** Run local models with an OpenAI-compatible server
+  * **[Local LLMs with Inferno](https://github.com/HelpingAI/inferno):** Run local models with an OpenAI-compatible server (now available as a standalone package)
 * **[AI Search](webscout/Provider/AISEARCH/README.md):** AI-powered search engines with advanced capabilities
 </p>
 </details>
@@ -99,7 +99,7 @@
 * **[LitLogger](webscout/litlogger/Readme.md):** Simplified logging with customizable formats and color schemes
 * **[LitAgent](webscout/litagent/Readme.md):** Modern user agent generator that keeps your requests undetectable
 * **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
-* **[Inferno](webscout/Local/README.md):** Run local LLMs with an OpenAI-compatible API and interactive CLI
+* **[Inferno](https://github.com/HelpingAI/inferno):** Run local LLMs with an OpenAI-compatible API and interactive CLI (now a standalone package: `pip install inferno-llm`)
 * **[GGUF Conversion](webscout/Extra/gguf.md):** Convert and quantize Hugging Face models to GGUF format
 </p>
 </details>
@@ -164,25 +164,33 @@ python -m webscout --help
 <summary><b>Inferno LLM Commands</b></summary>
 <p>
 
-Inferno provides commands for managing and using local LLMs:
+Inferno is now a standalone package. Install it separately with:
 
 ```bash
-python -m inferno --help
+pip install inferno-llm
+```
+
+After installation, you can use its CLI for managing and using local LLMs:
+
+```bash
+inferno --help
 ```
 
 | Command | Description |
 |---------|-------------|
-| `python -m inferno pull <model>` | Download a model from Hugging Face |
-| `python -m inferno list` | List downloaded models |
-| `python -m inferno serve <model>` | Start a model server with OpenAI-compatible API |
-| `python -m inferno run <model>` | Chat with a model interactively |
-| `python -m inferno remove <model>` | Remove a downloaded model |
-| `python -m inferno version` | Show version information |
+| `inferno pull <model>` | Download a model from Hugging Face |
+| `inferno list` | List downloaded models |
+| `inferno serve <model>` | Start a model server with OpenAI-compatible API |
+| `inferno run <model>` | Chat with a model interactively |
+| `inferno remove <model>` | Remove a downloaded model |
+| `inferno version` | Show version information |
+
+For more information, visit the [Inferno GitHub repository](https://github.com/HelpingAI/inferno) or [PyPI package page](https://pypi.org/project/inferno-llm/).
 </p>
 </details>
 
 > [!NOTE]
-> **Hardware requirements for running models:**
+> **Hardware requirements for running models with Inferno:**
 > - Around 2 GB of RAM for 1B models
 > - Around 4 GB of RAM for 3B models
 > - At least 8 GB of RAM for 7B models

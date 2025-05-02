@@ -100,7 +100,7 @@
 * **[LitAgent](webscout/litagent/Readme.md):** Modern user agent generator that keeps your requests undetectable
 * **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
 * **[Inferno](webscout/Local/README.md):** Run local LLMs with an OpenAI-compatible API and interactive CLI
-* **GGUF Conversion:** Convert and quantize Hugging Face models to GGUF format
+* **[GGUF Conversion](webscout/Extra/gguf.md):** Convert and quantize Hugging Face models to GGUF format
 </p>
 </details>
 

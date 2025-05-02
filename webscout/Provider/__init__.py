@@ -86,8 +86,10 @@ from .WritingMate import WritingMate
 from .MCPCore import MCPCore
 from .TypliAI import TypliAI
 from .ChatSandbox import ChatSandbox
+from .GizAI import GizAI
 __all__ = [
     'SCNet',
+    'GizAI',
     'ChatSandbox',
     'SciraAI',
     'StandardInputAI',

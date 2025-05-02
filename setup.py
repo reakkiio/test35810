@@ -12,7 +12,7 @@ setup(
     long_description_content_type="text/markdown",
     author="OEvortex",
     author_email="helpingai5@gmail.com",
-    packages=find_packages() + ['inferno'],
+    packages=find_packages(),
     python_requires=">=3.9",
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -77,24 +77,12 @@ setup(
         "console_scripts": [
             "WEBS = webscout.cli:cli",
             "webscout = webscout.cli:cli",
-            "inferno = webscout.Local.cli:app",
-            "webscout-local = webscout.Local.cli:app",
         ],
     },
     extras_require={
         "dev": [
             "ruff>=0.1.6",
             "pytest>=7.4.2",
-        ],
-        "Local": [
-            "llama-cpp-python",
-            "fastapi",
-            "uvicorn",
-            "rich",
-            "typer",
-            "huggingface_hub",
-            "pydantic",
-            "requests",
         ],
     },
     license="HelpingAI",

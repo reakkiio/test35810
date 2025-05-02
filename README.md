@@ -20,8 +20,26 @@
   </p>
 </div>
 
+<hr/>
+
+## 📋 Table of Contents
+
+- [🌟 Key Features](#-features)
+- [⚙️ Installation](#️-installation)
+- [🖥️ Command Line Interface](#️-command-line-interface)
+- [🔍 Search Engines](#-search-engines)
+- [🦆 DuckDuckGo Search](#-duckduckgo-search-with-webs-and-asyncwebs)
+- [💻 WEBS API Reference](#-webs-api-reference)
+- [🤖 AI Models and Voices](#-ai-models-and-voices)
+- [💬 AI Chat Providers](#-ai-chat-providers)
+- [👨‍💻 Advanced AI Interfaces](#-advanced-ai-interfaces)
+- [🤝 Contributing](#-contributing)
+- [🙏 Acknowledgments](#-acknowledgments)
+
+<hr/>
+
 > [!IMPORTANT]
-> Webscout supports three types of compatibility:
+> **Webscout supports three types of compatibility:**
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
 > - **Local LLM Compatibility:** Run local models with [Inferno](webscout/Local/README.md), an OpenAI-compatible server
@@ -43,24 +61,38 @@
   </p>
 </div>
 
+<hr/>
 
 ## 🚀 Features
 
-### Search & AI
+<details open>
+<summary><b>Search & AI</b></summary>
+<p>
+
 * **Comprehensive Search:** Leverage Google, DuckDuckGo, and Yep for diverse search results
 * **AI Powerhouse:** Access and interact with various AI models through three compatibility options:
   * **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
   * **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces
   * **[Local LLMs with Inferno](webscout/Local/README.md):** Run local models with an OpenAI-compatible server
 * **[AI Search](webscout/Provider/AISEARCH/README.md):** AI-powered search engines with advanced capabilities
+</p>
+</details>
 
-### Media & Content Tools
+<details open>
+<summary><b>Media & Content Tools</b></summary>
+<p>
+
 * **[YouTube Toolkit](webscout/Extra/YTToolkit/README.md):** Advanced YouTube video and transcript management with multi-language support
 * **[Text-to-Speech (TTS)](webscout/Provider/TTS/README.md):** Convert text into natural-sounding speech using multiple AI-powered providers
 * **[Text-to-Image](webscout/Provider/TTI/README.md):** Generate high-quality images using a wide range of AI art providers
 * **[Weather Tools](webscout/Extra/weather.md):** Retrieve detailed weather information for any location
+</p>
+</details>
 
-### Developer Tools
+<details open>
+<summary><b>Developer Tools</b></summary>
+<p>
+
 * **[GitAPI](webscout/Extra/GitToolkit/gitapi):** Powerful GitHub data extraction toolkit without authentication requirements for public data
 * **[SwiftCLI](webscout/swiftcli/Readme.md):** A powerful and elegant CLI framework for beautiful command-line interfaces
 * **[LitPrinter](webscout/litprinter/Readme.md):** Styled console output with rich formatting and colors
@@ -69,10 +101,19 @@
 * **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
 * **[Inferno](webscout/Local/README.md):** Run local LLMs with an OpenAI-compatible API and interactive CLI
 * **GGUF Conversion:** Convert and quantize Hugging Face models to GGUF format
+</p>
+</details>
 
-### Privacy & Utilities
+<details open>
+<summary><b>Privacy & Utilities</b></summary>
+<p>
+
 * **[Tempmail](webscout/Extra/tempmail/README.md) & Temp Number:** Generate temporary email addresses and phone numbers
 * **[Awesome Prompts](webscout/Extra/Act.md):** Curated collection of system prompts for specialized AI personas
+</p>
+</details>
+
+<hr/>
 
 ## ⚙️ Installation
 
@@ -81,6 +122,9 @@ Install Webscout using pip:
 ```bash
 pip install -U webscout
 ```
+</div>
+
+<hr/>
 
 ## 🖥️ Command Line Interface
 
@@ -90,7 +134,9 @@ Webscout provides a powerful command-line interface for quick access to its feat
 python -m webscout --help
 ```
 
-### Web Search Commands
+<details open>
+<summary><b>Web Search Commands</b></summary>
+<p>
 
 | Command | Description |
 |---------|-------------|
@@ -105,8 +151,18 @@ python -m webscout --help
 | `python -m webscout version` | Display the current version |
 | `python -m webscout videos -k "query"` | Search for videos |
 | `python -m webscout weather -l "location"` | Get weather information |
+| `python -m webscout google_text -k "query"` | Perform a text search using Google |
+| `python -m webscout google_news -k "query"` | Search for news using Google |
+| `python -m webscout google_suggestions -q "query"` | Get search suggestions from Google |
+| `python -m webscout yep_text -k "query"` | Perform a text search using Yep |
+| `python -m webscout yep_images -k "query"` | Search for images using Yep |
+| `python -m webscout yep_suggestions -q "query"` | Get search suggestions from Yep |
+</p>
+</details>
 
-### Inferno LLM Commands
+<details open>
+<summary><b>Inferno LLM Commands</b></summary>
+<p>
 
 Inferno provides commands for managing and using local LLMs:
 
@@ -122,9 +178,11 @@ python -m inferno --help
 | `python -m inferno run <model>` | Chat with a model interactively |
 | `python -m inferno remove <model>` | Remove a downloaded model |
 | `python -m inferno version` | Show version information |
+</p>
+</details>
 
 > [!NOTE]
-> Hardware requirements for running models:
+> **Hardware requirements for running models:**
 > - Around 2 GB of RAM for 1B models
 > - Around 4 GB of RAM for 3B models
 > - At least 8 GB of RAM for 7B models
@@ -132,7 +190,7 @@ python -m inferno --help
 > - 32 GB of RAM for 33B models
 > - GPU acceleration is recommended for better performance
 
-
+<hr/>
 
 ## 🔍 Search Engines
 
@@ -210,11 +268,15 @@ from webscout import search
 results = search("Python programming", num_results=5)
 ```
 
+<hr/>
+
 ## 🦆 DuckDuckGo Search with WEBS and AsyncWEBS
 
 Webscout provides powerful interfaces to DuckDuckGo's search capabilities through the `WEBS` and `AsyncWEBS` classes.
 
-### Synchronous Usage with WEBS
+<details open>
+<summary><b>Synchronous Usage with WEBS</b></summary>
+<p>
 
 ```python
 from webscout import WEBS
@@ -226,8 +288,12 @@ with WEBS() as webs:
     for result in results:
         print(f"Title: {result['title']}\nURL: {result['url']}")
 ```
+</p>
+</details>
 
-### Asynchronous Usage with AsyncWEBS
+<details open>
+<summary><b>Asynchronous Usage with AsyncWEBS</b></summary>
+<p>
 
 ```python
 import asyncio
@@ -255,9 +321,13 @@ async def main():
 # Run the async function
 asyncio.run(main())
 ```
+</p>
+</details>
 
-> [!NOTE]
+> [!TIP]
 > Always use these classes with a context manager (`with` statement) to ensure proper resource management and cleanup.
+
+<hr/>
 
 ## 💻 WEBS API Reference
 
@@ -277,7 +347,9 @@ The WEBS class provides comprehensive access to DuckDuckGo's search capabilities
 | `suggestions()` | Search suggestions | `webs.suggestions('how to')` |
 | `weather()` | Weather information | `webs.weather('london')` |
 
-### Example: Text Search
+<details>
+<summary><b>Example: Text Search</b></summary>
+<p>
 
 ```python
 from webscout import WEBS
@@ -296,8 +368,12 @@ with WEBS() as webs:
         print(f"URL: {result['url']}")
         print(f"Description: {result['body']}\n")
 ```
+</p>
+</details>
 
-### Example: News Search with Formatting
+<details>
+<summary><b>Example: News Search with Formatting</b></summary>
+<p>
 
 ```python
 from webscout import WEBS
@@ -335,8 +411,12 @@ def fetch_formatted_news(keywords, timelimit='d', max_results=20):
 news = fetch_formatted_news('artificial intelligence', timelimit='w', max_results=5)
 print('\n'.join(news))
 ```
+</p>
+</details>
 
-### Example: Weather Information
+<details>
+<summary><b>Example: Weather Information</b></summary>
+<p>
 
 ```python
 from webscout import WEBS
@@ -351,12 +431,18 @@ with WEBS() as webs:
         print(f"Temperature: {weather.get('temperature', 'N/A')}")
         print(f"Conditions: {weather.get('condition', 'N/A')}")
 ```
+</p>
+</details>
+
+<hr/>
 
 ## 🤖 AI Models and Voices
 
 Webscout provides easy access to a wide range of AI models and voice options.
 
-### LLM Models
+<details open>
+<summary><b>LLM Models</b></summary>
+<p>
 
 Access and manage Large Language Models with Webscout's model utilities.
 
@@ -384,8 +470,12 @@ if isinstance(available_models, list):
 else:
     print(f"  {available_models}")
 ```
+</p>
+</details>
 
-### TTS Voices
+<details open>
+<summary><b>TTS Voices</b></summary>
+<p>
 
 Access and manage Text-to-Speech voices across multiple providers.
 
@@ -413,12 +503,18 @@ if isinstance(available_voices, dict):
     if len(available_voices) > 5:
         print(f"  ... and {len(available_voices) - 5} more")
 ```
+</p>
+</details>
+
+<hr/>
 
 ## 💬 AI Chat Providers
 
 Webscout offers a comprehensive collection of AI chat providers, giving you access to various language models through a consistent interface.
 
 ### Popular AI Providers
+
+<div class="provider-table">
 
 | Provider | Description | Key Features |
 |----------|-------------|-------------|
@@ -435,7 +531,11 @@ Webscout offers a comprehensive collection of AI chat providers, giving you acce
 | `ChatGPTClone` | ChatGPT-like interface | Multiple model options |
 | `TypeGPT` | TypeChat models | Code generation focus |
 
-### Example: Using Duckchat
+</div>
+
+<details>
+<summary><b>Example: Using Duckchat</b></summary>
+<p>
 
 ```python
 from webscout import WEBS
@@ -448,8 +548,12 @@ with WEBS() as webs:
     )
     print(response)
 ```
+</p>
+</details>
 
-### Example: Using Meta AI
+<details>
+<summary><b>Example: Using Meta AI</b></summary>
+<p>
 
 ```python
 from webscout import Meta
@@ -474,8 +578,12 @@ response = meta_ai.ask("Create an image of a futuristic city")
 for media in response.get("media", []):
     print(media["url"])
 ```
+</p>
+</details>
 
-### Example: GROQ with Tool Calling
+<details>
+<summary><b>Example: GROQ with Tool Calling</b></summary>
+<p>
 
 ```python
 from webscout import GROQ, WEBS
@@ -550,10 +658,16 @@ print(response)
 response = client.chat("Find information about quantum computing", tools=tools)
 print(response)
 ```
+</p>
+</details>
+
+<hr/>
 
 ## 👨‍💻 Advanced AI Interfaces
 
-### Direct Model Access with LLM and VLM
+<details open>
+<summary><b>Direct Model Access with LLM and VLM</b></summary>
+<p>
 
 Webscout provides direct interfaces to language and vision-language models through the `LLM` and `VLM` classes.
 
@@ -580,8 +694,12 @@ response = vlm.chat([
 ])
 print(response)
 ```
+</p>
+</details>
 
-### GGUF Model Conversion
+<details open>
+<summary><b>GGUF Model Conversion</b></summary>
+<p>
 
 Webscout provides tools to convert and quantize Hugging Face models into the GGUF format for offline use.
 
@@ -623,6 +741,8 @@ converter.convert()
 ```bash
 python -m webscout.Extra.gguf convert -m "mistralai/Mistral-7B-Instruct-v0.2" -q "q4_k_m"
 ```
+</p>
+</details>
 
 <div align="center">
   <p>
@@ -630,6 +750,8 @@ python -m webscout.Extra.gguf convert -m "mistralai/Mistral-7B-Instruct-v0.2" -q
     <a href="https://t.me/ANONYMOUS_56788">📢 Anonymous Coder's Telegram</a>
   </p>
 </div>
+
+<hr/>
 
 ## 🤝 Contributing
 
@@ -646,7 +768,7 @@ Contributions are welcome! If you'd like to contribute to Webscout, please follo
 * All the amazing developers who have contributed to the project
 * The open-source community for their support and inspiration
 
----
+<hr/>
 
 <div align="center">
   <p>Made with ❤️ by the Webscout team</p>

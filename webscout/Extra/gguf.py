@@ -1,6 +1,8 @@
 """
 Convert Hugging Face models to GGUF format with advanced features.
 
+For detailed documentation, see: webscout/Extra/gguf.md
+
 >>> python -m webscout.Extra.gguf convert -m "OEvortex/HelpingAI-Lite-1.5T" -q "q4_k_m,q5_k_m"
 >>> # With upload options:
 >>> python -m webscout.Extra.gguf convert -m "your-model" -u "username" -t "token" -q "q4_k_m"

@@ -375,8 +375,6 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         else:
             raise ValueError(f"Invalid role: {role}. Must be one of {list(role_formats.keys())}")
 
-        # ... (logging remains the same) ...
-
     def validate_message(self, role: str, content: str) -> bool:
         """Validate the message role and content."""
         # Updated valid roles

@@ -1,6 +1,8 @@
 import sys
 from .swiftcli import CLI, option
 from .webscout_search import WEBS
+from .DWEBS import GoogleSearch  # Import GoogleSearch from DWEBS
+from .yep_search import YepSearch  # Import YepSearch from yep_search
 from .version import __version__
 
 
@@ -279,6 +281,260 @@ def weather(location: str, language: str, proxy: str = None, timeout: int = 10):
     try:
         results = webs.weather(location, language)
         _print_weather(results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--keywords", "-k", help="Search keywords", required=True)
+@option("--region", "-r", help="Region for search results (ISO country code)", default="all")
+@option("--safesearch", "-s", help="SafeSearch setting (on, moderate, off)", default="moderate")
+@option("--max-results", "-m", help="Maximum number of results", type=int, default=10)
+@option("--start-num", "-start", help="Starting position for pagination", type=int, default=0)
+@option("--unique", "-u", help="Filter duplicate results", type=bool, default=True)
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def google_text(
+    keywords: str,
+    region: str,
+    safesearch: str,
+    max_results: int,
+    start_num: int,
+    unique: bool,
+    timeout: int = 10,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Perform a text search using Google Search."""
+    google = GoogleSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        lang="en",
+        sleep_interval=0.0,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = google.text(
+            keywords=keywords,
+            region=region,
+            safesearch=safesearch,
+            max_results=max_results,
+            start_num=start_num,
+            unique=unique
+        )
+        
+        # Convert SearchResult objects to dictionaries for printing
+        formatted_results = []
+        for result in results:
+            result_dict = {
+                "title": result.title,
+                "url": result.url,
+                "description": result.description,
+            }
+            # Add any metadata to the result dictionary
+            for k, v in result.metadata.items():
+                result_dict[k] = v
+                
+            formatted_results.append(result_dict)
+            
+        _print_data(formatted_results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--keywords", "-k", help="Search keywords", required=True)
+@option("--region", "-r", help="Region for search results (ISO country code)", default="all")
+@option("--safesearch", "-s", help="SafeSearch setting (on, moderate, off)", default="moderate")
+@option("--max-results", "-m", help="Maximum number of results", type=int, default=10)
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def google_news(
+    keywords: str,
+    region: str,
+    safesearch: str,
+    max_results: int,
+    timeout: int = 10,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Perform a news search using Google Search."""
+    google = GoogleSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        lang="en",
+        sleep_interval=0.0,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = google.news(
+            keywords=keywords,
+            region=region,
+            safesearch=safesearch,
+            max_results=max_results
+        )
+        
+        # Convert SearchResult objects to dictionaries for printing
+        formatted_results = []
+        for result in results:
+            result_dict = {
+                "title": result.title,
+                "url": result.url,
+                "description": result.description,
+            }
+            # Add any metadata to the result dictionary
+            for k, v in result.metadata.items():
+                result_dict[k] = v
+                
+            formatted_results.append(result_dict)
+            
+        _print_data(formatted_results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--query", "-q", help="Search query", required=True)
+@option("--region", "-r", help="Region for suggestions (ISO country code)", default="all")
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=10)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def google_suggestions(
+    query: str,
+    region: str,
+    timeout: int = 10,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Get search suggestions from Google Search."""
+    google = GoogleSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        lang="en",
+        sleep_interval=0.0,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = google.suggestions(query=query, region=region)
+        
+        # Format suggestions for printing
+        formatted_results = []
+        for i, suggestion in enumerate(results, 1):
+            formatted_results.append({"position": i, "suggestion": suggestion})
+            
+        _print_data(formatted_results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--keywords", "-k", help="Search keywords", required=True)
+@option("--region", "-r", help="Region for search results", default="all")
+@option("--safesearch", "-s", help="SafeSearch setting (on, moderate, off)", default="moderate")
+@option("--max-results", "-m", help="Maximum number of results", type=int, default=10)
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=20)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def yep_text(
+    keywords: str,
+    region: str,
+    safesearch: str,
+    max_results: int,
+    timeout: int = 20,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Perform a text search using Yep Search."""
+    yep = YepSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = yep.text(
+            keywords=keywords,
+            region=region,
+            safesearch=safesearch,
+            max_results=max_results
+        )
+        
+        _print_data(results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--keywords", "-k", help="Search keywords", required=True)
+@option("--region", "-r", help="Region for search results", default="all")
+@option("--safesearch", "-s", help="SafeSearch setting (on, moderate, off)", default="moderate")
+@option("--max-results", "-m", help="Maximum number of results", type=int, default=10)
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=20)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def yep_images(
+    keywords: str,
+    region: str,
+    safesearch: str,
+    max_results: int,
+    timeout: int = 20,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Perform an image search using Yep Search."""
+    yep = YepSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = yep.images(
+            keywords=keywords,
+            region=region,
+            safesearch=safesearch,
+            max_results=max_results
+        )
+        
+        _print_data(results)
+    except Exception as e:
+        raise e
+
+@app.command()
+@option("--query", "-q", help="Search query", required=True)
+@option("--region", "-r", help="Region for suggestions", default="all")
+@option("--timeout", "-timeout", help="Timeout value for requests", type=int, default=20)
+@option("--proxy", "-p", help="Proxy URL to use for requests")
+@option("--impersonate", "-i", help="Browser to impersonate", default="chrome110")
+def yep_suggestions(
+    query: str,
+    region: str,
+    timeout: int = 20,
+    proxy: str = None,
+    impersonate: str = "chrome110"
+):
+    """Get search suggestions from Yep Search."""
+    yep = YepSearch(
+        timeout=timeout,
+        proxies={"https": proxy, "http": proxy} if proxy else None,
+        verify=True,
+        impersonate=impersonate
+    )
+    
+    try:
+        results = yep.suggestions(query=query, region=region)
+        
+        # Format suggestions for printing
+        formatted_results = []
+        for i, suggestion in enumerate(results, 1):
+            formatted_results.append({"position": i, "suggestion": suggestion})
+            
+        _print_data(formatted_results)
     except Exception as e:
         raise e
 

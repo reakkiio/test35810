@@ -417,3 +417,20 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             f"- {fn.name}: {fn.description} (Parameters: {', '.join(f'{name}: {typ}' for name, typ in fn.parameters.items())})"
             for fn in self.tools
         )
+
+    def update_chat_history(self, prompt: str, response: str) -> None:
+        """Update chat history with a new prompt-response pair.
+        
+        Args:
+            prompt: The user's prompt/question
+            response: The assistant's response
+            
+        This method adds both the user's prompt and the assistant's response
+        to the conversation history as separate messages.
+        """
+        # Add user's message
+        self.add_message("user", prompt)
+        
+        # Add assistant's response
+        self.add_message("assistant", response)
+

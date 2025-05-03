@@ -1,6 +1,7 @@
+import re
 import requests
 import json
-import time
+import uuid
 from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
@@ -27,6 +28,12 @@ class FreeAIChat(Provider):
         "O3 Mini",
         "O3 Mini High",
         "O3 Mini Low",
+        "O4 Mini",
+        "O4 Mini High",
+        "GPT 4.1",
+        "o3",
+        "GPT 4.1 Mini",
+
 
         # Anthropic Models
         "Claude 3.5 haiku",
@@ -74,8 +81,9 @@ class FreeAIChat(Provider):
 
     def __init__(
         self,
+        api_key: str,
         is_conversation: bool = True,
-        max_tokens: int = 2049,
+        max_tokens: int = 150,
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -83,8 +91,9 @@ class FreeAIChat(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "GPT-4o",
+        model: str = "GPT 4o",
         system_prompt: str = "You are a helpful AI assistant.",
+        temperature: float = 0.7,
     ):
         """Initializes the FreeAIChat API client."""
         if model not in self.AVAILABLE_MODELS:
@@ -105,11 +114,13 @@ class FreeAIChat(Provider):
         self.session.proxies.update(proxies)
 
         self.is_conversation = is_conversation
-        self.max_tokens_to_sample = max_tokens
+        self.max_tokens = max_tokens
         self.timeout = timeout
         self.last_response = {}
         self.model = model
         self.system_prompt = system_prompt
+        self.temperature = temperature
+        self.api_key = api_key
 
         self.__available_optimizers = (
             method
@@ -125,9 +136,20 @@ class FreeAIChat(Provider):
         )
 
         self.conversation = Conversation(
-            is_conversation, self.max_tokens_to_sample, filepath, update_file
+            is_conversation, self.max_tokens, filepath, update_file
         )
         self.conversation.history_offset = history_offset
+
+    @staticmethod
+    def _extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the x0gpt stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"', chunk)
+            if match:
+                # Decode potential unicode escapes like \u00e9
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
+        return None
 
     def ask(
         self,
@@ -146,24 +168,19 @@ class FreeAIChat(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
-        messages = [
-            {
-                "id": str(int(time.time() * 1000)),
+        payload = {
+            "id": str(uuid.uuid4()),
+            "messages": [{
                 "role": "user",
                 "content": conversation_prompt,
-                "model": {
-                    # "id": "14",
-                    "name": self.model,
-                    # "icon": "https://cdn-avatars.huggingface.co/v1/production/uploads/1620805164087-5ec0135ded25d76864d553f1.png",
-                    # "provider": "openAI",
-                    # "contextWindow": 63920
-                }
-            }
-        ]
-
-        payload = {
+                "parts": [{"type": "text", "text": conversation_prompt}]
+            }],
             "model": self.model,
-            "messages": messages
+            "config": {
+                "temperature": self.temperature,
+                "maxTokens": self.max_tokens
+            },
+            "apiKey": self.api_key
         }
 
         def for_stream():
@@ -174,28 +191,25 @@ class FreeAIChat(Provider):
                             f"Request failed with status code {response.status_code}"
                         )
                     
-                    streaming_text = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            line = line.strip()
-                            if line.startswith("data: "):
-                                json_str = line[6:]  # Remove "data: " prefix
-                                if json_str == "[DONE]":
-                                    break
-                                try:
-                                    json_data = json.loads(json_str)
-                                    if 'choices' in json_data:
-                                        choice = json_data['choices'][0]
-                                        if 'delta' in choice and 'content' in choice['delta']:
-                                            content = choice['delta']['content']
-                                            streaming_text += content
-                                            resp = dict(text=content)
-                                            yield resp if raw else resp
-                                except json.JSONDecodeError:
-                                    pass
-                    
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                        
+                    streaming_response = ""
+                    processed_stream = sanitize_stream(
+                        data=response.iter_lines(decode_unicode=True),
+                        intro_value=None,
+                        to_json=False,
+                        content_extractor=self._extractor,
+                        skip_markers=None
+                    )
+
+                    for content_chunk in processed_stream:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_response += content_chunk
+                            yield dict(text=content_chunk) if raw else dict(text=content_chunk)
+
+                    self.last_response.update(dict(text=streaming_response))
+                    self.conversation.update_chat_history(
+                        prompt, self.get_message(self.last_response)
+                    )
+
             except requests.RequestException as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 

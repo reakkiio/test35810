@@ -35,7 +35,6 @@ from .elmo import *
 from .GPTWeb import *
 from .Netwrck import Netwrck
 from .promptrefine import *
-from .tutorai import *
 from .bagoodex import *
 from .aimathgpt import *
 from .geminiprorealtime import *
@@ -149,7 +148,6 @@ __all__ = [
     'GPTWeb',
     'Netwrck',
     'PromptRefine',
-    'TutorAI',
     'Bagoodex',
     'AIMathGPT',
     'GeminiPro',

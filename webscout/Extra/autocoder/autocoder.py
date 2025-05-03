@@ -3,10 +3,14 @@
 import os
 import re
 import sys
+import io
 import queue
 import tempfile
 import threading
 import subprocess
+import traceback
+import difflib
+from typing import Optional, Generator, List, Tuple, Dict, Any, NamedTuple
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.console import Console, Group
@@ -16,10 +20,7 @@ from rich.theme import Theme
 from rich.live import Live
 from rich.rule import Rule
 from rich.box import ROUNDED
-from typing import Optional, Generator, List, Tuple, Dict, Any
-from webscout.AIutel import run_system_command
 from .autocoder_utiles import get_intro_prompt
-
 # Initialize LitLogger with custom format and colors 
 default_path = tempfile.mkdtemp(prefix="webscout_autocoder")
 
@@ -34,6 +35,70 @@ CUSTOM_THEME = Theme({
 })
 
 console = Console(theme=CUSTOM_THEME)
+class CommandResult(NamedTuple):
+    """Result of a system command execution."""
+    success: bool
+    stdout: str
+    stderr: str
+    
+def run_system_command(
+    command: str,
+    exit_on_error: bool = False,
+    stdout_error: bool = False,
+    help: Optional[str] = None
+) -> Tuple[bool, CommandResult]:
+    """Execute a system command and return the result.
+    
+    Args:
+        command (str): Command to execute
+        exit_on_error (bool): Whether to exit on error. Defaults to False.
+        stdout_error (bool): Whether to include stdout in error messages. Defaults to False.
+        help (str, optional): Help message for errors. Defaults to None.
+        
+    Returns:
+        Tuple[bool, CommandResult]: Success status and command result containing stdout/stderr
+    """
+    try:
+        # Execute command and capture output
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True,
+            text=True
+        )
+        
+        # Get stdout and stderr
+        stdout, stderr = process.communicate()
+        success = process.returncode == 0
+        
+        # Create result object
+        result = CommandResult(
+            success=success,
+            stdout=stdout.strip() if stdout else "",
+            stderr=stderr.strip() if stderr else ""
+        )
+        
+        # Handle errors if needed
+        if not success and exit_on_error:
+            error_msg = stderr if stderr else stdout if stdout_error else "Command failed"
+            if help:
+                error_msg += f"\n{help}"
+            sys.exit(error_msg)
+            
+        return success, result
+        
+    except Exception as e:
+        # Handle execution errors
+        error_msg = str(e)
+        if help:
+            error_msg += f"\n{help}"
+            
+        if exit_on_error:
+            sys.exit(error_msg)
+            
+        return False, CommandResult(success=False, stdout="", stderr=error_msg)
+
 
 class AutoCoder:
     """Generate and auto-execute Python scripts in the CLI with advanced error handling and retry logic.

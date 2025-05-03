@@ -1,4 +1,4 @@
-from typing import Union, Any, Dict, Generator
+from typing import Optional, Union, Any, Dict, Generator
 from uuid import uuid4
 import cloudscraper
 import re
@@ -7,7 +7,7 @@ import time
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts
+from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
@@ -29,18 +29,15 @@ class AkashGPT(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "meta-llama-3-3-70b-instruct",
-        "deepseek-r1",
-        "meta-llama-3-1-405b-instruct-fp8",
-        "meta-llama-llama-4-maverick-17b-128e-instruct-fp8",
-        "nvidia-llama-3-3-nemotron-super-49b-v1",
+        "Qwen3-235B-A22B-FP8",
+        "meta-llama-Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "nvidia-Llama-3-3-Nemotron-Super-49B-v1",
+        "Qwen-QwQ-32B",
+        "Meta-Llama-3-3-70B-Instruct",
+        "DeepSeek-R1",
+        "AkashGen"
 
-        # "meta-llama-3-2-3b-instruct",
-        # "meta-llama-3-1-8b-instruct-fp8",
-        # "mistral",
-        # "nous-hermes2-mixtral", 
-        # "dolphin-mixtral",
-        "qwen-qwq-32b"
+
     ]
 
     def __init__(
@@ -147,6 +144,17 @@ class AkashGPT(Provider):
         self.conversation.history_offset = history_offset
         self.session.proxies = proxies
 
+    @staticmethod
+    def _akash_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
+        """Extracts content from the AkashGPT stream format '0:"..."'."""
+        if isinstance(chunk, str):
+            match = re.search(r'0:"(.*?)"', chunk)
+            if match:
+                # Decode potential unicode escapes like \u00e9
+                content = match.group(1).encode().decode('unicode_escape')
+                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
+        return None
+
     def ask(
         self,
         prompt: str,
@@ -198,52 +206,37 @@ class AkashGPT(Provider):
         }
 
         def for_stream():
-            response = self.session.post(self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout)
-            if not response.ok:
-                raise exceptions.FailedToGenerateResponseError(
-                    f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+            try:
+                response = self.session.post(
+                    self.api_endpoint,
+                    headers=self.headers,
+                    json=payload,
+                    stream=True,
+                    timeout=self.timeout
                 )
-            
-            streaming_response = ""
-            message_id = None
-            
-            for line in response.iter_lines(decode_unicode=True):
-                if not line:
-                    continue
-                    
-                # Parse message ID from the f: line
-                if line.startswith('f:'):
-                    try:
-                        f_data = json.loads(line[2:])
-                        message_id = f_data.get("messageId")
-                        continue
-                    except json.JSONDecodeError:
-                        pass
-                
-                # Parse content chunks
-                if line.startswith('0:'):
-                    try:
-                        content = line[2:]
-                        # Remove surrounding quotes if they exist
-                        if content.startswith('"') and content.endswith('"'):
-                            content = content[1:-1]
-                        streaming_response += content
-                        yield content if raw else dict(text=content)
-                    except Exception as e:
-                        continue
-                
-                # End of stream markers
-                if line.startswith('e:') or line.startswith('d:'):
-                    try:
-                        finish_data = json.loads(line[2:])
-                        finish_reason = finish_data.get("finishReason", "stop")
-                        # Could store usage data if needed:
-                        # usage = finish_data.get("usage", {})
-                    except json.JSONDecodeError:
-                        pass
-                    break
-            
-            self.last_response.update(dict(text=streaming_response, message_id=message_id))
+                if not response.ok:
+                    raise exceptions.FailedToGenerateResponseError(
+                        f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                    )
+
+                streaming_response = ""
+                # Use sanitize_stream with the custom extractor
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    intro_value=None, # No simple prefix
+                    to_json=False,    # Content is not JSON, handled by extractor
+                    content_extractor=self._akash_extractor, # Use the specific extractor
+                )
+
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_response += content_chunk
+                        yield content_chunk if raw else dict(text=content_chunk)
+
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred during streaming ({type(e).__name__}): {e}")
+
+            self.last_response.update(dict(text=streaming_response)) # message_id is not easily accessible with this stream format
             self.conversation.update_chat_history(
                 prompt, self.get_message(self.last_response)
             )
@@ -326,7 +319,7 @@ if __name__ == "__main__":
 
     for model in AkashGPT.AVAILABLE_MODELS:
         try:
-            test_ai = AkashGPT(model=model, timeout=60)
+            test_ai = AkashGPT(model=model, timeout=60, session_token="240f96202f87570d9d16c85a148ebdb1ea49d69557b73839a1658970c6d092a4")
             response = test_ai.chat("Say 'Hello' in one word")
             response_text = response
             

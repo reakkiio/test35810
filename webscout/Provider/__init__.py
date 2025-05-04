@@ -87,8 +87,10 @@ from .TypliAI import TypliAI
 from .ChatSandbox import ChatSandbox
 from .GizAI import GizAI
 from .WrDoChat import WrDoChat
+from .Nemotron import NEMOTRON
 __all__ = [
     'SCNet',
+    'NEMOTRON',
     'WrDoChat',
     'GizAI',
     'ChatSandbox',

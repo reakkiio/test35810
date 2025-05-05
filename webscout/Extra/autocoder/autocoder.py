@@ -3,22 +3,18 @@
 import os
 import re
 import sys
-import io
 import queue
 import tempfile
 import threading
 import subprocess
-import traceback
-import difflib
 from typing import Optional, Generator, List, Tuple, Dict, Any, NamedTuple
 from rich.panel import Panel
 from rich.syntax import Syntax
-from rich.console import Console, Group
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.theme import Theme
 from rich.live import Live
-from rich.rule import Rule
 from rich.box import ROUNDED
 from .autocoder_utiles import get_intro_prompt
 # Initialize LitLogger with custom format and colors 

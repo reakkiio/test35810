@@ -29,7 +29,10 @@ class SCNet(Provider):
         is_conversation: bool = True,
         max_tokens: int = 2048, # Note: max_tokens is not used by this API
         timeout: int = 30,
-        intro: Optional[str] = None,
+        intro: Optional[str] = ("You are a helpful, advanced LLM assistant. "
+            "You must always answer in English, regardless of the user's language. "
+            "If the user asks in another language, politely respond in English only. "
+            "Be clear, concise, and helpful."),
         filepath: Optional[str] = None,
         update_file: bool = True,
         proxies: Optional[dict] = None,

@@ -33,7 +33,7 @@ class WiseCat(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "chat-model-large",
+        model: str = "chat-model-small",
         system_prompt: str = "You are a helpful AI assistant."
     ):
         """Initializes the WiseCat API client."""

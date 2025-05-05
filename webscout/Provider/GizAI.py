@@ -264,12 +264,12 @@ class GizAI(Provider):
         )
         return self.get_message(response_data)
     
-    def get_message(self, response: dict) -> str:
+    def get_message(self, response: Union[dict, str]) -> str:
         """
         Extracts the message from the API response.
         
         Args:
-            response (dict): The API response.
+            response (Union[dict, str]): The API response.
             
         Returns:
             str: The message content.
@@ -279,5 +279,7 @@ class GizAI(Provider):
             >>> response = ai.ask("Tell me a joke!")
             >>> message = ai.get_message(response)
         """
-        assert isinstance(response, dict), "Response should be of dict data-type only"
+        if isinstance(response, str):
+            return response
+        assert isinstance(response, dict), "Response should be either dict or str"
         return response.get("text", "")

@@ -42,6 +42,7 @@ class AkashGPT(Provider):
 
     def __init__(
         self,
+        api_key: str,
         is_conversation: bool = True,
         max_tokens: int = 600,
         timeout: int = 30,
@@ -55,12 +56,12 @@ class AkashGPT(Provider):
         model: str = "meta-llama-3-3-70b-instruct",
         temperature: float = 0.6,
         top_p: float = 0.9,
-        session_token: str = None
     ):
         """
         Initializes the AkashGPT API with given parameters.
 
         Args:
+            api_key (str): Session token (used as API key here) for authentication. If None, auto-generates one.
             is_conversation (bool): Whether the provider is in conversation mode.
             max_tokens (int): Maximum number of tokens to sample.
             timeout (int): Timeout for API requests.
@@ -74,7 +75,6 @@ class AkashGPT(Provider):
             model (str): The model to use for generation.
             temperature (float): Controls randomness in generation.
             top_p (float): Controls diversity via nucleus sampling.
-            session_token (str): Session token for authentication. If None, auto-generates one.
         """
         # Validate model choice
         if model not in self.AVAILABLE_MODELS:
@@ -92,10 +92,10 @@ class AkashGPT(Provider):
         self.top_p = top_p
 
         # Generate session token if not provided
-        if not session_token:
-            self.session_token = str(uuid4()).replace("-", "") + str(int(time.time()))
+        if not api_key:
+            self.api_key = str(uuid4()).replace("-", "") + str(int(time.time()))
         else:
-            self.session_token = session_token
+            self.api_key = api_key
 
         self.agent = LitAgent()
 
@@ -123,7 +123,7 @@ class AkashGPT(Provider):
         }
 
         # Set cookies with the session token
-        self.session.cookies.set("session_token", self.session_token, domain="chat.akash.network")
+        self.session.cookies.set("session_token", self.api_key, domain="chat.akash.network")
 
         self.__available_optimizers = (
             method
@@ -319,7 +319,7 @@ if __name__ == "__main__":
 
     for model in AkashGPT.AVAILABLE_MODELS:
         try:
-            test_ai = AkashGPT(model=model, timeout=60, session_token="240f96202f87570d9d16c85a148ebdb1ea49d69557b73839a1658970c6d092a4")
+            test_ai = AkashGPT(model=model, timeout=60, api_key="240f96202f87570d9d16c85a148ebdb1ea49d69557b73839a1658970c6d092a4") # Example key
             response = test_ai.chat("Say 'Hello' in one word")
             response_text = response
             

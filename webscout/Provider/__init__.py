@@ -16,7 +16,6 @@ from .typefully import *
 from .cleeai import *
 from .OLLAMA import OLLAMA
 from .Andi import AndiSearch
-from .PizzaGPT import *
 from .Llama3 import *
 from .koala import *
 from .meta import *
@@ -34,7 +33,6 @@ from .geminiapi import *
 from .elmo import *
 from .GPTWeb import *
 from .Netwrck import Netwrck
-from .promptrefine import *
 from .bagoodex import *
 from .aimathgpt import *
 from .geminiprorealtime import *
@@ -128,7 +126,6 @@ __all__ = [
     'AI4Chat',
     'OLLAMA',
     'AndiSearch',
-    'PIZZAGPT',
     'Sambanova',
     'KOALA',
     'Meta',
@@ -151,7 +148,6 @@ __all__ = [
     'Free2GPT',
     'GPTWeb',
     'Netwrck',
-    'PromptRefine',
     'Bagoodex',
     'AIMathGPT',
     'GeminiPro',

@@ -11,10 +11,10 @@ class NEMOTRON(Provider):
     """NEMOTRON provider for interacting with the nemotron.one API."""
     url = "https://nemotron.one/api/chat"
 
-    AVAILABLE_MODELS = {
-        "gpt4o": "gpt4o",  # Default model
-        "nemotron70b": "nemotron70b"  # Alternative model
-    }
+    AVAILABLE_MODELS = [
+        "gpt4o",
+        "nemotron70b",
+    ]
 
     def __init__(
         self,
@@ -88,7 +88,7 @@ class NEMOTRON(Provider):
     def get_model(cls, model: str) -> str:
         """Resolve model name from alias."""
         if model in cls.AVAILABLE_MODELS:
-            return cls.AVAILABLE_MODELS[model]
+            return model  # Simply return the model name if it's in the list
         raise ValueError(f"Unknown model: {model}. Available models: {', '.join(cls.AVAILABLE_MODELS)}")
 
     def _get_user_data(self) -> Dict[str, Any]:
@@ -210,3 +210,9 @@ class NEMOTRON(Provider):
         """Extract message from response dictionary."""
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response["text"]
+
+if __name__ == "__main__":
+    # Example usage
+    nemotron = NEMOTRON()
+    response = nemotron.chat("Hello, how are you?", stream=False)
+    print(response)

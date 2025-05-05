@@ -70,7 +70,8 @@ class Scira(AISearch):
 
     AVAILABLE_MODELS = {
         "scira-default": "Grok3-mini", # thinking model
-        "scira-grok-3": "Grok3", 
+        "scira-grok-3": "Grok3",
+        "scira-anthropic": "Sonnet 3.7 thinking",
         "scira-vision" : "Grok2-Vision", # vision model
         "scira-4.1-mini": "GPT4.1-mini",
         "scira-qwq": "QWQ-32B",

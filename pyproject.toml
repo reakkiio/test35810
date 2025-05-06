@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webscout"
+# Using dynamic version from webscout.version
+dynamic = ["version"]
+description = "Search for anything using Google, DuckDuckGo, phind.com, Contains AI models, can transcribe yt videos, temporary email and phone number generation, has TTS support, webai (terminal gpt and open interpreter) and offline LLMs and more"
+readme = "README.md"
+authors = [
+    {name = "OEvortex", email = "helpingai5@gmail.com"}
+]
+requires-python = ">=3.9"
+license = {text = "HelpingAI"}
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: Other/Proprietary License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Communications",
+    "Topic :: Utilities",
+]
+keywords = [
+    "search", "ai", "chatbot", "llm", "language-model", "gpt", "openai", 
+    "gemini", "claude", "llama", "search-engine", "text-to-speech", "tts", 
+    "text-to-image", "tti", "weather", "youtube", "toolkit", "utilities", 
+    "web-search", "duckduckgo", "google", "yep"
+]
+dependencies = [
+    "setuptools",
+    "wheel",
+    "pip",
+    "nodriver",
+    "mistune",
+    "tenacity",
+    "curl_cffi",
+    "nest-asyncio",
+    "websocket-client",
+    "colorama",
+    "rich",
+    "markdownify",
+    "requests",
+    "google-generativeai",
+    "lxml>=5.2.2",
+    "termcolor",
+    "orjson",
+    "PyYAML",
+    "ollama",
+    "pillow",
+    "bson",
+    "cloudscraper",
+    "html5lib",
+    "aiofiles",
+    "openai",
+    "prompt-toolkit",
+    "pyreqwest_impersonate",
+    "gradio_client",
+    "psutil",
+    "aiohttp",
+]
+
+[project.scripts]
+WEBS = "webscout.cli:main"
+webscout = "webscout.cli:main"
+
+[project.urls]
+Source = "https://github.com/OE-LUCIFER/Webscout"
+Tracker = "https://github.com/OE-LUCIFER/Webscout/issues"
+YouTube = "https://youtube.com/@OEvortex"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.6",
+    "pytest>=7.4.2",
+]
+
+[tool.setuptools]
+packages = ["webscout"]
+package-dir = {"" = "."}
+
+[tool.setuptools.dynamic]
+version = {attr = "webscout.version.__version__"}
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt", "*.yaml", "*.yml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py"

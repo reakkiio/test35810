@@ -22,6 +22,7 @@ from .uncovrAI import *
 from .opkfc import *
 from .chatgpt import *
 from .textpollinations import *
+from .typefully import * # Add TypefullyAI
 from .e2b import *
 from .multichat import * # Add MultiChatAI
 from .ai4chat import * # Add AI4Chat

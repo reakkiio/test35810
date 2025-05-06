@@ -269,24 +269,26 @@ class TextPollinations(OpenAICompatibleProvider):
 
     AVAILABLE_MODELS = [
         "openai",
+        "openai-fast",
         "openai-large",
         "qwen-coder",
         "llama",
         "llamascout",
         "mistral",
         "unity",
+        "mirexa",
         "midijourney",
         "rtist",
         "searchgpt",
         "evil",
         "deepseek-reasoning",
-        "deepseek-reasoning-large",
         "phi",
         "llama-vision",
         "hormoz",
         "hypnosis-tracy",
         "deepseek",
         "sur",
+        "bidara",
         "openai-audio",
     ]
 
@@ -327,3 +329,4 @@ class TextPollinations(OpenAICompatibleProvider):
 
         # Initialize chat interface
         self.chat = Chat(self)
+

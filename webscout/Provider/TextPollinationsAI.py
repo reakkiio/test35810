@@ -16,24 +16,26 @@ class TextPollinationsAI(Provider):
 
     AVAILABLE_MODELS = [
         "openai",
+        "openai-fast",
         "openai-large",
         "qwen-coder",
         "llama",
         "llamascout",
         "mistral",
         "unity",
+        "mirexa",
         "midijourney",
         "rtist",
         "searchgpt",
         "evil",
         "deepseek-reasoning",
-        "deepseek-reasoning-large",
         "phi",
         "llama-vision",
         "hormoz",
         "hypnosis-tracy",
         "deepseek",
         "sur",
+        "bidara",
         "openai-audio",
     ]
     _models_url = "https://text.pollinations.ai/models"
@@ -304,3 +306,4 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
+

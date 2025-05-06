@@ -55,7 +55,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - MultiChatAI
 - AI4Chat
 - MCPCore
-
+- TypefullyAI
 ---
 
 ### <img src="https://img.shields.io/badge/DeepInfra-0A0A0A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1OGE2ZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjAgMTFhOCA4IDAgMCAwLTE2IDAiPjwvcGF0aD48cGF0aCBkPSJtMTIgMTEgOS0xIj48L3BhdGg+PHBhdGggZD0iTTEyIDExIDMgMTAiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFWMiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxMXY5Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> DeepInfra

@@ -24,12 +24,32 @@ class DeepInfra(Provider):
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
         "deepseek-ai/DeepSeek-R1-Turbo",
         "deepseek-ai/DeepSeek-V3",
-
+        "deepseek-ai/DeepSeek-Prover-V2-671B",
         "google/gemma-2-27b-it",
         "google/gemma-2-9b-it",
-        "google/gemma-3-27b-it",
         "google/gemma-3-12b-it",
+        "google/gemma-3-27b-it",
         "google/gemma-3-4b-it",
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        "meta-llama/Llama-Guard-4-12B",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+        "microsoft/Phi-4-multimodal-instruct",
+        "microsoft/WizardLM-2-8x22B",
+        "microsoft/phi-4",
+        "microsoft/phi-4-reasoning-plus",
+        "mistralai/Mistral-Small-24B-Instruct-2501",
+        "nvidia/Llama-3.1-Nemotron-70B-Instruct",
+        "Qwen/QwQ-32B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "Qwen/Qwen3-14B",
+        "Qwen/Qwen3-30B-A3B",
+        "Qwen/Qwen3-32B",
+        "Qwen/Qwen3-235B-A22B",
         # "google/gemini-1.5-flash",  # >>>> NOT WORKING
         # "google/gemini-1.5-flash-8b",  # >>>> NOT WORKING
         # "google/gemini-2.0-flash-001",  # >>>> NOT WORKING
@@ -38,37 +58,19 @@ class DeepInfra(Provider):
 
         # "meta-llama/Llama-3.2-1B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Llama-3.2-3B-Instruct",  # >>>> NOT WORKING
-        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
         # "meta-llama/Llama-3.2-90B-Vision-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Llama-3.2-11B-Vision-Instruct",  # >>>> NOT WORKING
-        "meta-llama/Llama-3.3-70B-Instruct",
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         # "meta-llama/Meta-Llama-3-70B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Meta-Llama-3-8B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Meta-Llama-3.1-70B-Instruct",  # >>>> NOT WORKING
         # "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",  # >>>> NOT WORKING
-        "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
         # "meta-llama/Meta-Llama-3.1-405B-Instruct",  # >>>> NOT WORKING
-
-        "microsoft/phi-4",
-        "microsoft/Phi-4-multimodal-instruct",
-        "microsoft/WizardLM-2-8x22B",
         # "mistralai/Mixtral-8x7B-Instruct-v0.1",  # >>>> NOT WORKING
         # "mistralai/Mistral-7B-Instruct-v0.3",  # >>>> NOT WORKING
         # "mistralai/Mistral-Nemo-Instruct-2407",  # >>>> NOT WORKING
-        "mistralai/Mistral-Small-24B-Instruct-2501",
-        "nvidia/Llama-3.1-Nemotron-70B-Instruct",
         # "NousResearch/Hermes-3-Llama-3.1-405B",  # >>>> NOT WORKING
         # "NovaSky-AI/Sky-T1-32B-Preview",  # >>>> NOT WORKING
-        "Qwen/QwQ-32B",
         # "Qwen/Qwen2.5-7B-Instruct",  # >>>> NOT WORKING
-        "Qwen/Qwen2.5-72B-Instruct",
-        "Qwen/Qwen2.5-Coder-32B-Instruct",
-        "Qwen/Qwen3-14B",
-        "Qwen/Qwen3-30B-A3B",
-        "Qwen/Qwen3-32B",
         # "Sao10K/L3.1-70B-Euryale-v2.2",  # >>>> NOT WORKING
         # "Sao10K/L3.3-70B-Euryale-v2.3",  # >>>> NOT WORKING
     ]

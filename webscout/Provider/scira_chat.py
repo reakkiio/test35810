@@ -22,10 +22,11 @@ class SciraAI(Provider):
         "scira-grok-3": "Grok3",
         "scira-anthropic": "Sonnet 3.7 thinking",
         "scira-vision" : "Grok2-Vision", # vision model
-        "scira-4.1-mini": "GPT4.1-mini",
+        "scira-4o": "GPT4o",
         "scira-qwq": "QWQ-32B",
         "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash"
+        "scira-google": "gemini 2.5 flash",
+        "scira-google-pro": "gemini 2.5 pro",
     }
 
     def __init__(

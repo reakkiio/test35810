@@ -73,10 +73,11 @@ class Scira(AISearch):
         "scira-grok-3": "Grok3",
         "scira-anthropic": "Sonnet 3.7 thinking",
         "scira-vision" : "Grok2-Vision", # vision model
-        "scira-4.1-mini": "GPT4.1-mini",
+        "scira-4o": "GPT4o",
         "scira-qwq": "QWQ-32B",
         "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash"
+        "scira-google": "gemini 2.5 flash",
+        "scira-google-pro": "gemini 2.5 pro",
     }
     def __init__(
         self,
@@ -315,7 +316,7 @@ class Scira(AISearch):
 
 if __name__ == "__main__":
     from rich import print
-    ai = Scira()
+    ai = Scira(deepsearch=False)
     user_query = input(">>> ")
     response = ai.search(user_query, stream=True, raw=False)
     for chunk in response:

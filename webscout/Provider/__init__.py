@@ -86,9 +86,11 @@ from .ChatSandbox import ChatSandbox
 from .GizAI import GizAI
 from .WrDoChat import WrDoChat
 from .Nemotron import NEMOTRON
+from .FreeGemini import FreeGemini
 __all__ = [
     'SCNet',
     'NEMOTRON',
+    'FreeGemini',
     'WrDoChat',
     'GizAI',
     'ChatSandbox',

@@ -25,13 +25,6 @@ def _process_chunk(
 
     sanitized_chunk = chunk
 
-    # Check if chunk starts with intro_value + skip_marker combination
-    if intro_value and skip_markers:
-        for marker in skip_markers:
-            combined_marker = f"{intro_value}{marker}"
-            if sanitized_chunk.startswith(combined_marker):
-                return None
-
     if intro_value and sanitized_chunk.startswith(intro_value):
         sanitized_chunk = sanitized_chunk[len(intro_value):]
 
@@ -40,11 +33,7 @@ def _process_chunk(
     else:
         sanitized_chunk = sanitized_chunk.lstrip()
 
-    # Check both standalone skip_markers and stripped version
-    if not sanitized_chunk or any(
-        marker in sanitized_chunk or sanitized_chunk == marker
-        for marker in skip_markers
-    ):
+    if not sanitized_chunk or sanitized_chunk in skip_markers:
         return None
 
     if to_json:
@@ -96,7 +85,7 @@ def _decode_byte_stream(
     except UnicodeDecodeError:
         yield f"[Encoding Error: Could not decode final bytes with {encoding}]\n"
 def sanitize_stream(
-    data: Union[str, bytes, Iterable[str], Iterable[bytes]],
+    data: Union[str, Iterable[str], Iterable[bytes]],
     intro_value: str = "data:",
     to_json: bool = True,
     skip_markers: Optional[List[str]] = None,
@@ -107,7 +96,6 @@ def sanitize_stream(
     yield_raw_on_error: bool = True,
     encoding: EncodingType = 'utf-8',
     encoding_errors: str = 'replace',
-    chunk_size: Optional[int] = None,
 ) -> Generator[Any, None, None]:
     """
     Realtime stream processor that handles string/byte streams with minimal latency.
@@ -131,7 +119,6 @@ def sanitize_stream(
         yield_raw_on_error: Yield raw content on JSON errors
         encoding: Character encoding for byte streams ('utf-8', 'latin1', etc.)
         encoding_errors: How to handle encoding errors ('strict', 'ignore', 'replace')
-        chunk_size: Chunk size for byte streams (None for default)
     
     Yields:
         Processed chunks (string or dictionary)
@@ -148,11 +135,9 @@ def sanitize_stream(
     effective_skip_markers = skip_markers or []
     processing_active = start_marker is None
 
-    if isinstance(data, (str, bytes)):
-        # Optimized single string/bytes processing
+    if isinstance(data, str):
+        # Optimized single string processing
         processed_item = None
-        if isinstance(data, bytes):
-            data = data.decode(encoding, errors=encoding_errors)
         if to_json:
             try:
                 processed_item = json.loads(data)
@@ -182,11 +167,9 @@ def sanitize_stream(
             else:
                 yield processed_item
 
-    elif hasattr(data, '__iter__') or hasattr(data, 'iter_content'):
+    elif hasattr(data, '__iter__'):
         # Efficient stream processing
         try:
-            if hasattr(data, 'iter_content'):
-                data = data.iter_content(chunk_size=chunk_size)
             first_item = next(iter(data))
         except StopIteration:
             return

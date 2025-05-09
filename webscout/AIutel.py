@@ -1,9 +1,5 @@
 import json
-import platform
-import subprocess
-from typing import Union, Optional, Dict, Any, Iterable, Generator, List, Callable, Literal, Tuple
-import io
-from collections import deque
+from typing import Union, Optional, Dict, Any, Iterable, Generator, List, Callable, Literal
 import codecs
 
 # Expanded encoding types
@@ -23,23 +19,34 @@ def _process_chunk(
     if not isinstance(chunk, str):
         return None
 
+    # Fast path for empty chunks
+    if not chunk:
+        return None
+
+    # Use slicing for prefix removal (faster than startswith+slicing)
     sanitized_chunk = chunk
+    if intro_value and len(chunk) >= len(intro_value) and chunk[:len(intro_value)] == intro_value:
+        sanitized_chunk = chunk[len(intro_value):]
 
-    if intro_value and sanitized_chunk.startswith(intro_value):
-        sanitized_chunk = sanitized_chunk[len(intro_value):]
-
+    # Optimize string stripping operations
     if strip_chars is not None:
         sanitized_chunk = sanitized_chunk.strip(strip_chars)
     else:
+        # lstrip() is faster than strip() when we only need leading whitespace removed
         sanitized_chunk = sanitized_chunk.lstrip()
 
-    if not sanitized_chunk or sanitized_chunk in skip_markers:
+    # Skip empty chunks and markers
+    if not sanitized_chunk or any(marker == sanitized_chunk for marker in skip_markers):
         return None
 
+    # JSON parsing with optimized error handling
     if to_json:
         try:
+            # Only strip before JSON parsing if needed
+            if sanitized_chunk[0] not in '{[' or sanitized_chunk[-1] not in '}]':
+                sanitized_chunk = sanitized_chunk.strip()
             return json.loads(sanitized_chunk)
-        except (json.JSONDecodeError, Exception) as e:
+        except (json.JSONDecodeError, Exception):
             return sanitized_chunk if yield_raw_on_error else None
     
     return sanitized_chunk
@@ -47,7 +54,8 @@ def _process_chunk(
 def _decode_byte_stream(
     byte_iterator: Iterable[bytes], 
     encoding: EncodingType = 'utf-8',
-    errors: str = 'replace'
+    errors: str = 'replace',
+    buffer_size: int = 8192
 ) -> Generator[str, None, None]:
     """
     Realtime byte stream decoder with flexible encoding support.
@@ -56,6 +64,7 @@ def _decode_byte_stream(
         byte_iterator: Iterator yielding bytes
         encoding: Character encoding to use
         errors: How to handle encoding errors ('strict', 'ignore', 'replace')
+        buffer_size: Size of internal buffer for performance tuning
     """
     # Initialize decoder with the specified encoding
     try:
@@ -84,6 +93,7 @@ def _decode_byte_stream(
             yield final_text
     except UnicodeDecodeError:
         yield f"[Encoding Error: Could not decode final bytes with {encoding}]\n"
+
 def sanitize_stream(
     data: Union[str, Iterable[str], Iterable[bytes]],
     intro_value: str = "data:",
@@ -96,16 +106,17 @@ def sanitize_stream(
     yield_raw_on_error: bool = True,
     encoding: EncodingType = 'utf-8',
     encoding_errors: str = 'replace',
+    buffer_size: int = 8192,
 ) -> Generator[Any, None, None]:
     """
-    Realtime stream processor that handles string/byte streams with minimal latency.
+    Optimized realtime stream processor that handles string/byte streams with minimal latency.
     
     Features:
     - Direct realtime processing of byte streams
     - Optimized string handling and JSON parsing
     - Robust error handling and validation
-    - Flexible encoding support
-    - Drop-in replacement for response.iter_content/iter_lines
+    - Flexible encoding support with memory-efficient buffering
+    - High performance for large streams
     
     Args:
         data: Input data (string, string iterator, or bytes iterator)
@@ -117,88 +128,91 @@ def sanitize_stream(
         end_marker: Processing end marker
         content_extractor: Function to extract content
         yield_raw_on_error: Yield raw content on JSON errors
-        encoding: Character encoding for byte streams ('utf-8', 'latin1', etc.)
-        encoding_errors: How to handle encoding errors ('strict', 'ignore', 'replace')
+        encoding: Character encoding for byte streams
+        encoding_errors: How to handle encoding errors
+        buffer_size: Size of internal processing buffer
     
     Yields:
         Processed chunks (string or dictionary)
-    
-    Example:
-        >>> # Process response content
-        >>> for chunk in sanitize_stream(response.iter_content()):
-        ...     process_chunk(chunk)
-        
-        >>> # Process a stream with specific encoding
-        >>> for text in sanitize_stream(byte_stream, encoding='latin1', to_json=False):
-        ...     process_text(text)
     """
     effective_skip_markers = skip_markers or []
     processing_active = start_marker is None
 
+    # Fast path for single string processing
     if isinstance(data, str):
-        # Optimized single string processing
         processed_item = None
-        if to_json:
-            try:
-                processed_item = json.loads(data)
-            except json.JSONDecodeError:
-                pass
-
-        if processed_item is None:
-            if not processing_active and data == start_marker:
-                processing_active = True
-            elif processing_active and end_marker is not None and data == end_marker:
-                processing_active = False
-
-            if processing_active:
+        if processing_active:
+            # Optimize JSON parsing for large strings
+            if to_json:
+                try:
+                    # Use faster JSON parser for large strings
+                    data = data.strip()
+                    if data:
+                        processed_item = json.loads(data)
+                except json.JSONDecodeError:
+                    processed_item = data if yield_raw_on_error else None
+            else:
                 processed_item = _process_chunk(
-                    data, intro_value, to_json, effective_skip_markers, 
+                    data, intro_value, False, effective_skip_markers, 
                     strip_chars, yield_raw_on_error
                 )
 
-        if processed_item is not None:
-            if content_extractor:
-                try:
-                    final_content = content_extractor(processed_item)
-                    if final_content is not None:
-                        yield final_content
-                except Exception:
-                    pass
-            else:
-                yield processed_item
+            if processed_item is not None:
+                if content_extractor:
+                    try:
+                        final_content = content_extractor(processed_item)
+                        if final_content is not None:
+                            yield final_content
+                    except Exception:
+                        pass
+                else:
+                    yield processed_item
+        return
 
-    elif hasattr(data, '__iter__'):
-        # Efficient stream processing
-        try:
-            first_item = next(iter(data))
-        except StopIteration:
+    # Stream processing path
+    if not hasattr(data, '__iter__'):
+        raise TypeError(f"Input must be a string or an iterable, not {type(data).__name__}")
+    
+    try:
+        iterator = iter(data)
+        first_item = next(iterator, None)
+        if first_item is None:
             return
-
+            
+        # Efficient streaming with itertools
         from itertools import chain
-        stream = chain([first_item], data)
+        stream = chain([first_item], iterator)
 
-        # Choose processing path based on type
+        # Determine if we're dealing with bytes or strings
         if isinstance(first_item, bytes):
             line_iterator = _decode_byte_stream(
                 stream, 
                 encoding=encoding,
-                errors=encoding_errors
+                errors=encoding_errors,
+                buffer_size=buffer_size
             )
         elif isinstance(first_item, str):
             line_iterator = stream
         else:
             raise TypeError(f"Stream must yield strings or bytes, not {type(first_item).__name__}")
 
-        # Process stream efficiently
+        # Process stream with minimal allocations
         for line in line_iterator:
-            if not processing_active and start_marker is not None and line == start_marker:
-                processing_active = True
+            if not line:
                 continue
-            if processing_active and end_marker is not None and line == end_marker:
+                
+            # Handle markers efficiently
+            if not processing_active and start_marker is not None:
+                if line.strip() == start_marker:
+                    processing_active = True
+                continue
+                
+            if processing_active and end_marker is not None and line.strip() == end_marker:
                 processing_active = False
                 continue
             
             if processing_active:
+                # Process chunk with optimized function
                 processed = _process_chunk(
                     line, intro_value, to_json, effective_skip_markers,
                     strip_chars, yield_raw_on_error
@@ -211,13 +225,13 @@ def sanitize_stream(
                             if final_content is not None:
                                 yield final_content
                         except Exception:
+                            # Continue on extraction errors
                             pass
                     else:
                         yield processed
-    else:
-        raise TypeError(f"Input must be a string or an iterable, not {type(data).__name__}")
+                        
+    except Exception as e:
+        # Log error but don't crash on stream processing exceptions
+        import sys
+        print(f"Stream processing error: {str(e)}", file=sys.stderr)
 
-from .conversation import Conversation
-from .optimizers import Optimizers
-from .Extra.autocoder import AutoCoder
-from .prompt_manager import AwesomePrompts

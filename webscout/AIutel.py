@@ -74,13 +74,21 @@ def _decode_byte_stream(
         decoder = codecs.getincrementaldecoder('utf-8')(errors=errors)
     
     # Process byte stream in realtime
+    buffer = bytearray(buffer_size)
+    buffer_view = memoryview(buffer)
+    
     for chunk_bytes in byte_iterator:
         if not chunk_bytes:
             continue
 
         try:
-            # Decode chunk with specified encoding
-            text = decoder.decode(chunk_bytes, final=False)
+            # Use buffer for processing if chunk size is appropriate
+            if len(chunk_bytes) <= buffer_size:
+                buffer[:len(chunk_bytes)] = chunk_bytes
+                text = decoder.decode(buffer_view[:len(chunk_bytes)], final=False)
+            else:
+                text = decoder.decode(chunk_bytes, final=False)
+                
             if text:
                 yield text
         except UnicodeDecodeError:
@@ -235,3 +243,8 @@ def sanitize_stream(
         import sys
         print(f"Stream processing error: {str(e)}", file=sys.stderr)
 
+
+from .conversation import Conversation
+from .optimizers import Optimizers
+from .Extra.autocoder import AutoCoder
+from .prompt_manager import AwesomePrompts

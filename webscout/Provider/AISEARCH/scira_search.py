@@ -78,6 +78,7 @@ class Scira(AISearch):
         "scira-o4-mini": "o4-mini",
         "scira-google": "gemini 2.5 flash",
         "scira-google-pro": "gemini 2.5 pro",
+        "scira-llama-4": "llama 4 Maverick",
     }
     def __init__(
         self,

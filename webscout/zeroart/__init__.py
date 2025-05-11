@@ -4,11 +4,14 @@ ZeroArt: A zero-dependency ASCII art text generator
 Create awesome ASCII art text without external dependencies!
 """
 
+from typing import Dict, List, Literal, Optional, Union
 from .base import ZeroArtFont
 from .fonts import BlockFont, SlantFont, NeonFont, CyberFont
 from .effects import AsciiArtEffects
 
-def figlet_format(text, font='block'):
+FontType = Literal['block', 'slant', 'neon', 'cyber']
+
+def figlet_format(text: str, font: Union[str, ZeroArtFont] = 'block') -> str:
     """
     Generate ASCII art text
     
@@ -16,17 +19,20 @@ def figlet_format(text, font='block'):
     :param font: Font style (default: 'block')
     :return: ASCII art representation of text
     """
-    font_map = {
+    font_map: Dict[str, ZeroArtFont] = {
         'block': BlockFont(),
         'slant': SlantFont(),
         'neon': NeonFont(),
         'cyber': CyberFont()
     }
     
-    selected_font = font_map.get(font.lower(), BlockFont())
+    if isinstance(font, str):
+        selected_font: ZeroArtFont = font_map.get(font.lower(), BlockFont())
+    else:
+        selected_font = font
     return selected_font.render(text)
 
-def print_figlet(text, font='block'):
+def print_figlet(text: str, font: Union[str, ZeroArtFont] = 'block') -> None:
     """
     Print ASCII art text directly
     
@@ -51,5 +57,7 @@ __all__ = [
     'BlockFont', 
     'SlantFont', 
     'NeonFont', 
-    'CyberFont'
+    'CyberFont',
+    'ZeroArtFont',
+    'FontType'
 ]

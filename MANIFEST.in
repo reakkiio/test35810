@@ -1,0 +1,19 @@
+include LICENSE.md
+include README.md
+include LEGAL_NOTICE.md
+include changelog.md
+
+recursive-include webscout *
+recursive-include webscout/Extra *
+recursive-include webscout/litagent *
+recursive-include webscout/Litlogger *
+recursive-include webscout/litprinter *
+recursive-include webscout/Provider *
+recursive-include webscout/scout *
+recursive-include webscout/swiftcli *
+recursive-include webscout/zeroart *
+
+recursive-exclude webscout __pycache__
+recursive-exclude webscout *.pyc
+recursive-exclude webscout *.pyo
+recursive-exclude webscout *.pyd

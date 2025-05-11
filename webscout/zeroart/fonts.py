@@ -2,18 +2,19 @@
 ZeroArt Fonts: Predefined ASCII art fonts
 """ 
 
+from typing import Dict, List
 from .base import ZeroArtFont
 
 class BlockFont(ZeroArtFont):
     """Block-style ASCII art font"""
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("block")
-        self.letters = {
+        self.letters: Dict[str, List[str]] = {
             ' ': ["   ", "   ", "   ", "   ", "   "]
         }
         self._populate_letters()
 
-    def _populate_letters(self):
+    def _populate_letters(self) -> None:
         """Populate the font with predefined letters"""
         block_letters = {
             'A': [
@@ -204,14 +205,14 @@ class BlockFont(ZeroArtFont):
 
 class SlantFont(ZeroArtFont):
     """Slanted ASCII art font"""
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("slant")
-        self.letters = {
+        self.letters: Dict[str, List[str]] = {
             ' ': ["   ", "   ", "   ", "   ", "   "]
         }
         self._populate_letters()
 
-    def _populate_letters(self):
+    def _populate_letters(self) -> None:
         """Populate the font with predefined letters"""
         slant_letters = {
             'A': [
@@ -421,14 +422,14 @@ class SlantFont(ZeroArtFont):
 # Add more custom fonts here
 class NeonFont(ZeroArtFont):
     """Neon-style ASCII art font"""
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("neon")
-        self.letters = {
+        self.letters: Dict[str, List[str]] = {
             ' ': ["   ", "   ", "   ", "   ", "   "]
         }
         self._populate_letters()
 
-    def _populate_letters(self):
+    def _populate_letters(self) -> None:
         """Populate neon-style letters"""
         neon_letters = {
             'A': [
@@ -619,14 +620,14 @@ class NeonFont(ZeroArtFont):
 
 class CyberFont(ZeroArtFont):
     """Cyberpunk-style ASCII art font"""
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("cyber")
-        self.letters = {
+        self.letters: Dict[str, List[str]] = {
             ' ': ["   ", "   ", "   ", "   ", "   "]
         }
         self._populate_letters()
 
-    def _populate_letters(self):
+    def _populate_letters(self) -> None:
         """Populate cyberpunk-style letters"""
         cyber_letters = {
             'A': [

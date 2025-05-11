@@ -4,12 +4,14 @@ ZeroArt Effects: ASCII art text effects and transformations
 
 import random
 import textwrap
+from typing import List, Optional, Union
+from .base import ZeroArtFont
  
 class AsciiArtEffects:
     """Collection of ASCII art text effects"""
     
     @staticmethod
-    def rainbow_effect(text, font):
+    def rainbow_effect(text: str, font: ZeroArtFont) -> str:
         """
         Apply a rainbow-like color effect to ASCII art
         
@@ -17,7 +19,7 @@ class AsciiArtEffects:
         :param font: Font to use
         :return: Rainbow-styled ASCII art
         """
-        colors = [
+        colors: List[str] = [
             '\033[91m',  # Red
             '\033[93m',  # Yellow
             '\033[92m',  # Green
@@ -25,21 +27,19 @@ class AsciiArtEffects:
             '\033[95m',  # Magenta
         ]
         
-        art = font.render(text)
-        art_lines = art.split('\n')
+        art: str = font.render(text)
+        art_lines: List[str] = art.split('\n')
         
-        colored_lines = []
+        colored_lines: List[str] = []
         for line in art_lines:
-            colored_line = ''
+            colored_line: str = ''
             for char in line:
-                color = random.choice(colors)
+                color: str = random.choice(colors)
                 colored_line += color + char
             colored_lines.append(colored_line + '\033[0m')  # Reset color
         
-        return '\n'.join(colored_lines)
-
-    @staticmethod
-    def glitch_effect(text, font, glitch_intensity=0.1):
+        return '\n'.join(colored_lines)    @staticmethod
+    def glitch_effect(text: str, font: ZeroArtFont, glitch_intensity: float = 0.1) -> str:
         """
         Apply a glitch-like distortion to ASCII art
         
@@ -48,14 +48,14 @@ class AsciiArtEffects:
         :param glitch_intensity: Probability of character distortion
         :return: Glitched ASCII art
         """
-        art = font.render(text)
-        art_lines = art.split('\n')
+        art: str = font.render(text)
+        art_lines: List[str] = art.split('\n')
         
-        glitched_lines = []
-        glitch_chars = ['~', '^', '`', '¯', '±']
+        glitched_lines: List[str] = []
+        glitch_chars: List[str] = ['~', '^', '`', '¯', '±']
         
         for line in art_lines:
-            glitched_line = ''
+            glitched_line: str = ''
             for char in line:
                 if random.random() < glitch_intensity:
                     glitched_line += random.choice(glitch_chars)
@@ -66,7 +66,7 @@ class AsciiArtEffects:
         return '\n'.join(glitched_lines)
 
     @staticmethod
-    def wrap_text(text, width=20):
+    def wrap_text(text: str, width: int = 20) -> str:
         """
         Wrap ASCII art text to a specific width
         
@@ -77,7 +77,7 @@ class AsciiArtEffects:
         return textwrap.fill(text, width=width)
 
     @staticmethod
-    def outline_effect(text, font, outline_char='*'):
+    def outline_effect(text: str, font: ZeroArtFont, outline_char: str = '*') -> str:
         """
         Add an outline effect to ASCII art
         
@@ -86,14 +86,14 @@ class AsciiArtEffects:
         :param outline_char: Character to use for outline
         :return: ASCII art with outline
         """
-        art = font.render(text)
-        art_lines = art.split('\n')
+        art: str = font.render(text)
+        art_lines: List[str] = art.split('\n')
         
-        outlined_lines = []
+        outlined_lines: List[str] = []
         for line in art_lines:
-            outlined_line = outline_char + line + outline_char
+            outlined_line: str = outline_char + line + outline_char
             outlined_lines.append(outlined_line)
         
-        top_bottom_line = outline_char * (len(outlined_lines[0]))
+        top_bottom_line: str = outline_char * (len(outlined_lines[0]))
         
         return '\n'.join([top_bottom_line] + outlined_lines + [top_bottom_line])

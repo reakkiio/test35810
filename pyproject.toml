@@ -50,7 +50,6 @@ dependencies = [
     "pip",
     "nodriver",
     "mistune",
-    "tenacity",
     "curl_cffi",
     "nest-asyncio",
     "websocket-client",
@@ -60,7 +59,6 @@ dependencies = [
     "requests",
     "google-generativeai",
     "lxml>=5.2.2",
-    "termcolor",
     "orjson",
     "PyYAML",
     "ollama",
@@ -70,8 +68,6 @@ dependencies = [
     "html5lib",
     "aiofiles",
     "openai",
-    "prompt-toolkit",
-    "pyreqwest_impersonate",
     "gradio_client",
     "psutil",
     "aiohttp",
@@ -93,14 +89,20 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["webscout"]
+# Use find_namespace_packages to automatically discover all packages and subpackages
+where = ["."]  # Specifies the root directory for packages (project root)
+include = ["webscout*"]  # Tells find_packages/find_namespace_packages to include only 'webscout' and its subpackages
+exclude = ["__pycache__", "*.pyc"]  # Excludes common non-package directories/files
+find-namespace-packages = true  # Enables automatic discovery of namespace packages
 package-dir = {"" = "."}
+include-package-data = true
 
 [tool.setuptools.dynamic]
 version = {attr = "webscout.version.__version__"}
 
 [tool.setuptools.package-data]
-"*" = ["*.md", "*.txt", "*.yaml", "*.yml"]
+"*" = ["*.md", "*.txt", "*.yaml", "*.yml", "*.py", "*.html", "*.css", "*.js", "*.json", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg"]
+"webscout" = ["*"]
 
 [tool.ruff]
 line-length = 100

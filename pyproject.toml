@@ -89,13 +89,14 @@ dev = [
 ]
 
 [tool.setuptools]
-# Use find_namespace_packages to automatically discover all packages and subpackages
-where = ["."]  # Specifies the root directory for packages (project root)
-include = ["webscout*"]  # Tells find_packages/find_namespace_packages to include only 'webscout' and its subpackages
-exclude = ["__pycache__", "*.pyc"]  # Excludes common non-package directories/files
-find-namespace-packages = true  # Enables automatic discovery of namespace packages
 package-dir = {"" = "."}
 include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]  # Specifies the root directory for packages (project root)
+include = ["webscout*"]  # Tells find_packages to include only 'webscout' and its subpackages
+exclude = ["__pycache__", "*.pyc"]  # Excludes common non-package directories/files
+namespaces = true  # Enables automatic discovery of namespace packages
 
 [tool.setuptools.dynamic]
 version = {attr = "webscout.version.__version__"}

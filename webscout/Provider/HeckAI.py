@@ -2,7 +2,6 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 import uuid
-import sys
 from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
@@ -25,7 +24,6 @@ class HeckAI(Provider):
         "openai/gpt-4.1-mini",
         "x-ai/grok-3-mini-beta",
         "meta-llama/llama-4-scout"
-
     ]
 
     def __init__(
@@ -112,7 +110,8 @@ class HeckAI(Provider):
             "sessionId": self.session_id,
             "previousQuestion": self.previous_question,
             "previousAnswer": self.previous_answer,
-            "imgUrls": []
+            "imgUrls": [],
+            "superSmartMode": False  # Added based on API request data
         }
         
         # Store this message as previous for next request
@@ -120,7 +119,6 @@ class HeckAI(Provider):
 
         def for_stream():
             streaming_text = "" # Initialize outside try block
-            # in_answer = False # No longer needed
             try:
                 # Use curl_cffi session post with impersonate
                 response = self.session.post(
@@ -135,13 +133,14 @@ class HeckAI(Provider):
 
                 # Use sanitize_stream to process the stream
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value="data:",  # Prefix to remove *from lines between markers*
-                    to_json=False,        # Content is text
-                    start_marker="data: [ANSWER_START]", # Check against the raw line including prefix
-                    end_marker="data: [ANSWER_DONE]",     # Check against the raw line including prefix
-                    skip_markers=["[RELATE_Q_START]", "[RELATE_Q_DONE]"], # Skip these if they appear within answer block
-                    yield_raw_on_error=True
+                data=response.iter_content(chunk_size=1024), # Pass byte iterator
+                intro_value="data: ",  # Prefix to remove (note the space)
+                to_json=False,        # Content is text
+                start_marker="data: [ANSWER_START]",
+                end_marker="data: [ANSWER_DONE]",
+                skip_markers=["data: [RELATE_Q_START]", "data: [RELATE_Q_DONE]", "data: [REASON_START]", "data: [REASON_DONE]"],
+                yield_raw_on_error=True,
+                strip_chars=" \n\r\t"  # Strip whitespace characters from chunks
                 )
 
                 for content_chunk in processed_stream:
@@ -150,9 +149,21 @@ class HeckAI(Provider):
                         streaming_text += content_chunk
                         yield dict(text=content_chunk) if not raw else content_chunk
                 
-                # Update history and previous answer after stream finishes
-                self.previous_answer = streaming_text
-                self.conversation.update_chat_history(prompt, streaming_text)
+                # Only update history if we received a valid response
+                if streaming_text:
+                    # Update history and previous answer after stream finishes
+                    self.previous_answer = streaming_text
+                    # Convert to simple text before updating conversation
+                    try:
+                        # Ensure content is valid before updating conversation
+                        if streaming_text and isinstance(streaming_text, str):
+                            # Sanitize the content to ensure it's valid
+                            sanitized_text = streaming_text.strip()
+                            if sanitized_text:  # Only update if we have non-empty content
+                                self.conversation.update_chat_history(prompt, sanitized_text)
+                    except Exception as e:
+                        # If conversation update fails, log but don't crash
+                        print(f"Warning: Failed to update conversation history: {str(e)}")
                     
             except CurlError as e: # Catch CurlError
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
@@ -177,7 +188,6 @@ class HeckAI(Provider):
                  if not full_text:
                      raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
 
-            # last_response and history are updated within for_stream
             # Return the final aggregated response dict or raw string
             self.last_response = {"text": full_text} # Update last_response here
             return full_text if raw else self.last_response
@@ -227,8 +237,20 @@ class HeckAI(Provider):
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
-        assert isinstance(response, dict), "Response should be of dict data-type only"
-        return response["text"]
+        # Validate response format
+        if not isinstance(response, dict):
+            raise TypeError(f"Expected dict response, got {type(response).__name__}")
+        
+        # Handle missing text key gracefully
+        if "text" not in response:
+            return ""
+        
+        # Ensure text is a string
+        text = response["text"]
+        if not isinstance(text, str):
+            return str(text)
+            
+        return text
 
 if __name__ == "__main__":
     # Ensure curl_cffi is installed
@@ -239,19 +261,25 @@ if __name__ == "__main__":
     for model in HeckAI.AVAILABLE_MODELS:
         try:
             test_ai = HeckAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
-            response_text = ""
-            for chunk in response:
-                response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
-            
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"\r{model:<50} {status:<10} {display_text}")
+            # Use non-streaming mode first to avoid potential streaming issues
+            try:
+                response_text = test_ai.chat("Say 'Hello' in one word", stream=False)
+                print(f"\r{model:<50} {'✓':<10} {response_text.strip()[:50]}")
+            except Exception as e1:
+                # Fall back to streaming if non-streaming fails
+                print(f"\r{model:<50} {'Testing stream...':<10}", end="", flush=True)
+                response = test_ai.chat("Say 'Hello' in one word", stream=True)
+                response_text = ""
+                for chunk in response:
+                    if chunk and isinstance(chunk, str):
+                        response_text += chunk
+                
+                if response_text and len(response_text.strip()) > 0:
+                    status = "✓"
+                    # Truncate response if too long
+                    display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+                    print(f"\r{model:<50} {status:<10} {display_text}")
+                else:
+                    raise ValueError("Empty or invalid response")
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")

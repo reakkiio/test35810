@@ -1,7 +1,9 @@
-from curl_cffi import CurlError
-from curl_cffi.requests import Session
+import cloudscraper
+# from curl_cffi.requests import Session
 import json
 from typing import Union, Any, Dict, Generator, Optional, List
+
+from curl_cffi import CurlError
 
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
@@ -40,7 +42,7 @@ class GliderAI(Provider):
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {', '.join(self.AVAILABLE_MODELS)}")
         
-        self.session = Session() # Use curl_cffi Session
+        self.session = cloudscraper.create_scraper() # Use cloudscraper Session
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoint = "https://glider.so/api/chat"
@@ -52,10 +54,11 @@ class GliderAI(Provider):
         self.headers = {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9",
-            "content-type": "application/json",
+            "content-type": "text/plain;charset=UTF-8",
             "origin": "https://glider.so",
             "referer": "https://glider.so/",
             "user-agent": Lit().random(),
+            "cookie": "_vcrcs=1.1746977094.3600.NDlmNmM5YWFmNzMxZWUyNzE4ZjBhOTJlZGZlZDU3MGU=.850a77f5f36f60ae5da2f51b55231a54",
         }
         self.session.headers.update(self.headers)
         self.session.proxies = proxies # Assign proxies directly
@@ -115,8 +118,8 @@ class GliderAI(Provider):
 
         payload = {
             "messages": [
-                {"role": "user", "content": conversation_prompt},
-                {"role": "system", "content": self.system_prompt}
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": conversation_prompt}
             ],
             "model": self.model,
         }
@@ -124,9 +127,9 @@ class GliderAI(Provider):
         def for_stream():
             streaming_text = ""
             try:
+                import json
                 response = self.session.post(
-                    self.api_endpoint, json=payload, stream=True, timeout=self.timeout,
-                    impersonate="chrome120" # Add impersonate
+                self.api_endpoint, data=json.dumps(payload), stream=True, timeout=self.timeout
                 )
                 response.raise_for_status()
 

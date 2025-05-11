@@ -59,7 +59,6 @@ from .AllenAI import *
 from .HeckAI import *
 from .TwoAI import *
 from .Venice import *
-from .ElectronHub import *
 from .HuggingFaceChat import *
 from .GithubChat import *
 from .copilot import *
@@ -165,7 +164,6 @@ __all__ = [
     'ChatGLM',
     'NousHermes',
     'FreeAIChat',
-    'ElectronHub',
     'GithubChat',
     'UncovrAI',
     'VercelAI',

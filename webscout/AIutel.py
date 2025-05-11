@@ -117,43 +117,20 @@ def sanitize_stream(
     buffer_size: int = 8192,
 ) -> Generator[Any, None, None]:
     """
-    Optimized realtime stream processor that handles string/byte streams with minimal latency.
-    
-    Features:
-    - Direct realtime processing of byte streams
-    - Optimized string handling and JSON parsing
-    - Robust error handling and validation
-    - Flexible encoding support with memory-efficient buffering
-    - High performance for large streams
-    
-    Args:
-        data: Input data (string, string iterator, or bytes iterator)
-        intro_value: Prefix to remove from each chunk
-        to_json: Whether to parse chunks as JSON
-        skip_markers: Markers to skip
-        strip_chars: Characters to strip
-        start_marker: Processing start marker
-        end_marker: Processing end marker
-        content_extractor: Function to extract content
-        yield_raw_on_error: Yield raw content on JSON errors
-        encoding: Character encoding for byte streams
-        encoding_errors: How to handle encoding errors
-        buffer_size: Size of internal processing buffer
-    
-    Yields:
-        Processed chunks (string or dictionary)
+    Robust realtime stream processor that handles string/byte streams with correct marker extraction/skipping.
+    Now handles split markers, partial chunks, and skips lines containing (not just equal to) skip markers.
     """
     effective_skip_markers = skip_markers or []
     processing_active = start_marker is None
+    buffer = ""
+    found_start = False if start_marker else True
 
     # Fast path for single string processing
     if isinstance(data, str):
         processed_item = None
         if processing_active:
-            # Optimize JSON parsing for large strings
             if to_json:
                 try:
-                    # Use faster JSON parser for large strings
                     data = data.strip()
                     if data:
                         processed_item = json.loads(data)
@@ -164,7 +141,6 @@ def sanitize_stream(
                     data, intro_value, False, effective_skip_markers, 
                     strip_chars, yield_raw_on_error
                 )
-
             if processed_item is not None:
                 if content_extractor:
                     try:
@@ -180,14 +156,12 @@ def sanitize_stream(
     # Stream processing path
     if not hasattr(data, '__iter__'):
         raise TypeError(f"Input must be a string or an iterable, not {type(data).__name__}")
-    
+
     try:
         iterator = iter(data)
         first_item = next(iterator, None)
         if first_item is None:
             return
-            
-        # Efficient streaming with itertools
         from itertools import chain
         stream = chain([first_item], iterator)
 
@@ -204,42 +178,117 @@ def sanitize_stream(
         else:
             raise TypeError(f"Stream must yield strings or bytes, not {type(first_item).__name__}")
 
-        # Process stream with minimal allocations
         for line in line_iterator:
             if not line:
                 continue
-                
-            # Handle markers efficiently
-            if not processing_active and start_marker is not None:
-                if line.strip() == start_marker:
-                    processing_active = True
-                continue
-                
-            if processing_active and end_marker is not None and line.strip() == end_marker:
-                processing_active = False
-                continue
-            
-            if processing_active:
-                # Process chunk with optimized function
-                processed = _process_chunk(
-                    line, intro_value, to_json, effective_skip_markers,
-                    strip_chars, yield_raw_on_error
-                )
-                
-                if processed is not None:
-                    if content_extractor:
-                        try:
-                            final_content = content_extractor(processed)
-                            if final_content is not None:
-                                yield final_content
-                        except Exception:
-                            # Continue on extraction errors
-                            pass
+            buffer += line
+            while True:
+                # Look for start marker if needed
+                if not found_start and start_marker:
+                    idx = buffer.find(start_marker)
+                    if idx != -1:
+                        found_start = True
+                        buffer = buffer[idx + len(start_marker):]
                     else:
-                        yield processed
-                        
+                        # Not found, keep buffering
+                        buffer = buffer[-max(len(start_marker), 256):]  # avoid unbounded growth
+                        break
+                # Look for end marker if needed
+                if found_start and end_marker:
+                    idx = buffer.find(end_marker)
+                    if idx != -1:
+                        chunk = buffer[:idx]
+                        buffer = buffer[idx + len(end_marker):]
+                        processing_active = False
+                    else:
+                        chunk = buffer
+                        buffer = ""
+                        processing_active = True
+                    # Process chunk if we are in active region
+                    if chunk and processing_active:
+                        # Split into lines for skip marker logic
+                        for subline in chunk.splitlines():
+                            # Remove intro_value prefix if present
+                            if intro_value and subline.startswith(intro_value):
+                                subline = subline[len(intro_value):]
+                            # Strip chars if needed
+                            if strip_chars is not None:
+                                subline = subline.strip(strip_chars)
+                            else:
+                                subline = subline.lstrip()
+                            # Skip if matches any skip marker (using 'in')
+                            if any(marker in subline for marker in effective_skip_markers):
+                                continue
+                            # Skip empty
+                            if not subline:
+                                continue
+                            # JSON parse if needed
+                            if to_json:
+                                try:
+                                    if subline and (subline[0] in '{[' and subline[-1] in '}]'):
+                                        parsed = json.loads(subline)
+                                        result = parsed
+                                    else:
+                                        result = subline
+                                except Exception:
+                                    result = subline if yield_raw_on_error else None
+                            else:
+                                result = subline
+                            if result is not None:
+                                if content_extractor:
+                                    try:
+                                        final_content = content_extractor(result)
+                                        if final_content is not None:
+                                            yield final_content
+                                    except Exception:
+                                        pass
+                                else:
+                                    yield result
+                    if not processing_active:
+                        found_start = False
+                    if idx == -1:
+                        break
+                elif found_start:
+                    # No end marker, process all buffered content
+                    chunk = buffer
+                    buffer = ""
+                    if chunk:
+                        for subline in chunk.splitlines():
+                            if intro_value and subline.startswith(intro_value):
+                                subline = subline[len(intro_value):]
+                            if strip_chars is not None:
+                                subline = subline.strip(strip_chars)
+                            else:
+                                subline = subline.lstrip()
+                            if any(marker in subline for marker in effective_skip_markers):
+                                continue
+                            if not subline:
+                                continue
+                            if to_json:
+                                try:
+                                    if subline and (subline[0] in '{[' and subline[-1] in '}]'):
+                                        parsed = json.loads(subline)
+                                        result = parsed
+                                    else:
+                                        result = subline
+                                except Exception:
+                                    result = subline if yield_raw_on_error else None
+                            else:
+                                result = subline
+                            if result is not None:
+                                if content_extractor:
+                                    try:
+                                        final_content = content_extractor(result)
+                                        if final_content is not None:
+                                            yield final_content
+                                    except Exception:
+                                        pass
+                                else:
+                                    yield result
+                    break
+                else:
+                    break
     except Exception as e:
-        # Log error but don't crash on stream processing exceptions
         import sys
         print(f"Stream processing error: {str(e)}", file=sys.stderr)
 

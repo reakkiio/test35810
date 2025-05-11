@@ -1,6 +1,24 @@
+"""
+conversation.py
+
+This module provides a modern conversation manager for handling chat-based interactions, message history, tool calls, and robust error handling. It defines the Conversation class and supporting types for managing conversational state, tool integration, and message validation.
+
+Classes:
+    ConversationError: Base exception for conversation-related errors.
+    ToolCallError: Raised when there's an error with tool calls.
+    MessageValidationError: Raised when message validation fails.
+    Message: Represents a single message in the conversation.
+    FunctionCall: TypedDict for a function call.
+    ToolDefinition: TypedDict for a tool definition.
+    FunctionCallData: TypedDict for function call data.
+    Fn: Represents a function (tool) that the agent can call.
+    Conversation: Main conversation manager class.
+
+Functions:
+    tools: Decorator to mark a function as a tool.
+"""
 import os
 import json
-import logging
 from typing import Optional, Dict, List, Any, TypedDict, Callable, TypeVar, Union
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,14 +77,15 @@ def tools(func: Callable[..., T]) -> Callable[..., T]:
     return func
 
 class Conversation:
-    """Modern conversation manager with enhanced features.
-    
+    """
+    Modern conversation manager with enhanced features.
+
     Key Features:
-    - Robust message handling with metadata
-    - Enhanced tool calling support
-    - Efficient history management
-    - Improved error handling
-    - Memory optimization
+        - Robust message handling with metadata
+        - Enhanced tool calling support
+        - Efficient history management
+        - Improved error handling
+        - Memory optimization
     """
 
     intro = (
@@ -95,23 +114,8 @@ class Conversation:
         self.prompt_allowance = 10
         self.tools = tools or []
         self.compression_threshold = compression_threshold
-        self.logger = self._setup_logger()
-        
         if filepath:
             self.load_conversation(filepath, False)
-
-    def _setup_logger(self) -> logging.Logger:
-        """Set up enhanced logging."""
-        logger = logging.getLogger("conversation")
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
-        return logger
 
     def load_conversation(self, filepath: str, exists: bool = True) -> None:
         """Load conversation with improved error handling."""
@@ -132,7 +136,6 @@ class Conversation:
                         self.intro = file_contents[0]
                         self._process_history_from_file(file_contents[1:])
         except Exception as e:
-            self.logger.error(f"Error loading conversation: {str(e)}")
             raise ConversationError(f"Failed to load conversation: {str(e)}") from e
 
     def _process_history_from_file(self, lines: List[str]) -> None:
@@ -284,7 +287,6 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             self._compress_history()
             
         except Exception as e:
-            self.logger.error(f"Error adding message: {str(e)}")
             raise ConversationError(f"Failed to add message: {str(e)}") from e
 
     def _append_to_file(self, message: Message) -> None:
@@ -299,17 +301,14 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
                 fh.write(f"\n{role_display}: {message.content}")
                 
         except Exception as e:
-            self.logger.error(f"Error writing to file: {str(e)}")
             raise ConversationError(f"Failed to write to file: {str(e)}") from e
 
     def validate_message(self, role: str, content: str) -> bool:
         """Validate message with enhanced role checking."""
         valid_roles = {'user', 'assistant', 'tool', 'system'}
         if role not in valid_roles:
-            self.logger.error(f"Invalid role: {role}")
             return False
         if not content or not isinstance(content, str):
-            self.logger.error("Invalid content")
             return False
         return True
 
@@ -345,7 +344,6 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             }
             
         except Exception as e:
-            self.logger.error(f"Error handling tool response: {str(e)}")
             raise ToolCallError(f"Failed to handle tool response: {str(e)}") from e
 
     def _parse_function_call(self, response: str) -> FunctionCallData:
@@ -381,7 +379,6 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
                 raise
 
         except Exception as e:
-            self.logger.error(f"Error parsing function call: {str(e)}")
             return {"error": str(e)}
 
     def execute_function(self, function_call_data: FunctionCallData) -> str:
@@ -405,7 +402,6 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
             return "; ".join(results)
             
         except Exception as e:
-            self.logger.error(f"Error executing function: {str(e)}")
             raise ToolCallError(f"Failed to execute function: {str(e)}") from e
 
     def get_tools_description(self) -> str:

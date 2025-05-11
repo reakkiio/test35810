@@ -38,7 +38,9 @@ class AsciiArtEffects:
                 colored_line += color + char
             colored_lines.append(colored_line + '\033[0m')  # Reset color
         
-        return '\n'.join(colored_lines)    @staticmethod
+        return '\n'.join(colored_lines)
+    
+    @staticmethod
     def glitch_effect(text: str, font: ZeroArtFont, glitch_intensity: float = 0.1) -> str:
         """
         Apply a glitch-like distortion to ASCII art

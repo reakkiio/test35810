@@ -1,6 +1,6 @@
 import sys
 from .swiftcli import CLI, option
-from .webscout_search import WEBS
+from .webscout_search import WEBS  # Import the WEBS class from webscout_search
 from .DWEBS import GoogleSearch  # Import GoogleSearch from DWEBS
 from .yep_search import YepSearch  # Import YepSearch from yep_search
 from .version import __version__
@@ -48,32 +48,7 @@ def version():
     """Show the version of webscout."""
     print(f"webscout version: {__version__}")
 
-@app.command()
-@option("--proxy", help="Proxy URL to use for requests")
-@option("--model", "-m", help="AI model to use", default="gpt-4o-mini", type=str)
-@option("--timeout", "-t", help="Timeout value for requests", type=int, default=10)
-def chat(proxy: str = None, model: str = "gpt-4o-mini", timeout: int = 10):
-    """Interactive AI chat using DuckDuckGo's AI."""
-    webs = WEBS(proxy=proxy, timeout=timeout)
-    
-    print(f"Using model: {model}")
-    print("Type your message and press Enter. Press Ctrl+C or type 'exit' to quit.\n")
-    
-    try:
-        while True:
-            try:
-                user_input = input(">>> ").strip()
-                if not user_input or user_input.lower() in ['exit', 'quit']:
-                    break
-                    
-                response = webs.chat(keywords=user_input, model=model)
-                print(f"\nAI: {response}\n")
-                
-            except Exception as e:
-                print(f"Error: {str(e)}\n")
-                
-    except KeyboardInterrupt:
-        print("\nChat session interrupted. Exiting...")
+
 
 @app.command()
 @option("--keywords", "-k", help="Search keywords", required=True)

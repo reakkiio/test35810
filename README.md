@@ -142,7 +142,6 @@ python -m webscout --help
 | Command | Description |
 |---------|-------------|
 | `python -m webscout answers -k "query"` | Perform an answers search |
-| `python -m webscout chat` | Start an interactive AI chat session |
 | `python -m webscout images -k "query"` | Search for images |
 | `python -m webscout maps -k "query"` | Perform a maps search |
 | `python -m webscout news -k "query"` | Search for news articles |
@@ -535,30 +534,12 @@ Webscout offers a comprehensive collection of AI chat providers, giving you acce
 | `DeepInfra` | Various open models | Multiple model options |
 | `Cohere` | Cohere's language models | Command models |
 | `PerplexityLabs` | Perplexity AI | Web search integration |
-| `Anthropic` | Claude models | Long context windows |
 | `YEPCHAT` | Yep.com's AI | Streaming responses |
 | `ChatGPTClone` | ChatGPT-like interface | Multiple model options |
-| `TypeGPT` | TypeChat models | Code generation focus |
+| `TypeGPT` | TypeChat models | Multiple model options |
 
 </div>
 
-<details>
-<summary><b>Example: Using Duckchat</b></summary>
-<p>
-
-```python
-from webscout import WEBS
-
-# Initialize and use Duckchat
-with WEBS() as webs:
-    response = webs.chat(
-        "Explain quantum computing in simple terms",
-        model='gpt-4o-mini'  # Options: mixtral-8x7b, llama-3.1-70b, claude-3-haiku, etc.
-    )
-    print(response)
-```
-</p>
-</details>
 
 <details>
 <summary><b>Example: Using Meta AI</b></summary>
@@ -670,41 +651,7 @@ print(response)
 </p>
 </details>
 
-<hr/>
 
-## 👨‍💻 Advanced AI Interfaces
-
-<details open>
-<summary><b>Direct Model Access with LLM and VLM</b></summary>
-<p>
-
-Webscout provides direct interfaces to language and vision-language models through the `LLM` and `VLM` classes.
-
-```python
-from webscout.LLM import LLM, VLM
-
-# Text-only model interaction
-llm = LLM("meta-llama/Meta-Llama-3-70B-Instruct")
-response = llm.chat([
-    {"role": "user", "content": "Explain the concept of neural networks"}
-])
-print(response)
-
-# Vision-language model interaction
-vlm = VLM("cogvlm-grounding-generalist")
-response = vlm.chat([
-    {
-        "role": "user",
-        "content": [
-            {"type": "image", "image_url": "path/to/image.jpg"},
-            {"type": "text", "text": "Describe what you see in this image"}
-        ]
-    }
-])
-print(response)
-```
-</p>
-</details>
 
 <details open>
 <summary><b>GGUF Model Conversion</b></summary>

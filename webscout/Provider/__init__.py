@@ -20,7 +20,6 @@ from .Llama3 import *
 from .koala import *
 from .meta import *
 from .julius import *
-from .Youchat import *
 from .yep import *
 from .Cloudflare import *
 from .turboseek import *
@@ -132,7 +131,6 @@ __all__ = [
     'Meta',
     'PiAI',
     'Julius',
-    'YouChat',
     'YEPCHAT',
     'Cloudflare',
     'TurboSeek',

@@ -27,23 +27,6 @@ class AI4Chat(Provider):
         country: str = "Asia",
         user_id: str = "usersmjb2oaz7y"
     ) -> None:
-        """
-        Initializes the AI4Chat API with given parameters.
-
-        Args:
-            is_conversation (bool, optional): Flag for chatting conversationally. Defaults to True.
-            max_tokens (int, optional): Maximum number of tokens to be generated upon completion. Defaults to 600.
-            timeout (int, optional): Http request timeout. Defaults to 30.
-            intro (str, optional): Conversation introductory prompt. Defaults to None.
-            filepath (str, optional): Path to file containing conversation history. Defaults to None.
-            update_file (bool, optional): Add new prompts and responses to the file. Defaults to True.
-            proxies (dict, optional): Http request proxies. Defaults to {}.
-            history_offset (int, optional): Limit conversation history to this number of last texts. Defaults to 10250.
-            act (str|int, optional): Awesome prompt key or index. (Used as intro). Defaults to None.
-            system_prompt (str, optional): System prompt to guide the AI's behavior. Defaults to "You are a helpful and informative AI assistant.".
-            country (str, optional): Country parameter for API. Defaults to "Asia".
-            user_id (str, optional): User ID for API. Defaults to "usersmjb2oaz7y".
-        """
         self.session = Session(timeout=timeout, proxies=proxies)
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
@@ -66,10 +49,8 @@ class AI4Chat(Provider):
             "Sec-Fetch-Site": "cross-site",
             "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
         }
-
-        self.__available_optimizers = (
-            method
-            for method in dir(Optimizers)
+        self.__available_optimizers = tuple(
+            method for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
         )
         self.session.headers.update(self.headers)
@@ -98,18 +79,6 @@ class AI4Chat(Provider):
     ) -> Dict[str, Any]:
         """
         Sends a prompt to the AI4Chat API and returns the response.
-
-        Args:
-            prompt: The text prompt to generate text from.
-            stream (bool, optional): Not supported. Defaults to False.
-            raw (bool, optional): Whether to return the raw response. Defaults to False.
-            optimizer (str, optional): The name of the optimizer to use. Defaults to None.
-            conversationally (bool, optional): Whether to chat conversationally. Defaults to False.
-            country (str, optional): Country parameter for API. Defaults to None.
-            user_id (str, optional): User ID for API. Defaults to None.
-
-        Returns:
-            dict: A dictionary containing the AI's response.
         """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -121,30 +90,23 @@ class AI4Chat(Provider):
                 raise Exception(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
         country_param = country or self.country
         user_id_param = user_id or self.user_id
-        
         encoded_text = urllib.parse.quote(conversation_prompt)
         encoded_country = urllib.parse.quote(country_param)
         encoded_user_id = urllib.parse.quote(user_id_param)
-        
         url = f"{self.api_endpoint}?text={encoded_text}&country={encoded_country}&user_id={encoded_user_id}"
-        
         try:
             response = self.session.get(url, headers=self.headers, timeout=self.timeout)
         except RequestsError as e:
             raise Exception(f"Failed to generate response: {e}")
         if not response.ok:
             raise Exception(f"Failed to generate response: {response.status_code} - {response.reason}")
-        
         response_text = response.text
-        
         if response_text.startswith('"'):
             response_text = response_text[1:]
         if response_text.endswith('"'):
             response_text = response_text[:-1]
-        
         self.last_response.update(dict(text=response_text))
         self.conversation.update_chat_history(prompt, response_text)
         return self.last_response
@@ -160,17 +122,6 @@ class AI4Chat(Provider):
     ) -> str:
         """
         Generates a response from the AI4Chat API.
-
-        Args:
-            prompt (str): The prompt to send to the AI.
-            stream (bool, optional): Not supported. 
-            optimizer (str, optional): The name of the optimizer to use. Defaults to None.
-            conversationally (bool, optional): Whether to chat conversationally. Defaults to False.
-            country (str, optional): Country parameter for API. Defaults to None.
-            user_id (str, optional): User ID for API. Defaults to None.
-
-        Returns:
-            str: The response generated by the AI.
         """
         return self.get_message(
             self.ask(
@@ -183,13 +134,8 @@ class AI4Chat(Provider):
         )
 
     def get_message(self, response: Union[dict, str]) -> str:
-        """Retrieves message only from response
-
-        Args:
-            response (Union[dict, str]): Response generated by `self.ask`
-
-        Returns:
-            str: Message extracted
+        """
+        Retrieves message only from response
         """
         if isinstance(response, str):
             return response.replace('\\n', '\n').replace('\\n\\n', '\n\n')

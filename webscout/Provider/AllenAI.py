@@ -18,15 +18,8 @@ class AllenAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        'OLMo-2-1124-13B-Instruct',  
-        'Llama-3-1-Tulu-3-8B',
         'olmo-2-0325-32b-instruct',
-        'Llama-3-1-Tulu-3-70B',
-        'OLMoE-1B-7B-0924-Instruct',
-        'tulu3-405b',
-        'olmo-2-0325-32b-instruct',
-        'tulu-3-1-8b',
-        'olmoe-0125'
+        'tulu3-405b'
     ]
 
     # Default model options from JS implementation
@@ -41,9 +34,8 @@ class AllenAI(Provider):
     
     # Host mapping for models - some models work best with specific hosts
     MODEL_HOST_MAP = {
-        'tulu3-405b': 'inferd',
-        'tulu2': 'inferd',
-        'olmo-7b-instruct': 'inferd'
+        'olmo-2-0325-32b-instruct': 'modal',
+        'tulu3-405b': 'inferd'
     }
 
     def __init__(
@@ -301,9 +293,10 @@ class AllenAI(Provider):
                     if current_parent:
                         self.parent = current_parent
                     
-                    # Update conversation history
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                    self.last_response = {"text": streaming_text} # Update last response here
+                    # Update conversation history only if not empty
+                    if streaming_text.strip():
+                        self.conversation.update_chat_history(prompt, streaming_text)
+                        self.last_response = {"text": streaming_text} # Update last response here
                     return # End the generator
             except Exception as e:
                 # Log the error but continue with the rest of the function

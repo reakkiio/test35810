@@ -23,18 +23,13 @@ from .julius import *
 from .yep import *
 from .Cloudflare import *
 from .turboseek import *
-from .Free2GPT import *
 from .TeachAnything import *
 from .AI21 import *
 from .x0gpt import *
 from .cerebras import *
 from .geminiapi import *
 from .elmo import *
-from .GPTWeb import *
 from .Netwrck import Netwrck
-from .bagoodex import *
-from .aimathgpt import *
-from .geminiprorealtime import *
 from .llmchat import *
 from .llmchatco import LLMChatCo  # Add new LLMChat.co provider
 from .talkai import *
@@ -85,9 +80,13 @@ from .GizAI import GizAI
 from .WrDoChat import WrDoChat
 from .Nemotron import NEMOTRON
 from .FreeGemini import FreeGemini
+from .Flowith import Flowith
+from .samurai import samurai
 __all__ = [
     'SCNet',
     'NEMOTRON',
+    'Flowith',
+    'samurai',
     'FreeGemini',
     'WrDoChat',
     'GizAI',
@@ -144,12 +143,7 @@ __all__ = [
     'Elmo',
     'ChatGPTClone',
     'TypefullyAI',
-    'Free2GPT',
-    'GPTWeb',
     'Netwrck',
-    'Bagoodex',
-    'AIMathGPT',
-    'GeminiPro',
     'LLMChat',
     'LLMChatCo',
     'Talkai',

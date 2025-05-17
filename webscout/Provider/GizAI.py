@@ -2,7 +2,7 @@ import os
 import base64
 import random
 import json
-from typing import Union, Dict, Any, Optional
+from typing import Union, Dict, Any, Optional, Generator
 from urllib import response
 
 from curl_cffi import CurlError
@@ -240,7 +240,7 @@ class GizAI(Provider):
         stream: bool = False,  # Parameter kept for compatibility but not used
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
+    ) -> 'Generator[str, None, None]':
         """
         Generates a response from the GizAI API.
         
@@ -251,7 +251,7 @@ class GizAI(Provider):
             conversationally (bool): Whether to generate the prompt conversationally.
             
         Returns:
-            str: The API response text.
+            Generator[str, None, None]: The API response text as a generator.
             
         Examples:
             >>> ai = GizAI()
@@ -262,7 +262,11 @@ class GizAI(Provider):
             prompt, stream=False, raw=False,
             optimizer=optimizer, conversationally=conversationally
         )
-        return self.get_message(response_data)
+        result = self.get_message(response_data)
+        if stream:
+            yield result
+        else:
+            return result
     
     def get_message(self, response: Union[dict, str]) -> str:
         """
@@ -283,3 +287,9 @@ class GizAI(Provider):
             return response
         assert isinstance(response, dict), "Response should be either dict or str"
         return response.get("text", "")
+
+if __name__ == "__main__":
+    ai = GizAI()
+    response = ai.chat("Hello, how are you?", stream=True)
+    for chunk in response:
+        print(chunk, end="", flush=True)

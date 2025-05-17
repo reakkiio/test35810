@@ -195,8 +195,17 @@ class Writecream(Provider):
                 )
             )
 
-        # Currently, Writecream API doesn't support streaming
-        return for_non_stream()
+        if stream:
+            # For compatibility with AUTO streaming interface, yield a dict
+            response_dict = self.ask(
+                prompt,
+                stream=False,
+                optimizer=optimizer,
+                conversationally=conversationally,
+            )
+            yield response_dict
+        else:
+            return for_non_stream()
 
     def get_message(self, response: dict) -> str:
         """

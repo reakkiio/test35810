@@ -31,7 +31,7 @@ class Hika(AISearch):
         timeout: int = 60,
         proxies: Optional[dict] = None,
         language: str = "en",
-        model: str = "deepseek-r1",
+        # model: str = "deepseek-r1",
         
     ):
         self.session = requests.Session()
@@ -39,7 +39,7 @@ class Hika(AISearch):
         self.endpoint = "kbase/web"
         self.timeout = timeout
         self.language = language
-        self.model = model
+        # self.model = model
         self.last_response = {}
         
         self.headers = {
@@ -104,12 +104,12 @@ class Hika(AISearch):
             "x-uid": uid
         }
         
-        # Prepare payload
+        # Prepare payload (fix: stream as string, add search_language)
         payload = {
             "keyword": prompt,
-            "model": self.model,
             "language": self.language,
-            "stream": True  # Always request streaming for consistent handling
+            "search_language": self.language,
+            "stream": "true"  # Must be string, not boolean
         }
 
         def for_stream():
@@ -131,21 +131,21 @@ class Hika(AISearch):
                         if line and line.startswith("data: "):
                             try:
                                 data = json.loads(line[6:])
+                                # Handle chunk and references
                                 if "chunk" in data:
                                     chunk = data["chunk"]
-                                    
-                                    # Skip [DONE] markers completely
                                     if "[DONE]" in chunk:
                                         continue
-                                    
-                                    # Clean the chunk
                                     clean_chunk = self.clean_text(chunk)
-                                    
-                                    if clean_chunk:  # Only yield if there's content after cleaning
+                                    if clean_chunk:
                                         if raw:
                                             yield {"text": clean_chunk}
                                         else:
                                             yield Response(clean_chunk)
+                                elif "references" in data:
+                                    # Optionally yield references if raw requested
+                                    if raw:
+                                        yield {"references": data["references"]}
                             except json.JSONDecodeError:
                                 pass
                                 

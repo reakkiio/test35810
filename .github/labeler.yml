@@ -1,0 +1,12 @@
+# Example labeler configuration
+# Add your label rules here. See https://github.com/actions/labeler for syntax.
+
+# Example:
+docs:
+  - "**/*.md"
+tests:
+  - "**/test_*.py"
+provider:
+  - "webscout/Provider/**"
+cli:
+  - "webscout/cli.py"

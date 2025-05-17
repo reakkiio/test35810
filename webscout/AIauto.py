@@ -1,7 +1,7 @@
 """
 This module provides the AUTO provider, which automatically selects and uses
 an available LLM provider from the webscout library that doesn't require
-API keys or cookies.
+API keys or cookies. 
 """
 
 from webscout.AIbase import Provider

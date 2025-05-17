@@ -45,14 +45,16 @@ class Completions(BaseCompletions):
         question = format_prompt(messages, add_special_tokens=True)
 
         # Prepare the payload for HeckAI API
+        model = self._client.convert_model_name(model)
         payload = {
             "model": model,
             "question": question,
             "language": self._client.language,
             "sessionId": self._client.session_id,
-            "previousQuestion": None,  # Not needed when using format_prompt
-            "previousAnswer": None,    # Not needed when using format_prompt
-            "imgUrls": []
+            "previousQuestion": None,
+            "previousAnswer": None,
+            "imgUrls": [],
+            "superSmartMode": False
         }
 
         request_id = f"chatcmpl-{uuid.uuid4()}"
@@ -76,69 +78,50 @@ class Completions(BaseCompletions):
             )
             response.raise_for_status()
 
-            # Track token usage across chunks
-            completion_tokens = 0
-
-            streaming_text = ""
+            streaming_text = []
             in_answer = False
 
             for line in response.iter_lines(decode_unicode=True):
                 if not line:
                     continue
-
-                # Remove "data: " prefix
                 if line.startswith("data: "):
                     data = line[6:]
                 else:
                     continue
-
-                # Check for control markers
                 if data == "[ANSWER_START]":
                     in_answer = True
                     continue
-
                 if data == "[ANSWER_DONE]":
                     in_answer = False
                     continue
-
-                if data == "[RELATE_Q_START]" or data == "[RELATE_Q_DONE]":
+                if data.startswith("[") and data.endswith("]"):
                     continue
-
-                # Process content if we're in an answer section
                 if in_answer:
-                    streaming_text += data
-                    completion_tokens += len(data) // 4  # Rough estimate
-
-                    # Create a delta object for this chunk
-                    delta = ChoiceDelta(content=data)
+                    # Fix encoding issues (e.g., emoji) for each chunk
+                    try:
+                        data_fixed = data.encode('latin1').decode('utf-8')
+                    except (UnicodeEncodeError, UnicodeDecodeError):
+                        data_fixed = data
+                    streaming_text.append(data_fixed)
+                    delta = ChoiceDelta(content=data_fixed)
                     choice = Choice(index=0, delta=delta, finish_reason=None)
-
                     chunk = ChatCompletionChunk(
                         id=request_id,
                         choices=[choice],
                         created=created_time,
                         model=model,
                     )
-
                     yield chunk
-
-            # Store the response for future context
-            # We don't need to store previous_question/answer as we're using format_prompt
-            # which handles the conversation formatting
-
             # Final chunk with finish_reason
             delta = ChoiceDelta(content=None)
             choice = Choice(index=0, delta=delta, finish_reason="stop")
-
             chunk = ChatCompletionChunk(
                 id=request_id,
                 choices=[choice],
                 created=created_time,
                 model=model,
             )
-
             yield chunk
-
         except requests.exceptions.RequestException as e:
             print(f"{RED}Error during HeckAI stream request: {e}{RESET}")
             raise IOError(f"HeckAI request failed: {e}") from e
@@ -147,10 +130,8 @@ class Completions(BaseCompletions):
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
     ) -> ChatCompletion:
         try:
-            full_text = ""
-            streaming_text = ""
+            answer_lines = []
             in_answer = False
-
             response = self._client.session.post(
                 self._client.url,
                 headers=self._client.headers,
@@ -159,64 +140,45 @@ class Completions(BaseCompletions):
                 timeout=self._client.timeout
             )
             response.raise_for_status()
-
             for line in response.iter_lines(decode_unicode=True):
                 if not line:
                     continue
-
-                # Remove "data: " prefix
                 if line.startswith("data: "):
                     data = line[6:]
                 else:
                     continue
-
-                # Check for control markers
                 if data == "[ANSWER_START]":
                     in_answer = True
                     continue
-
                 if data == "[ANSWER_DONE]":
                     in_answer = False
                     continue
-
-                if data == "[RELATE_Q_START]" or data == "[RELATE_Q_DONE]":
+                if data.startswith("[") and data.endswith("]"):
                     continue
-
-                # Process content if we're in an answer section
                 if in_answer:
-                    streaming_text += data
-
-            full_text = streaming_text
-
-            # Store the response for future context
-            # We don't need to store previous_question/answer as we're using format_prompt
-            # which handles the conversation formatting
-
-            # Create usage statistics (estimated)
+                    answer_lines.append(data)
+            full_text = " ".join(x.strip() for x in answer_lines if x.strip())
+            # Fix encoding issues (e.g., emoji)
+            try:
+                full_text = full_text.encode('latin1').decode('utf-8')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
             prompt_tokens = len(payload["question"]) // 4
             completion_tokens = len(full_text) // 4
             total_tokens = prompt_tokens + completion_tokens
-
             usage = CompletionUsage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens
             )
-
-            # Create the message object
             message = ChatCompletionMessage(
                 role="assistant",
-                content=full_text
-            )
-
-            # Create the choice object
+                content=full_text)
             choice = Choice(
                 index=0,
                 message=message,
                 finish_reason="stop"
             )
-
-            # Create the completion object
             completion = ChatCompletion(
                 id=request_id,
                 choices=[choice],
@@ -224,9 +186,7 @@ class Completions(BaseCompletions):
                 model=model,
                 usage=usage,
             )
-
             return completion
-
         except Exception as e:
             print(f"{RED}Error during HeckAI non-stream request: {e}{RESET}")
             raise IOError(f"HeckAI request failed: {e}") from e

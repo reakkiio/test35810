@@ -115,7 +115,7 @@ class Conversation:
         self.tools = tools or []
         self.compression_threshold = compression_threshold
         if filepath:
-            self.load_conversation(filepath, False)
+            self.load_conversation(filepath, True)
 
     def load_conversation(self, filepath: str, exists: bool = True) -> None:
         """Load conversation with improved error handling."""

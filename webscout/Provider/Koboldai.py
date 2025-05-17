@@ -125,6 +125,7 @@ class KOBOLDAI(Provider):
                 )
 
             message_load = ""
+            final_resp = None
             for value in response.iter_lines(
                 decode_unicode=True,
                 delimiter="" if raw else "event: message\ndata:",
@@ -135,12 +136,14 @@ class KOBOLDAI(Provider):
                     message_load += self.get_message(resp)
                     resp["token"] = message_load
                     self.last_response.update(resp)
-                    yield value if raw else resp
+                    final_resp = resp  # Always keep the latest
                 except json.decoder.JSONDecodeError:
                     pass
-            self.conversation.update_chat_history(
-                prompt, self.get_message(self.last_response)
-            )
+            if final_resp:
+                yield final_resp if not raw else json.dumps(final_resp)
+                self.conversation.update_chat_history(
+                    prompt, self.get_message(self.last_response)
+                )
 
         def for_non_stream():
             # let's make use of stream

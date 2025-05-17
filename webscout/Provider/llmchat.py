@@ -22,6 +22,9 @@ class LLMChat(Provider):
         "@cf/meta/llama-3.2-1b-instruct",
         "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "@cf/mistralai/mistral-small-3.1-24b-instruct",
+        "@cf/google/gemma-3-12b-it",
     ]
 
     def __init__(

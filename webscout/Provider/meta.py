@@ -537,6 +537,7 @@ class Meta(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         f"Failed to generate response - {response.text}"
                     )
+                final_message = None
                 for line in lines:
                     if line:
                         json_line = json.loads(line)
@@ -544,10 +545,12 @@ class Meta(Provider):
                         if not extracted_data.get("message"):
                             continue
                         self.last_response.update(extracted_data)
-                        yield line if raw else extracted_data
-                self.conversation.update_chat_history(
-                    prompt, self.get_message(self.last_response)
-                )
+                        final_message = extracted_data  # Always keep the latest
+                if final_message:
+                    yield final_message if not raw else json.dumps(final_message)
+                    self.conversation.update_chat_history(
+                        prompt, self.get_message(self.last_response)
+                    )
 
             return for_stream()
         else:

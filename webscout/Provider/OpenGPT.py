@@ -184,7 +184,7 @@ class OpenGPT(Provider):
         # If stream=True was requested, simulate streaming by yielding the full message at once
         if stream:
             def stream_wrapper():
-                yield self.get_message(response_data)
+                yield self.get_message(response_data)  # yield only the text string
             return stream_wrapper()
         else:
             # If stream=False, return the full message directly

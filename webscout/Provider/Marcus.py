@@ -173,24 +173,16 @@ class Marcus(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generates a response from the AskMarcus API."""
-        def for_stream_chat():
-            # ask() yields dicts or strings when streaming
-            gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
-                optimizer=optimizer, conversationally=conversationally
-            )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
-
-        def for_non_stream_chat():
-            # ask() returns dict or str when not streaming
-            response_data = self.ask(
-                prompt, stream=False, raw=False, # Ensure ask returns dict
-                optimizer=optimizer, conversationally=conversationally
-            )
-            return self.get_message(response_data) # get_message expects dict
-
-        return for_stream_chat() if stream else for_non_stream_chat()
+        response_data = self.ask(
+            prompt, stream=False, raw=False, # Always get the full response
+            optimizer=optimizer, conversationally=conversationally
+        )
+        if stream:
+            def stream_wrapper():
+                yield self.get_message(response_data)
+            return stream_wrapper()
+        else:
+            return self.get_message(response_data)
 
     def get_message(self, response: Dict[str, Any]) -> str:
         """Extracts the message from the API response."""

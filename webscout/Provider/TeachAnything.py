@@ -163,18 +163,16 @@ class TeachAnything(Provider):
         stream: bool = False, # Keep stream param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
-        """Generate response `str`
+    ) -> Union[str, Any]:
+        """Generate response `str` or yield for streaming compatibility
         Args:
             prompt (str): Prompt to be send.
             stream (bool, optional): Flag for streaming response. Defaults to False.
             optimizer (str, optional): Prompt optimizer name - `[code, shell_command]`. Defaults to None.
             conversationally (bool, optional): Chat conversationally when using optimizer. Defaults to False.
         Returns:
-            str: Response generated
+            str or generator: Response generated
         """
-
-        # Since ask() now handles both stream=True/False by returning the full response dict/str:
         response_data = self.ask(
             prompt, 
             stream=False, # Call ask in non-stream mode internally
@@ -182,13 +180,11 @@ class TeachAnything(Provider):
             optimizer=optimizer, 
             conversationally=conversationally
         )
-        # If stream=True was requested, simulate streaming by yielding the full message at once
         if stream:
             def stream_wrapper():
                 yield self.get_message(response_data)
             return stream_wrapper()
         else:
-            # If stream=False, return the full message directly
             return self.get_message(response_data)
 
     def get_message(self, response: Union[dict, str]) -> str:

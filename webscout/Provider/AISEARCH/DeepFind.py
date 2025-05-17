@@ -84,30 +84,11 @@ class DeepFind(AISearch):
             >>> ai = DeepFind(proxies={'http': 'http://proxy.com:8080'})  # With proxy
         """
         self.session = requests.Session()
-        self.api_endpoint = "https://www.deepfind.co/?q={query}"
         self.stream_chunk_size = 1024
         self.timeout = timeout
         self.last_response = {}
-        self.headers = {
-            "Accept": "text/x-component",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "Content-Type": "text/plain;charset=UTF-8",
-            "DNT": "1",
-            "Next-Action": "f354668f23f516a46ad0abe4dedb84b19068bb54",
-            "Next-Router-State-Tree": '%5B%22%22%2C%7B%22children%22%3A%5B%22__PAGE__%3F%7B%5C%22q%5C%22%3A%5C%22hi%5C%22%7D%22%2C%7B%7D%2C%22%2F%3Fq%3Dhi%22%2C%22refresh%22%5D%7D%2Cnull%2Cnull%2Ctrue%5D',
-            "Origin": "https://www.deepfind.co",
-            "Referer": "https://www.deepfind.co/?q=hi",
-            "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Microsoft Edge";v="132"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "User-Agent": LitAgent().random(),
-        }
-        self.session.headers.update(self.headers)
         self.proxies = proxies
+        # Headers will be set per request, as conversationId is dynamic
 
     def search(
         self,
@@ -160,25 +141,61 @@ class DeepFind(AISearch):
             ... except exceptions.APIConnectionError as e:
             ...     print(f"API error: {e}")
         """
-        url = self.api_endpoint.format(query=prompt)
+        conversation_id = uuid4().hex
+        message_id = uuid4().hex
+        url = f"https://www.deepfind.co/s/{conversation_id}"
         payload = [
-            [{"role": "user", "id": uuid4().hex, "content": prompt}],
-            uuid4().hex,
+            {
+                "id": conversation_id,
+                "messages": [
+                    {
+                        "role": "user",
+                        "conversationId": conversation_id,
+                        "messageId": message_id,
+                        "content": prompt,
+                    }
+                ],
+            },
+            conversation_id,
+            message_id,
         ]
+        # Update headers for this conversation
+        headers = {
+            "Accept": "text/x-component",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
+            "Content-Type": "text/plain;charset=UTF-8",
+            "DNT": "1",
+            "Next-Action": "f354668f23f516a46ad0abe4dedb84b19068bb54",
+            "Next-Router-State-Tree": f'%5B%22%22%2C%7B%22children%22%3A%5B%22s%22%2C%7B%22children%22%3A%5B%5B%22conversationId%22%2C%22{conversation_id}%22%2C%22d%22%5D%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2C%22%2Fs%2F{conversation_id}%22%2C%22refresh%22%5D%7D%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D',
+            "Origin": "https://www.deepfind.co",
+            "Referer": f"https://www.deepfind.co/s/{conversation_id}",
+            "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Microsoft Edge";v="132"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": LitAgent().random(),
+        }
+        self.session.headers.clear()
+        self.session.headers.update(headers)
 
         def for_stream():
             try:
                 with self.session.post(
                     url,
-                    headers=self.headers,
+                    headers=headers,
                     json=payload,
                     stream=True,
                     timeout=self.timeout,
+                    proxies=self.proxies,
                 ) as response:
                     response.raise_for_status()
                     streaming_text = ""
                     for line in response.iter_lines(decode_unicode=True):
                         if line:
+                            # Try to extract content from the new streaming format
                             content_matches = re.findall(r'"content":"([^"\\]*(?:\\.[^"\\]*)*)"', line)
                             if content_matches:
                                 for content in content_matches:
@@ -191,18 +208,6 @@ class DeepFind(AISearch):
                                             yield {"text": delta}
                                         else:
                                             yield Response(delta)
-                            description_matches = re.findall(r'"description":"([^"\\]*(?:\\.[^"\\]*)*)"', line)
-                            if description_matches:
-                                for description in description_matches:
-                                    if description and len(description) > len(streaming_text):
-                                        delta = description[len(streaming_text):]
-                                        streaming_text = description
-                                        delta = delta.replace('\\"', '"').replace('\\n', '\n')
-                                        delta = re.sub(r'\[REF\]\(https?://[^\s]*\)', '', delta)
-                                        if raw:
-                                            yield {"text": f"{delta}\n"}
-                                        else:
-                                            yield Response(f"{delta}\n")
                     self.last_response = Response(streaming_text)
             except requests.exceptions.RequestException as e:
                 raise exceptions.APIConnectionError(f"Request failed: {e}")
@@ -217,7 +222,6 @@ class DeepFind(AISearch):
             if not raw:
                 self.last_response = Response(full_response)
                 return self.last_response
-        
         return for_stream() if stream else for_non_stream()
 
     @staticmethod

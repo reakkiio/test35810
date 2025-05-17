@@ -56,6 +56,10 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - AI4Chat
 - MCPCore
 - TypefullyAI
+- Flowith
+- ChatSandbox
+- Cloudflare
+
 ---
 
 ### <img src="https://img.shields.io/badge/DeepInfra-0A0A0A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM1OGE2ZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjAgMTFhOCA4IDAgMCAwLTE2IDAiPjwvcGF0aD48cGF0aCBkPSJtMTIgMTEgOS0xIj48L3BhdGg+PHBhdGggZD0iTTEyIDExIDMgMTAiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFWMiI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxMXY5Ij48L3BhdGg+PC9zdmc+" alt="" height="20" style="vertical-align: middle; margin-right: 8px;"> DeepInfra
@@ -1216,3 +1220,33 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>
   <a href="https://buymeacoffee.com/oevortex"><img alt="Buy Me A Coffee" src="https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black"></a>
 </div>
+
+## Flowith OpenAI-Compatible Provider
+
+This provider allows you to use the Flowith API with an OpenAI-compatible interface. It supports the following models:
+
+- gpt-4.1-mini
+- deepseek-chat
+- deepseek-reasoner
+- claude-3.5-haiku
+- gemini-2.0-flash
+- gemini-2.5-flash
+- grok-3-mini
+
+### Usage Example
+
+```python
+from Provider.OPENAI.flowith import Flowith
+
+client = Flowith()
+response = client.chat.completions.create(
+    model="gpt-4.1-mini",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+
+- `AVAILABLE_MODELS` and `models()` are provided for model discovery.
+- The provider is compatible with the OpenAI API interface used in this project.
+
+See the source code for more details and advanced usage.

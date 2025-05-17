@@ -364,3 +364,8 @@ class Cloudflare(OpenAICompatibleProvider):
         
         # Initialize chat interface
         self.chat = Chat(self)
+
+    @classmethod
+    def models(cls):
+        """Return the list of available models for Cloudflare."""
+        return cls.AVAILABLE_MODELS

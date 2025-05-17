@@ -284,3 +284,8 @@ class AI4Chat(OpenAICompatibleProvider):
 
         # Initialize chat interface
         self.chat = Chat(self)
+
+    @classmethod
+    def models(cls):
+        """Return the list of available models for AI4Chat."""
+        return cls.AVAILABLE_MODELS

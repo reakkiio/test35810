@@ -346,7 +346,10 @@ class TypefullyAI(OpenAICompatibleProvider):
         print(f"{RED}Warning: Unknown model '{model}'. Using 'openai:gpt-4o-mini' instead.{RESET}")
         return "openai:gpt-4o-mini"
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for TypefullyAI."""
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+

@@ -402,3 +402,10 @@ class ExaAI(OpenAICompatibleProvider):
         # ExaAI only supports O3-Mini, regardless of the input model
         print(f"Note: ExaAI only supports O3-Mini model. Ignoring provided model '{model}'.")
         return "O3-Mini"
+    
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

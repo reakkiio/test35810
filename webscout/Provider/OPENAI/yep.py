@@ -274,6 +274,13 @@ class YEPCHAT(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return YEPCHAT.AVAILABLE_MODELS
+        return _ModelList()
+
     def convert_model_name(self, model: str) -> str:
         """
         Ensures the model name is valid for YEPCHAT.

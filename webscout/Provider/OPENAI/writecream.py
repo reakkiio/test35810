@@ -144,6 +144,13 @@ class Writecream(OpenAICompatibleProvider):
     def convert_model_name(self, model: str) -> str:
         return "writecream"
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return Writecream.AVAILABLE_MODELS
+        return _ModelList()
+
 # Simple test if run directly
 if __name__ == "__main__":
     client = Writecream()

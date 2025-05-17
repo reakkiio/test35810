@@ -379,3 +379,10 @@ class WiseCat(OpenAICompatibleProvider):
         # Default to the most capable model
         print(f"Warning: Unknown model '{model}'. Using 'chat-model-large' instead.")
         return "chat-model-large"
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

@@ -268,6 +268,12 @@ class HeckAI(OpenAICompatibleProvider):
         print(f"{BOLD}Warning: Model '{model}' not found, using default model 'google/gemini-2.0-flash-001'{RESET}")
         return "google/gemini-2.0-flash-001"
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
 
 # Simple test if run directly
 if __name__ == "__main__":

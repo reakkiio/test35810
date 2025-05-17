@@ -315,7 +315,9 @@ class Glider(OpenAICompatibleProvider):
         print(f"Warning: Unknown model '{model}'. Using 'chat-llama-3-1-70b' instead.")
         return "chat-llama-3-1-70b"
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for Glider."""
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

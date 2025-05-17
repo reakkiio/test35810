@@ -261,6 +261,15 @@ class SonusAI(OpenAICompatibleProvider):
         print(f"{BOLD}Warning: Model '{model}' not found, using default model 'pro'{RESET}")
         return "pro"
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
+
+
 
 # Simple test if run directly
 if __name__ == "__main__":

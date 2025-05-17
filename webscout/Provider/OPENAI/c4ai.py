@@ -365,3 +365,9 @@ class C4AI(OpenAICompatibleProvider):
 
         except Exception:
             return str(uuid.uuid4())
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

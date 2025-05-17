@@ -365,6 +365,12 @@ class ExaChat(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
     def _get_endpoint(self, provider: str) -> str:
         """Get the API endpoint for the specified provider."""
         return MODEL_CONFIGS[provider]["endpoint"]

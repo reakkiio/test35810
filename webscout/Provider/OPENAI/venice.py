@@ -411,3 +411,15 @@ class Venice(OpenAICompatibleProvider):
         # Default to the most capable model
         print(f"Warning: Unknown model '{model}'. Using 'mistral-31-24b' instead.")
         return "mistral-31-24b"
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
+    @classmethod
+    def models(cls):
+        """Return the list of available models for Venice."""
+        return cls.AVAILABLE_MODELS

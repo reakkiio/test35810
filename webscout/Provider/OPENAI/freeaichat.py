@@ -351,7 +351,9 @@ class FreeAIChat(OpenAICompatibleProvider):
         print(f"Warning: Unknown model '{model}'. Using 'GPT 4o' instead.")
         return "GPT 4o"
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for FreeAIChat."""
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

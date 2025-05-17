@@ -345,6 +345,13 @@ class TypeGPT(OpenAICompatibleProvider):
         print(f"Warning: Unknown model '{model}'. Using 'chatgpt-4o-latest' instead.")
         return "chatgpt-4o-latest"
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
     @classmethod
     def models(cls):
         """Return the list of available models for TypeGPT."""

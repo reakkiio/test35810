@@ -276,6 +276,14 @@ class MultiChatAI(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
+
     def _get_endpoint(self) -> str:
         """Get the API endpoint for the current provider."""
         return MODEL_CONFIGS[self.provider]["endpoint"]

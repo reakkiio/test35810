@@ -392,6 +392,13 @@ class Toolbaz(OpenAICompatibleProvider):
             print(f"{RED}Error getting Toolbaz authentication: {e}{RESET}")
             return None
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
 # Example usage
 if __name__ == "__main__":
     # Test the provider

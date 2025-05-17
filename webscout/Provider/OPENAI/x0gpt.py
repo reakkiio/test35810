@@ -319,6 +319,13 @@ class X0GPT(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return X0GPT.AVAILABLE_MODELS
+        return _ModelList()
+
     def format_text(self, text: str) -> str:
         """
         Format text by replacing escaped newlines with actual newlines.

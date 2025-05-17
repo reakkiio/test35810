@@ -1158,6 +1158,12 @@ class E2B(OpenAICompatibleProvider):
         # Initialize the chat interface
         self.chat = Chat(self)
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
     def convert_model_name(self, model: str) -> str:
         """Normalize and validate model name."""
         normalized_model = self.MODEL_NAME_NORMALIZATION.get(model, model)

@@ -44,8 +44,11 @@ class OpenAICompatibleProvider(ABC):
         """Initialize the provider, potentially with an API key."""
         raise NotImplementedError
 
-    @classmethod
+    @property
     @abstractmethod
-    def models(cls) -> List[str]:
-        """Return the list of available models for the provider."""
-        raise NotImplementedError
+    def models(self):
+        """
+        Property that returns an object with a .list() method returning available models.
+        Subclasses must implement this property.
+        """
+        pass

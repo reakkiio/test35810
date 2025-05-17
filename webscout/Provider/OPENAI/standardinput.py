@@ -423,3 +423,11 @@ class StandardInput(OpenAICompatibleProvider):
             # If any error occurs, return the original text
             print(f"Warning: Error formatting text: {e}")
             return text
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+

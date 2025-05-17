@@ -479,3 +479,10 @@ class ChatGPTClone(OpenAICompatibleProvider):
         # Default to the most capable model
         print(f"Warning: Unknown model '{model}'. Using 'gpt-4' instead.")
         return "gpt-4"
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

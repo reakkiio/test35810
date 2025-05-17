@@ -155,9 +155,12 @@ class ChatSandbox(OpenAICompatibleProvider):
     chat: Chat
     def __init__(self):
         self.chat = Chat(self)
-    @classmethod
-    def models(cls):
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
     def convert_model_name(self, model: str) -> str:
         if model in self.AVAILABLE_MODELS:
             return model

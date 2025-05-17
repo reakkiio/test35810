@@ -374,3 +374,10 @@ class MCPCore(OpenAICompatibleProvider):
             print(f"{RED}An unexpected error occurred loading cookies: {e}{RESET}")
             return None
 
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+

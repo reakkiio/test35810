@@ -463,7 +463,9 @@ class SciraChat(OpenAICompatibleProvider):
         print(f"Warning: Unknown model '{model}'. Using 'scira-default' instead.")
         return "scira-default"
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for SciraChat."""
-        return list(cls.AVAILABLE_MODELS.keys())
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

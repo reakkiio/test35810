@@ -310,11 +310,12 @@ class Netwrck(OpenAICompatibleProvider):
         print(f"{BOLD}Warning: Model '{model}' not found, using default model 'anthropic/claude-3-7-sonnet-20250219'{RESET}")
         return "anthropic/claude-3-7-sonnet-20250219"
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for Netwrck."""
-        return cls.AVAILABLE_MODELS
-
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
 
 # Simple test if run directly
 if __name__ == "__main__":

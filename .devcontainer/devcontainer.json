@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "build": "pip install -e .[dev]",
-    "test": "pytest"
-  }
-}

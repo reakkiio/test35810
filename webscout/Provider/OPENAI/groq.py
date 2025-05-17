@@ -353,7 +353,9 @@ class Groq(OpenAICompatibleProvider):
             # Fallback to default models list if fetching fails
             return cls.AVAILABLE_MODELS
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for Groq."""
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

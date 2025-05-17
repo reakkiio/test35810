@@ -310,3 +310,10 @@ class DeepInfra(OpenAICompatibleProvider):
         }
         self.session.headers.update(self.headers)
         self.chat = Chat(self)
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()

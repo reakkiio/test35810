@@ -486,3 +486,11 @@ class OPKFC(OpenAICompatibleProvider):
 
         # Initialize chat interface
         self.chat = Chat(self)
+
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+

@@ -330,7 +330,10 @@ class TextPollinations(OpenAICompatibleProvider):
         # Initialize chat interface
         self.chat = Chat(self)
 
-    @classmethod
-    def models(cls):
-        """Return the list of available models for TextPollinations."""
-        return cls.AVAILABLE_MODELS
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+

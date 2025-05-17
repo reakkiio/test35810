@@ -18,6 +18,7 @@ class TextPollinationsAI(Provider):
         "openai",
         "openai-fast",
         "openai-large",
+        "openai-roblox",
         "qwen-coder",
         "llama",
         "llamascout",
@@ -30,7 +31,6 @@ class TextPollinationsAI(Provider):
         "evil",
         "deepseek-reasoning",
         "phi",
-        "llama-vision",
         "hormoz",
         "hypnosis-tracy",
         "deepseek",
@@ -306,4 +306,3 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"\r{model:<50} {'✗':<10} {str(e)}")
-

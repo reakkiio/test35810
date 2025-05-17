@@ -59,6 +59,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - Flowith
 - ChatSandbox
 - Cloudflare
+- NEMOTRON
 
 ---
 

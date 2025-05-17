@@ -275,6 +275,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
     def add_message(self, role: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Add a message with enhanced validation and metadata support."""
         try:
+            role = role.lower()  # Normalize role to lowercase
             if not self.validate_message(role, content):
                 raise MessageValidationError("Invalid message role or content")
 
@@ -308,7 +309,10 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         valid_roles = {'user', 'assistant', 'tool', 'system'}
         if role not in valid_roles:
             return False
-        if not content or not isinstance(content, str):
+        if not isinstance(content, str):
+            return False
+        # Allow empty content for assistant (needed for streaming)
+        if not content and role != 'assistant':
             return False
         return True
 
@@ -424,9 +428,9 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         This method adds both the user's prompt and the assistant's response
         to the conversation history as separate messages.
         """
-        # Add user's message
+        # Add user's message (normalize role)
         self.add_message("user", prompt)
         
-        # Add assistant's response
+        # Add assistant's response (normalize role)
         self.add_message("assistant", response)
 

@@ -191,8 +191,8 @@ class LambdaChat(Provider):
         reasoning_text = ""
         if chunk["type"] == "stream" and "token" in chunk:
             return chunk["token"].replace("\u0000", "")
-        elif chunk["type"] == "finalAnswer":
-            return chunk.get("text")
+        # elif chunk["type"] == "finalAnswer":
+        #     return chunk.get("text")
         elif chunk["type"] == "reasoning" and chunk.get("subtype") == "stream" and "token" in chunk:
             # Prepend reasoning with <think> tags? Or handle separately? For now, just return token.
             return chunk["token"] # Or potentially format as f"<think>{chunk['token']}</think>"

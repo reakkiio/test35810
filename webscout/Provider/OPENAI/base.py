@@ -44,3 +44,8 @@ class OpenAICompatibleProvider(ABC):
         """Initialize the provider, potentially with an API key."""
         raise NotImplementedError
 
+    @classmethod
+    @abstractmethod
+    def models(cls) -> List[str]:
+        """Return the list of available models for the provider."""
+        raise NotImplementedError

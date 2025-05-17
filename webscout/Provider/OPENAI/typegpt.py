@@ -344,3 +344,8 @@ class TypeGPT(OpenAICompatibleProvider):
         # Default to chatgpt-4o-latest if model not found (this one works reliably)
         print(f"Warning: Unknown model '{model}'. Using 'chatgpt-4o-latest' instead.")
         return "chatgpt-4o-latest"
+
+    @classmethod
+    def models(cls):
+        """Return the list of available models for TypeGPT."""
+        return cls.AVAILABLE_MODELS

@@ -314,3 +314,8 @@ class Glider(OpenAICompatibleProvider):
         # Default to the most capable model
         print(f"Warning: Unknown model '{model}'. Using 'chat-llama-3-1-70b' instead.")
         return "chat-llama-3-1-70b"
+
+    @classmethod
+    def models(cls):
+        """Return the list of available models for Glider."""
+        return cls.AVAILABLE_MODELS

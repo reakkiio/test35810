@@ -87,6 +87,12 @@ dev = [
     "ruff>=0.1.6",
     "pytest>=7.4.2",
 ]
+api = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "python-multipart",
+]
 
 [tool.setuptools]
 package-dir = {"" = "."}

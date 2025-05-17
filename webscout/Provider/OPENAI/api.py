@@ -1,3 +1,20 @@
+"""
+OpenAI-Compatible API Server for Webscout
+
+This module provides an OpenAI-compatible API server that allows using
+various AI providers through a standardized interface compatible with
+OpenAI's API. This enables using Webscout providers with any tool or
+application designed to work with OpenAI's API.
+
+Usage:
+    # From command line:
+    python -m webscout.Provider.OPENAI.api --port 8080 --api-key "your-key"
+    
+    # From Python code:
+    from webscout.Provider.OPENAI.api import start_server
+    start_server(port=8080, api_key="your-key")
+"""
+
 from __future__ import annotations
 
 import logging
@@ -134,13 +151,16 @@ def initialize_provider_map():
     # Find all provider classes (subclasses of OpenAICompatibleProvider)
     for name, obj in inspect.getmembers(module):
         if inspect.isclass(obj) and issubclass(obj, OpenAICompatibleProvider) and obj.__name__ != "OpenAICompatibleProvider":
+            # Register the provider class by its name
             AppConfig.provider_map[obj.__name__] = obj
             logger.info(f"Registered provider: {obj.__name__}")
-            # Also add additional mappings for convenience
-            if hasattr(obj, "AVAILABLE_MODELS"):
+            
+            # Also add additional mappings for model names
+            if hasattr(obj, "AVAILABLE_MODELS") and isinstance(obj.AVAILABLE_MODELS, (list, tuple, set)):
                 for model in obj.AVAILABLE_MODELS:
-                    AppConfig.provider_map[model] = obj
-                    logger.info(f"Mapped model {model} to provider {obj.__name__}")
+                    if model and isinstance(model, str) and model != obj.__name__:
+                        AppConfig.provider_map[model] = obj
+                        logger.info(f"Mapped model {model} to provider {obj.__name__}")
     
     # If no providers were found, add a fallback for testing
     if not AppConfig.provider_map:
@@ -152,8 +172,15 @@ def initialize_provider_map():
         AppConfig.provider_map["gpt-4o-mini"] = ChatGPT
         AppConfig.default_provider = "ChatGPT"
     
-    logger.info(f"Available providers: {list(set(v.__name__ for v in AppConfig.provider_map.values()))}")
-    logger.info(f"Available models: {list(AppConfig.provider_map.keys())}")
+    # Get distinct provider names
+    provider_names = list(set(v.__name__ for v in AppConfig.provider_map.values()))
+    
+    # Get model names (excluding provider class names)
+    provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
+    model_names = [model for model in AppConfig.provider_map.keys() if model not in provider_class_names]
+    
+    logger.info(f"Available providers ({len(provider_names)}): {provider_names}")
+    logger.info(f"Available models ({len(model_names)}): {sorted(model_names)}")
     logger.info(f"Default provider: {AppConfig.default_provider}")
 
 class Api:
@@ -657,21 +684,51 @@ def format_exception(e: Union[Exception, str]) -> str:
         }
     })
 
+def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider: str = None):
+    """
+    Simple helper function to start the OpenAI-compatible API server.
+    
+    Args:
+        port: Port to run the server on (default: 8000)
+        api_key: Optional API key for authentication
+        default_provider: Default provider to use (e.g., "ChatGPT", "Claude", etc.)
+        
+    Example:
+        ```python
+        from webscout.Provider.OPENAI.api import start_server
+        
+        # Start server with default settings
+        start_server()
+        
+        # Start server with custom settings
+        start_server(port=8080, api_key="your-api-key", default_provider="Claude")
+        ```
+    """
+    run_api(
+        host="0.0.0.0",
+        port=port,
+        api_key=api_key,
+        default_provider=default_provider,
+        debug=False,
+    )
+
 def run_api(
     host: str = '0.0.0.0',
     port: int = None,
     api_key: str = None,
     default_provider: str = None,
     debug: bool = False,
+    show_available_providers: bool = True,
 ) -> None:
     """Run the API server
     
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
-        api_key: API key for authentication
+        api_key: API key for authentication (optional)
         default_provider: Default provider to use if no provider is specified
         debug: Whether to run in debug mode
+        show_available_providers: Whether to display available providers on startup
     """
     print(f"Starting Webscout OpenAI API server...")
     
@@ -683,6 +740,35 @@ def run_api(
         api_key=api_key,
         default_provider=default_provider or AppConfig.default_provider
     )
+    
+    # Initialize provider map early to show available providers
+    initialize_provider_map()
+    
+    if show_available_providers:
+        print("\n=== Available Providers ===")
+        providers = list(set(v.__name__ for v in AppConfig.provider_map.values()))
+        for i, provider in enumerate(providers, 1):
+            print(f"{i}. {provider}")
+        
+        print("\n=== Available Models ===")
+        # Filter out provider class names from the model list
+        provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
+        models = [model for model in AppConfig.provider_map.keys() if model not in provider_class_names]
+        
+        # Display models in a more organized way
+        if models:
+            for i, model in enumerate(sorted(models), 1):
+                print(f"{i}. {model}")
+        else:
+            print("No specific models registered. Use provider names as models.")
+
+        print(f"\nDefault provider: {AppConfig.default_provider}")
+        print(f"API Authentication: {'Enabled' if api_key else 'Disabled'}")
+        print(f"Server URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
+        print(f"API Endpoint: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/v1/chat/completions")
+        print(f"Documentation: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/docs")
+        print("\nUse Ctrl+C to stop the server")
+        print("=" * 30 + "\n")
     
     # Run the server
     uvicorn.run(
@@ -699,16 +785,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Webscout OpenAI-compatible API server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to bind the server to")
-    parser.add_argument("--api-key", help="API key for authentication")
+    parser.add_argument("--api-key", help="API key for authentication (optional)")
     parser.add_argument("--default-provider", help="Default provider to use if no provider is specified")
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
+    parser.add_argument("--quiet", action="store_true", help="Don't show available providers on startup")
     
     args = parser.parse_args()
     
-    run_api(
-        host=args.host,
-        port=args.port,
-        api_key=args.api_key,
-        default_provider=args.default_provider,
-        debug=args.debug,
-    )
+    try:
+        run_api(
+            host=args.host,
+            port=args.port,
+            api_key=args.api_key,
+            default_provider=args.default_provider,
+            debug=args.debug,
+            show_available_providers=not args.quiet,
+        )
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
+    except Exception as e:
+        print(f"\nError: {e}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()

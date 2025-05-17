@@ -28,6 +28,7 @@
 - [🌟 Key Features](#-features)
 - [⚙️ Installation](#️-installation)
 - [🖥️ Command Line Interface](#️-command-line-interface)
+- [🔄 OpenAI-Compatible API Server](#-openai-compatible-api-server)
 - [🔍 Search Engines](#-search-engines)
 - [🦆 DuckDuckGo Search](#-duckduckgo-search-with-webs-and-asyncwebs)
 - [💻 WEBS API Reference](#-webs-api-reference)
@@ -45,7 +46,7 @@
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
 > - **Local LLM Compatibility:** Run local models with [Inferno](https://github.com/HelpingAI/inferno), an OpenAI-compatible server (now a standalone package)
 >
-> Choose the approach that best fits your needs! For OpenAI compatibility, check the [OpenAI Providers README](webscout/Provider/OPENAI/README.md).
+> Choose the approach that best fits your needs! For OpenAI compatibility, check the [OpenAI Providers README](webscout/Provider/OPENAI/README.md) or see the [OpenAI-Compatible API Server](#-openai-compatible-api-server) section below.
 
 > [!NOTE]
 > Webscout supports over 90 AI providers including: LLAMA, C4ai, Venice, Copilot, HuggingFaceChat, PerplexityLabs, DeepSeek, WiseCat, GROQ, OPENAI, GEMINI, DeepInfra, Meta, YEPCHAT, TypeGPT, ChatGPTClone, ExaAI, Claude, Anthropic, Cloudflare, AI21, Cerebras, and many more. All providers follow similar usage patterns with consistent interfaces.
@@ -197,6 +198,111 @@ For more information, visit the [Inferno GitHub repository](https://github.com/H
 > - 16 GB of RAM for 13B models
 > - 32 GB of RAM for 33B models
 > - GPU acceleration is recommended for better performance
+
+<details open>
+<summary><b>🔄 OpenAI-Compatible API Server</b></summary>
+<p>
+
+Webscout includes an OpenAI-compatible API server that allows you to use any supported provider with tools and applications designed for OpenAI's API.
+
+### Starting the API Server
+
+#### From Command Line
+
+```bash
+# Start with default settings (port 8000)
+python -m webscout.Provider.OPENAI.api
+
+# Start with custom port
+python -m webscout.Provider.OPENAI.api --port 8080
+
+# Start with API key authentication
+python -m webscout.Provider.OPENAI.api --api-key "your-secret-key"
+
+# Specify a default provider
+python -m webscout.Provider.OPENAI.api --default-provider "Claude"
+
+# Run in debug mode
+python -m webscout.Provider.OPENAI.api --debug
+```
+
+#### From Python Code
+
+```python
+# Method 1: Using the helper function
+from webscout.Provider.OPENAI.api import start_server
+
+# Start with default settings
+start_server()
+
+# Start with custom settings
+start_server(port=8080, api_key="your-secret-key", default_provider="Claude")
+
+# Method 2: Using the run_api function for more control
+from webscout.Provider.OPENAI.api import run_api
+
+run_api(
+    host="0.0.0.0",
+    port=8080,
+    api_key="your-secret-key",
+    default_provider="Claude",
+    debug=True
+)
+```
+
+### Using the API
+
+Once the server is running, you can use it with any OpenAI client library or tool:
+
+```python
+# Using the OpenAI Python client
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="your-secret-key",  # Only needed if you set an API key
+    base_url="http://localhost:8000/v1"  # Point to your local server
+)
+
+# Chat completion
+response = client.chat.completions.create(
+    model="gpt-4",  # This can be any model name registered with Webscout
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello, how are you?"}
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+### Using with cURL
+
+```bash
+# Basic chat completion request
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-key" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
+
+# List available models
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer your-secret-key"
+```
+
+### Available Endpoints
+
+- `GET /v1/models` - List all available models
+- `GET /v1/models/{model_name}` - Get information about a specific model
+- `POST /v1/chat/completions` - Create a chat completion
+
+</p>
+</details>
 
 <hr/>
 

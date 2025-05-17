@@ -111,92 +111,93 @@ class ModelData(BaseModel):
 @dataclass
 class ModelList(BaseModel):
     """OpenAI model list response."""
+    data: List[ModelData] # Moved before 'object'
     object: str = "list"
-    data: List[ModelData]
 
-@dataclass
-class EmbeddingData(BaseModel):
-    """Single embedding data."""
-    object: str = "embedding"
-    embedding: List[float]
-    index: int
 
-@dataclass
-class EmbeddingResponse(BaseModel):
-    """OpenAI embeddings response."""
-    object: str = "list"
-    data: List[EmbeddingData]
-    model: str
-    usage: CompletionUsage
+# @dataclass
+# class EmbeddingData(BaseModel):
+#     """Single embedding data."""
+#     embedding: List[float]
+#     index: int
+#     object: str = "embedding"
 
-@dataclass
-class FineTuningJob(BaseModel):
-    """OpenAI fine-tuning job."""
-    id: str
-    object: str = "fine_tuning.job"
-    model: str
-    created_at: int
-    finished_at: Optional[int] = None
-    status: str
-    training_file: str
-    validation_file: Optional[str] = None
-    hyperparameters: Dict[str, Any]
-    trained_tokens: Optional[int] = None
-    result_files: Optional[List[str]] = None
-    organization_id: Optional[str] = None
+# @dataclass
+# class EmbeddingResponse(BaseModel):
+#     """OpenAI embeddings response."""
+#     data: List[EmbeddingData]
+#     model: str
+#     usage: CompletionUsage
+#     object: str = "list"
 
-@dataclass
-class FineTuningJobList(BaseModel):
-    """OpenAI fine-tuning job list response."""
-    object: str = "list"
-    data: List[FineTuningJob]
-    has_more: bool = False
+# @dataclass
+# class FineTuningJob(BaseModel):
+#     """OpenAI fine-tuning job."""
+#     id: str
+#     model: str
+#     created_at: int
+#     status: str
+#     training_file: str
+#     hyperparameters: Dict[str, Any]
+#     object: str = "fine_tuning.job"
+#     finished_at: Optional[int] = None
+#     validation_file: Optional[str] = None
+#     trained_tokens: Optional[int] = None
+#     result_files: Optional[List[str]] = None
+#     organization_id: Optional[str] = None
 
-@dataclass
-class File(BaseModel):
-    """OpenAI file."""
-    id: str
-    object: str = "file"
-    bytes: int
-    created_at: int
-    filename: str
-    purpose: str
-    status: str = "uploaded"
-    status_details: Optional[str] = None
+# @dataclass
+# class FineTuningJobList(BaseModel):
+#     """OpenAI fine-tuning job list response."""
+#     data: List[FineTuningJob]
+#     object: str = "list"
+#     has_more: bool = False
 
-@dataclass
-class FileList(BaseModel):
-    """OpenAI file list response."""
-    object: str = "list"
-    data: List[File]
+# @dataclass
+# class File(BaseModel):
+#     """OpenAI file."""
+#     id: str
+#     bytes: int
+#     created_at: int
+#     filename: str
+#     purpose: str
+#     object: str = "file"
+#     status: str = "uploaded"
+#     status_details: Optional[str] = None
 
-@dataclass
-class DeletedObject(BaseModel):
-    """OpenAI deleted object response."""
-    id: str
-    object: str = "deleted_object"
-    deleted: bool = True
+# @dataclass
+# class FileList(BaseModel):
+#     """OpenAI file list response."""
+#     data: List[File]
+#     object: str = "list"
 
-@dataclass
-class ImageData(BaseModel):
-    """OpenAI generated image."""
-    url: Optional[str] = None
-    b64_json: Optional[str] = None
-    revised_prompt: Optional[str] = None
+# @dataclass
+# class DeletedObject(BaseModel):
+#     """OpenAI deleted object response."""
+#     id: str
+#     object: str = "deleted_object"
+#     deleted: bool = True
 
-@dataclass
-class ImageResponse(BaseModel):
-    """OpenAI image generation response."""
-    created: int = int(time.time())
-    data: List[ImageData]
+# @dataclass
+# class ImageData(BaseModel):
+#     """OpenAI generated image."""
+#     url: Optional[str] = None
+#     b64_json: Optional[str] = None
+#     revised_prompt: Optional[str] = None
+
+# @dataclass
+# class ImageResponse(BaseModel):
+#     """OpenAI image generation response."""
+#     data: List[ImageData]
+#     created: int = int(time.time())
 
 @dataclass
 class ChatCompletion(BaseModel):
     """Chat completion response."""
-    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
-    created: int = field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[Choice]
+    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
+    created: int = field(default_factory=lambda: int(time.time()))
     object: str = "chat.completion"
     system_fingerprint: Optional[str] = None
     usage: Optional[CompletionUsage] = None
@@ -204,10 +205,10 @@ class ChatCompletion(BaseModel):
 @dataclass
 class ChatCompletionChunk(BaseModel):
     """Streaming chat completion response chunk."""
-    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
-    created: int = field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[Choice]
+    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
+    created: int = field(default_factory=lambda: int(time.time()))
     object: str = "chat.completion.chunk"
     system_fingerprint: Optional[str] = None
 
@@ -215,7 +216,7 @@ class ChatCompletionChunk(BaseModel):
 # --- Helper Functions ---
 
 def format_prompt(messages: List[Dict[str, Any]], add_special_tokens: bool = False,
-                do_continue: bool = False, include_system: bool = True) -> str:
+                 do_continue: bool = False, include_system: bool = True) -> str:
     """
     Format a series of messages into a single string, optionally adding special tokens.
 

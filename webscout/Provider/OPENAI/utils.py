@@ -1,6 +1,8 @@
-from typing import List, Dict, Optional, Any, Union
-from dataclasses import dataclass, asdict, is_dataclass
+from typing import List, Dict, Optional, Any, Union, Literal
+from dataclasses import dataclass, asdict, is_dataclass, field
 from enum import Enum
+import time
+import uuid
 
 # --- OpenAI Response Structure Mimics ---
 # Moved here for reusability across different OpenAI-compatible providers
@@ -96,10 +98,103 @@ class Choice(BaseModel):
     logprobs: Optional[Dict[str, Any]] = None
 
 @dataclass
+class ModelData(BaseModel):
+    """OpenAI model info response."""
+    id: str
+    object: str = "model"
+    created: int = int(time.time())
+    owned_by: str = "webscout"
+    permission: Optional[List[Dict[str, Any]]] = None
+    root: Optional[str] = None
+    parent: Optional[str] = None
+
+@dataclass
+class ModelList(BaseModel):
+    """OpenAI model list response."""
+    object: str = "list"
+    data: List[ModelData]
+
+@dataclass
+class EmbeddingData(BaseModel):
+    """Single embedding data."""
+    object: str = "embedding"
+    embedding: List[float]
+    index: int
+
+@dataclass
+class EmbeddingResponse(BaseModel):
+    """OpenAI embeddings response."""
+    object: str = "list"
+    data: List[EmbeddingData]
+    model: str
+    usage: CompletionUsage
+
+@dataclass
+class FineTuningJob(BaseModel):
+    """OpenAI fine-tuning job."""
+    id: str
+    object: str = "fine_tuning.job"
+    model: str
+    created_at: int
+    finished_at: Optional[int] = None
+    status: str
+    training_file: str
+    validation_file: Optional[str] = None
+    hyperparameters: Dict[str, Any]
+    trained_tokens: Optional[int] = None
+    result_files: Optional[List[str]] = None
+    organization_id: Optional[str] = None
+
+@dataclass
+class FineTuningJobList(BaseModel):
+    """OpenAI fine-tuning job list response."""
+    object: str = "list"
+    data: List[FineTuningJob]
+    has_more: bool = False
+
+@dataclass
+class File(BaseModel):
+    """OpenAI file."""
+    id: str
+    object: str = "file"
+    bytes: int
+    created_at: int
+    filename: str
+    purpose: str
+    status: str = "uploaded"
+    status_details: Optional[str] = None
+
+@dataclass
+class FileList(BaseModel):
+    """OpenAI file list response."""
+    object: str = "list"
+    data: List[File]
+
+@dataclass
+class DeletedObject(BaseModel):
+    """OpenAI deleted object response."""
+    id: str
+    object: str = "deleted_object"
+    deleted: bool = True
+
+@dataclass
+class ImageData(BaseModel):
+    """OpenAI generated image."""
+    url: Optional[str] = None
+    b64_json: Optional[str] = None
+    revised_prompt: Optional[str] = None
+
+@dataclass
+class ImageResponse(BaseModel):
+    """OpenAI image generation response."""
+    created: int = int(time.time())
+    data: List[ImageData]
+
+@dataclass
 class ChatCompletion(BaseModel):
     """Chat completion response."""
-    id: str
-    created: int
+    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
+    created: int = field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[Choice]
     object: str = "chat.completion"
@@ -109,8 +204,8 @@ class ChatCompletion(BaseModel):
 @dataclass
 class ChatCompletionChunk(BaseModel):
     """Streaming chat completion response chunk."""
-    id: str
-    created: int
+    id: str = field(default_factory=lambda: f"chatcmpl-{str(uuid.uuid4())}")
+    created: int = field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[Choice]
     object: str = "chat.completion.chunk"

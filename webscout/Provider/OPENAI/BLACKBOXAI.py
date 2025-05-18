@@ -3,7 +3,7 @@ import random
 import string
 import base64
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Union, Generator, Any
+from typing import List, Dict, Optional, Any
 import json
 import uuid
 import time
@@ -11,7 +11,7 @@ import time
 # Import base classes and utility structures
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
-    ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
+    ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage
 )
 
@@ -40,7 +40,7 @@ def to_data_uri(image_data):
 class Completions(BaseCompletions):
     def __init__(self, client: 'BLACKBOXAI'):
         self._client = client
-    
+
     def create(
         self,
         *,
@@ -51,34 +51,37 @@ class Completions(BaseCompletions):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         **kwargs: Any
-    ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
+    ) -> ChatCompletion:
         """
         Create a chat completion with BlackboxAI API.
-        
+
         Args:
             model: The model to use (from AVAILABLE_MODELS)
             messages: List of message dictionaries with 'role' and 'content'
             max_tokens: Maximum number of tokens to generate
-            stream: Whether to stream the response
+            stream: If True, raises an error as streaming is not supported
             temperature: Sampling temperature (0-1)
             top_p: Nucleus sampling parameter (0-1)
             **kwargs: Additional parameters to pass to the API
-            
+
         Returns:
-            If stream=False, returns a ChatCompletion object
-            If stream=True, returns a Generator yielding ChatCompletionChunk objects
+            Returns a ChatCompletion object
         """
+        # Check if streaming is requested and raise an error
+        if stream:
+            raise ValueError("Streaming is not supported by the BLACKBOXAI provider. Please use stream=False.")
+
         # Generate request ID and timestamp
         request_id = str(uuid.uuid4())
         created_time = int(time.time())
-        
+
         # Extract system message if present
         system_message = "You are a helpful AI assistant."
         for msg in messages:
             if msg.get("role") == "system":
                 system_message = msg.get("content")
                 break
-        
+
         # Look for any image content
         media = []
         for msg in messages:
@@ -104,22 +107,8 @@ class Completions(BaseCompletions):
                                             media.append((image_response.content, image_name))
                                     except Exception as e:
                                         pass
-        
-        # Use streaming implementation if requested
-        if stream:
-            return self._create_streaming(
-                request_id=request_id,
-                created_time=created_time,
-                model=model,
-                messages=messages,
-                system_message=system_message,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                media=media
-            )
-        
-        # Otherwise use non-streaming implementation
+
+        # Use non-streaming implementation
         return self._create_non_streaming(
             request_id=request_id,
             created_time=created_time,
@@ -131,127 +120,9 @@ class Completions(BaseCompletions):
             top_p=top_p,
             media=media
         )
-    
-    def _create_streaming(
-        self,
-        *,
-        request_id: str,
-        created_time: int,
-        model: str,
-        messages: List[Dict[str, Any]],
-        system_message: str,
-        max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        media: List = None
-    ) -> Generator[ChatCompletionChunk, None, None]:
-        """Implementation for streaming chat completions."""
-        try:
-            # Prepare user messages for BlackboxAI API format
-            blackbox_messages = []
-            for i, msg in enumerate(messages):
-                if msg["role"] == "system":
-                    continue  # System message handled separately
-                    
-                msg_id = self._client.generate_id() if i > 0 else request_id
-                blackbox_messages.append({
-                    "id": msg_id,
-                    "content": msg["content"],
-                    "role": msg["role"]
-                })
-            
-            # Add image data if provided
-            if media and blackbox_messages:
-                blackbox_messages[-1]['data'] = {
-                    "imagesData": [
-                        {
-                            "filePath": f"/",
-                            "contents": to_data_uri(image)
-                        } for image in media
-                    ],
-                    "fileText": "",
-                    "title": ""
-                }
-            
-            # Generate request payload with session
-            request_email = f"{self._client.generate_random_string(8)}@blackbox.ai"
-            session_data = self._client.generate_session(request_email)
-            
-            # Create the API request payload
-            payload = self._client.create_request_payload(
-                messages=blackbox_messages,
-                chat_id=request_id,
-                system_message=system_message,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                session_data=session_data,
-                model=model
-            )
-            
-            # Make the API request with cookies
-            response = self._client.session.post(
-                self._client.api_endpoint,
-                json=payload,
-                headers=self._client.headers,
-                cookies=self._client.cookies,  # Add cookies to the request
-                stream=True,
-                timeout=self._client.timeout
-            )
-            
-            # Process the streaming response
-            accumulated_content = ""
-            for line in response.iter_lines(decode_unicode=True, delimiter="\n"):
-                if not line:
-                    continue
-                    
-                # Skip error messages but don't raise exceptions
-                if "service has been suspended" in line.lower() or "API request failed" in line:
-                    continue
-                
-                if "You have reached your request limit" in line:
-                    continue
-                    
-                # Handle SSE formatted lines
-                if line.startswith("data: "):
-                    line = line[6:]
-                
-                # Remove any special formatting that might be in the response
-                line = line.strip()
-                
-                # Skip empty lines after processing
-                if not line:
-                    continue
-                    
-                # Create and yield a chunk
-                delta = ChoiceDelta(content=line)
-                choice = Choice(index=0, delta=delta, finish_reason=None)
-                accumulated_content += line
-                
-                chunk = ChatCompletionChunk(
-                    id=request_id,
-                    choices=[choice],
-                    created=created_time,
-                    model=model
-                )
-                
-                yield chunk
-            
-            # Final chunk with finish_reason
-            delta = ChoiceDelta(content=None)
-            choice = Choice(index=0, delta=delta, finish_reason="stop")
-            chunk = ChatCompletionChunk(
-                id=request_id,
-                choices=[choice],
-                created=created_time,
-                model=model
-            )
-            
-            yield chunk
-            
-        except Exception as e:
-            raise IOError(f"BlackboxAI streaming request failed: {str(e)}") from e
-    
+
+
+
     def _create_non_streaming(
         self,
         *,
@@ -267,43 +138,101 @@ class Completions(BaseCompletions):
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
         try:
-            # Collect all content from streaming response
-            response_chunks = []
-            for chunk in self._create_streaming(
-                request_id=request_id,
-                created_time=created_time,
-                model=model,
-                messages=messages,
+            # Prepare user messages for BlackboxAI API format
+            blackbox_messages = []
+            for i, msg in enumerate(messages):
+                if msg["role"] == "system":
+                    continue  # System message handled separately
+
+                msg_id = self._client.generate_id() if i > 0 else request_id
+                blackbox_messages.append({
+                    "id": msg_id,
+                    "content": msg["content"],
+                    "role": msg["role"]
+                })
+
+            # Add image data if provided
+            if media and blackbox_messages:
+                blackbox_messages[-1]['data'] = {
+                    "imagesData": [
+                        {
+                            "filePath": f"/",
+                            "contents": to_data_uri(image)
+                        } for image in media
+                    ],
+                    "fileText": "",
+                    "title": ""
+                }
+
+            # Generate request payload with session
+            request_email = f"{self._client.generate_random_string(8)}@blackbox.ai"
+            session_data = self._client.generate_session(request_email)
+
+            # Create the API request payload
+            payload = self._client.create_request_payload(
+                messages=blackbox_messages,
+                chat_id=request_id,
                 system_message=system_message,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
-                media=media
-            ):
-                # Only collect chunks with content
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    response_chunks.append(chunk.choices[0].delta.content)
-            
-            # Combine all chunks into full content
-            full_content = "".join(response_chunks)
-            
+                session_data=session_data,
+                model=model
+            )
+
+            # Make the API request with cookies
+            response = self._client.session.post(
+                self._client.api_endpoint,
+                json=payload,
+                headers=self._client.headers,
+                cookies=self._client.cookies,
+                timeout=self._client.timeout
+            )
+
+            # Process the response
+            full_content = ""
+            if response.status_code == 200:
+                # Extract content from response text
+                response_text = response.text
+
+                # Handle possible SSE format in response
+                if "data: " in response_text:
+                    # Extract content from SSE format
+                    content_lines = []
+                    for line in response_text.split('\n'):
+                        if line.startswith("data: "):
+                            line = line[6:].strip()
+                            if line and not any(error_msg in line.lower() for error_msg in [
+                                "service has been suspended",
+                                "api request failed",
+                                "you have reached your request limit"
+                            ]):
+                                content_lines.append(line)
+                    full_content = "".join(content_lines)
+                else:
+                    # Regular response
+                    full_content = response_text
+            else:
+                # Handle error response
+                raise IOError(f"BlackboxAI request failed with status code {response.status_code}")
+
             # Create the completion message
             message = ChatCompletionMessage(
                 role="assistant",
                 content=full_content
             )
-            
+
             # Create the choice with the message
             choice = Choice(
                 index=0,
                 message=message,
                 finish_reason="stop"
             )
-            
+
             # Estimate token usage
             prompt_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
             completion_tokens = len(full_content) // 4
-            
+
             # Create the final completion object
             completion = ChatCompletion(
                 id=request_id,
@@ -316,9 +245,9 @@ class Completions(BaseCompletions):
                     total_tokens=prompt_tokens + completion_tokens
                 )
             )
-            
+
             return completion
-            
+
         except Exception as e:
             raise IOError(f"BlackboxAI request failed: {str(e)}") from e
 
@@ -331,7 +260,7 @@ class Chat(BaseChat):
 class BLACKBOXAI(OpenAICompatibleProvider):
     """
     OpenAI-compatible client for BlackboxAI API.
-    
+
     Usage:
         client = BLACKBOXAI()
         response = client.chat.completions.create(
@@ -345,7 +274,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
     default_vision_model = default_model
     api_endpoint = "https://www.blackbox.ai/api/chat"
     timeout = 30
-    
+
 
     # Default model (remains the same as per original class)
     default_model = "GPT-4.1"
@@ -513,18 +442,31 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         'Heroku Agent': {'mode': True, 'id': "heroku"},
     }
 
-    # Complete list of all models (for authorized users) - used for AVAILABLE_MODELS
-    _all_models = list(dict.fromkeys([
-        *models,  # Includes default_model, o3-mini, etc., and openrouter_models and agent names
-        *list(agentMode.keys()), # Ensure all agentMode keys are included
-        *list(trendingAgentMode.keys()) # Ensure all trendingAgentMode keys are included
+    # Create a list of all model aliases
+    _all_model_aliases = list(dict.fromkeys([
+        # Add all model aliases
+        "gpt-4", "gpt-4.1", "gpt-4o", "gpt-4o-mini",
+        "claude-3.7-sonnet", "claude-3.5-sonnet",
+        "deepcoder-14b", "deephermes-3-8b", "deepseek-r1-zero", "deepseek-r1",
+        "dolphin-3.0-24b", "dolphin-3.0-r1-24b", "reka-flash", "gemini-2.0-flash",
+        "gemma-2-9b", "gemma-3-12b", "gemma-3-1b", "gemma-3-27b", "gemma-3-4b",
+        "kimi-vl-a3b-thinking", "llama-3.1-8b", "nemotron-253b", "llama-3.2-11b",
+        "llama-3.2-1b", "llama-3.2-3b", "llama-3.3-70b", "nemotron-49b",
+        "llama-4-maverick", "llama-4-scout", "mistral-7b", "mistral-nemo",
+        "mistral-small-24b", "mistral-small-24b-instruct-2501", "mistral-small-3.1-24b",
+        "molmo-7b", "moonlight-16b", "qwen-2.5-72b", "qwen-2.5-7b", "qwen-2.5-coder-32b",
+        "qwen-2.5-vl-32b", "qwen-2.5-vl-3b", "qwen-2.5-vl-72b", "qwen-2.5-vl-7b",
+        "qwerky-72b", "qwq-32b", "qwq-32b-preview", "qwq-32b-arliai",
+        "deepseek-r1-distill-llama-70b", "deepseek-r1-distill-qwen-14b", "deepseek-r1-distill-qwen-32b",
+        # Add base models
+        "o3-mini", "gpt-4.1-nano"
     ]))
 
-    AVAILABLE_MODELS = {name: name for name in _all_models}
-    # Update AVAILABLE_MODELS to use names from agentMode if available
-    for model_name_key in agentMode:
-        if model_name_key in AVAILABLE_MODELS: # Check if the key from agentMode is in _all_models
-            AVAILABLE_MODELS[model_name_key] = agentMode[model_name_key].get('name', model_name_key)
+    # Create AVAILABLE_MODELS as a list with the format "BLACKBOXAI/model"
+    AVAILABLE_MODELS = [f"BLACKBOXAI/{name}" for name in _all_model_aliases]
+
+    # Create a mapping dictionary for internal use
+    _model_mapping = {name: f"BLACKBOXAI/{name}" for name in _all_model_aliases}
 
 
     # Model aliases for easier reference
@@ -582,24 +524,20 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         "deepseek-r1-distill-qwen-14b": "R1 Distill Qwen 14B",
         "deepseek-r1-distill-qwen-32b": "R1 Distill Qwen 32B",
     }
-    
+
     def __init__(
         self,
-        proxies: dict = {},
-        **kwargs: Any
+        proxies: dict = {}
     ):
         """
         Initialize the BlackboxAI provider with OpenAI compatibility.
-        
+
         Args:
-            api_key: Optional API key (included for compatibility but not used)
-            tools: Optional list of tools (included for compatibility but not used)
             proxies: Optional proxy configuration
-            **kwargs: Additional parameters
         """
         # Initialize session
         self.session = requests.Session()
-        
+
         # Set headers based on GitHub reference
         self.headers = {
             'Accept': 'text/event-stream',
@@ -617,20 +555,20 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             'Sec-Fetch-Site': 'same-origin',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
         }
-        
+
         # Set cookies for the session
         self.cookies = {
             'cfzs_amplitude': self.generate_id(32),
             'cfz_amplitude': self.generate_id(32),
             '__cf_bm': self.generate_id(32),
         }
-        
+
         # Set proxies if provided
         self.session.proxies = proxies
-        
+
         # Initialize chat interface with completions
         self.chat = Chat(self)
-    
+
     @property
     def models(self):
         class _ModelList:
@@ -638,10 +576,14 @@ class BLACKBOXAI(OpenAICompatibleProvider):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
 
-    
+
     @classmethod
     def get_model(cls, model: str) -> str:
         """Resolve model name from alias."""
+        # Remove BLACKBOXAI/ prefix if present
+        if model.startswith("BLACKBOXAI/"):
+            model = model[len("BLACKBOXAI/"):]
+
         # Convert to lowercase for case-insensitive matching
         model_lower = model.lower()
 
@@ -650,9 +592,13 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             if model_lower == alias.lower():
                 return target
 
-        # If the model is directly in available models, return it
-        for available_model in cls.AVAILABLE_MODELS:
+        # If the model is directly in available models (without the prefix), return it
+        for available_model in cls._all_model_aliases:
             if model_lower == available_model.lower():
+                # Find the corresponding model in model_aliases or use the model directly
+                for alias, target in cls.model_aliases.items():
+                    if available_model.lower() == alias.lower():
+                        return target
                 return available_model
 
         # If we get here, use the default model
@@ -663,7 +609,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         """Generate a random string of specified length."""
         chars = string.ascii_lowercase + string.digits
         return ''.join(random.choice(chars) for _ in range(length))
-    
+
     @classmethod
     def generate_id(cls, length: int = 7) -> str:
         """Generate a random ID of specified length."""
@@ -710,7 +656,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             "expires": expiry,
             "isNewUser": False
         }
-        
+
     def create_request_payload(
         self,
         messages: List[Dict[str, Any]],
@@ -726,10 +672,10 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         # Get the correct model ID and agent mode
         model_name = self.get_model(model or self.default_model)
         agent_mode = self.agentMode.get(model_name, {})
-        
+
         # Generate a random customer ID for the subscription
         customer_id = "cus_" + ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(14))
-        
+
         # Create the full request payload
         return {
             "messages": messages,

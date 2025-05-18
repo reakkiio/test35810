@@ -56,7 +56,13 @@ class Completions(BaseCompletions):
         Mimics openai.chat.completions.create
         Note: YEPCHAT does not support system messages. They will be ignored.
         """
-        if model not in self._client.AVAILABLE_MODELS:
+        # Accept both raw and prefixed model names from the user, but always send the raw name to the API
+        if model.startswith("YEPCHAT/"):
+            model_raw = model.replace("YEPCHAT/", "", 1)
+        else:
+            model_raw = model
+        # Validate model
+        if f"YEPCHAT/{model_raw}" not in self._client.AVAILABLE_MODELS:
             raise ValueError(
                 f"Invalid model: {model}. Choose from: {self._client.AVAILABLE_MODELS}"
             )
@@ -86,7 +92,7 @@ class Completions(BaseCompletions):
             "top_p": top_p,
             "temperature": temperature,
             "messages": filtered_messages,  # Use filtered messages
-            "model": model,
+            "model": model_raw,  # Send only the raw model name to the API
         }
 
         # Add any extra kwargs to the payload
@@ -104,7 +110,6 @@ class Completions(BaseCompletions):
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
-            # Use session.post from cloudscraper instance
             response = self._client.session.post(
                 self._client.api_endpoint,
                 headers=self._client.headers,
@@ -115,7 +120,6 @@ class Completions(BaseCompletions):
             )
 
             if not response.ok:
-                # Simplified error handling for now, add refresh logic if needed
                 raise IOError(
                     f"YEPCHAT API Error: {response.status_code} {response.reason} - {response.text}"
                 )
@@ -133,9 +137,10 @@ class Completions(BaseCompletions):
                             delta_data = choice_data.get('delta', {})
                             finish_reason = choice_data.get('finish_reason')
                             content = delta_data.get('content')
+                            role = delta_data.get('role', None)
 
-                            if content is not None:  # Only yield chunks with content
-                                delta = ChoiceDelta(content=content, role=delta_data.get('role', 'assistant'))
+                            if content is not None or role is not None:
+                                delta = ChoiceDelta(content=content, role=role)
                                 choice = Choice(index=0, delta=delta, finish_reason=finish_reason)
                                 chunk = ChatCompletionChunk(
                                     id=request_id,
@@ -151,7 +156,7 @@ class Completions(BaseCompletions):
 
             # Yield final chunk with finish reason if not already sent
             delta = ChoiceDelta()
-            choice = Choice(index=0, delta=delta, finish_reason="stop")  # Assume stop if loop finishes
+            choice = Choice(index=0, delta=delta, finish_reason="stop")
             chunk = ChatCompletionChunk(
                 id=request_id,
                 choices=[choice],
@@ -167,21 +172,34 @@ class Completions(BaseCompletions):
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
     ) -> ChatCompletion:
         full_response_content = ""
-        finish_reason = "stop"  # Assume stop unless error occurs
-
+        finish_reason = "stop"
         try:
-            stream_generator = self._create_stream(request_id, created_time, model, payload)
-            for chunk in stream_generator:
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    full_response_content += chunk.choices[0].delta.content
-                if chunk.choices and chunk.choices[0].finish_reason:
-                    finish_reason = chunk.choices[0].finish_reason  # Capture finish reason if provided
-
-        except IOError as e:
+            # Make a non-streaming request to the API
+            payload_copy = payload.copy()
+            payload_copy["stream"] = False
+            response = self._client.session.post(
+                self._client.api_endpoint,
+                headers=self._client.headers,
+                cookies=self._client.cookies,
+                json=payload_copy,
+                timeout=self._client.timeout
+            )
+            if not response.ok:
+                raise IOError(
+                    f"YEPCHAT API Error: {response.status_code} {response.reason} - {response.text}"
+                )
+            data = response.json()
+            if 'choices' in data and len(data['choices']) > 0:
+                # YEPCHAT non-streaming returns message content in choices[0]['message']['content']
+                full_response_content = data['choices'][0].get('message', {}).get('content', '')
+                finish_reason = data['choices'][0].get('finish_reason', 'stop')
+            else:
+                full_response_content = ''
+                finish_reason = 'stop'
+        except Exception as e:
             print(f"Error obtaining non-stream response from YEPCHAT: {e}")
             finish_reason = "error"
 
-        # Construct the final ChatCompletion object
         message = ChatCompletionMessage(
             role="assistant",
             content=full_response_content
@@ -191,9 +209,7 @@ class Completions(BaseCompletions):
             message=message,
             finish_reason=finish_reason
         )
-        # Usage data is not provided by this API in a standard way, set to 0
         usage = CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-
         completion = ChatCompletion(
             id=request_id,
             choices=[choice],
@@ -219,7 +235,13 @@ class YEPCHAT(OpenAICompatibleProvider):
         )
         print(response.choices[0].message.content)
     """
-    AVAILABLE_MODELS = ["DeepSeek-R1-Distill-Qwen-32B", "Mixtral-8x7B-Instruct-v0.1"]
+    _base_models = ["DeepSeek-R1-Distill-Qwen-32B", "Mixtral-8x7B-Instruct-v0.1"]
+
+    # Create AVAILABLE_MODELS as a list with the format "YEPCHAT/model"
+    AVAILABLE_MODELS = [f"YEPCHAT/{model}" for model in _base_models]
+
+    # Create a mapping dictionary for internal use
+    _model_mapping = {model: f"YEPCHAT/{model}" for model in _base_models}
 
     def __init__(
         self,

@@ -288,13 +288,11 @@ class WiseCat(OpenAICompatibleProvider):
         )
     """
 
-    AVAILABLE_MODELS = [
-        "chat-model-small",
-        "chat-model-large",
-        "chat-model-reasoning",
-    ]
-
-    # No model mapping needed as we use the model names directly
+    _base_models = ["chat-model-small", "chat-model-large", "chat-model-reasoning"]
+    # Create AVAILABLE_MODELS as a list with the format "WiseCat/model"
+    AVAILABLE_MODELS = [f"WiseCat/{model}" for model in _base_models]
+    # Create a mapping dictionary for internal use
+    _model_mapping = {model: f"WiseCat/{model}" for model in _base_models}
 
     def __init__(
         self,
@@ -364,19 +362,14 @@ class WiseCat(OpenAICompatibleProvider):
 
     def convert_model_name(self, model: str) -> str:
         """
-        Convert model names to ones supported by WiseCat.
-
-        Args:
-            model: Model name to convert
-
-        Returns:
-            WiseCat model name
+        Convert model names to ones supported by WiseCat. Accepts both 'WiseCat/model' and raw model names.
         """
-        # If the model is already a valid WiseCat model, return it
-        if model in self.AVAILABLE_MODELS:
-            return model
-
-        # Default to the most capable model
+        if model.startswith("WiseCat/"):
+            model_raw = model.replace("WiseCat/", "", 1)
+        else:
+            model_raw = model
+        if f"WiseCat/{model_raw}" in self.AVAILABLE_MODELS:
+            return model_raw
         print(f"Warning: Unknown model '{model}'. Using 'chat-model-large' instead.")
         return "chat-model-large"
 
@@ -384,5 +377,5 @@ class WiseCat(OpenAICompatibleProvider):
     def models(self):
         class _ModelList:
             def list(inner_self):
-                return type(self).AVAILABLE_MODELS
+                return WiseCat.AVAILABLE_MODELS
         return _ModelList()

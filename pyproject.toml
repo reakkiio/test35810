@@ -71,6 +71,7 @@ dependencies = [
     "gradio_client",
     "psutil",
     "aiohttp",
+    "zstandard",
 ]
 
 [project.scripts]

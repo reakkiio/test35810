@@ -185,7 +185,7 @@ def use_streaming(api_url, api_key=None):
 
 if __name__ == "__main__":
     # Default API URL (change this to your API server URL)
-    api_url = "http://localhost:8000/v1"
+    api_url = "https://ai4free-test.hf.space/v1"
     
     # Get API URL from command line argument if provided
     if len(sys.argv) > 1:

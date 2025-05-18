@@ -25,15 +25,18 @@ import os
 import uuid
 import time
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Any, Generator
-from fastapi import FastAPI, Response, Request, Depends, Body
+from typing import List, Dict, Optional, Union, Any, Generator, Callable
+from fastapi import FastAPI, Response, Request, Depends, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
-from starlette.exceptions import HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import (
     HTTP_200_OK,
     HTTP_422_UNPROCESSABLE_ENTITY, 
@@ -43,7 +46,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 from typing import List, Optional, Literal, Union
 
 # Import provider classes from the OPENAI directory
@@ -113,11 +116,200 @@ class AppConfig:
     api_key: Optional[str] = None
     provider_map = {}
     default_provider = "ChatGPT"
+    base_url: Optional[str] = None
 
     @classmethod
     def set_config(cls, **data):
         for key, value in data.items():
             setattr(cls, key, value)
+
+# Enhanced middleware for robust request body parsing
+class RobustBodyParsingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Only process POST requests to specific endpoints
+        if request.method == "POST" and any(path in request.url.path for path in ["/v1/chat/completions", "/v1/completions"]):
+            try:
+                # Try parsing the JSON body manually first to catch JSON errors early
+                body = await request.body()
+                
+                # Handle empty body case explicitly
+                if not body or len(body.strip() if isinstance(body, str) else body) == 0:
+                    logger.warning("Empty request body received")
+                    return JSONResponse(
+                        status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                        content=jsonable_encoder({
+                            "detail": [
+                                {
+                                    "loc": ["body"],
+                                    "message": "Request body is empty. Please provide a valid JSON body with 'model' and 'messages' fields.",
+                                    "type": "value_error.missing"
+                                }
+                            ]
+                        }),
+                    )
+                    
+                body_str = body.decode('utf-8', errors='ignore')
+                original_body = body_str
+                logger.debug(f"Original request body: {body_str}")
+                
+                # Try to parse the JSON body
+                try:
+                    # First try normal JSON parsing
+                    json_body = json.loads(body_str)
+                    logger.debug("JSON parsed successfully")
+                    
+                    # Validate required fields for chat completions
+                    if "/v1/chat/completions" in request.url.path:
+                        if "model" not in json_body:
+                            json_body["model"] = AppConfig.default_provider
+                            logger.info(f"Added default model: {AppConfig.default_provider}")
+                        
+                        if "messages" not in json_body or not json_body["messages"]:
+                            return JSONResponse(
+                                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                                content=jsonable_encoder({
+                                    "detail": [
+                                        {
+                                            "loc": ["body", "messages"],
+                                            "message": "Field 'messages' is required and cannot be empty.",
+                                            "type": "value_error.missing"
+                                        }
+                                    ]
+                                }),
+                            )
+                    
+                    # Update the request body with the validated JSON
+                    request._body = json.dumps(json_body).encode('utf-8')
+                    
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON parse error, attempting fixes: {str(e)}")
+                    
+                    # Series of fixes to try for common JSON issues from different clients
+                    import re
+                    
+                    # Fix 1: Remove trailing commas in objects and arrays
+                    body_str = re.sub(r',\s*}', '}', body_str)
+                    body_str = re.sub(r',\s*]', ']', body_str)
+                    
+                    # Fix 2: Replace literal backslash+quote with just quote
+                    body_str = body_str.replace('\\"', '"')
+                    
+                    # Fix 3: Replace single quotes with double quotes
+                    try:
+                        fixed_body = body_str.replace("'", '"')
+                        json.loads(fixed_body)
+                        body_str = fixed_body
+                        logger.info("Fixed JSON by replacing single quotes with double quotes")
+                    except json.JSONDecodeError:
+                        # If that didn't work, continue with other fixes
+                        pass
+                            
+                    # Fix 4: Add quotes to unquoted property names
+                    body_str = re.sub(r'\{([^"\s][^:\s]*)(\s*:)', r'{"\1"\2', body_str)
+                    body_str = re.sub(r',\s*([^"\s][^:\s]*)(\s*:)', r', "\1"\2', body_str)
+                            
+                    # Fix 5: Fix newlines and other control characters
+                    body_str = body_str.replace('\n', '\\n')
+                    
+                    # Fix 6: Handle escaped JSON strings (common in some clients)
+                    if body_str.startswith('"') and body_str.endswith('"'):
+                        try:
+                            # This might be a JSON string that needs to be unescaped
+                            import ast
+                            unescaped = ast.literal_eval(body_str)
+                            if isinstance(unescaped, str):
+                                body_str = unescaped
+                                logger.info("Unescaped JSON string")
+                        except:
+                            pass
+                            
+                    try:
+                        # Try to parse with the fixed body
+                        json_body = json.loads(body_str)
+                        
+                        # Add default model if missing
+                        if "/v1/chat/completions" in request.url.path:
+                            if "model" not in json_body:
+                                json_body["model"] = AppConfig.default_provider
+                                logger.info(f"Added default model: {AppConfig.default_provider}")
+                            
+                            # Check for required messages field
+                            if "messages" not in json_body or not json_body["messages"]:
+                                return JSONResponse(
+                                    status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                                    content=jsonable_encoder({
+                                        "detail": [
+                                            {
+                                                "loc": ["body", "messages"],
+                                                "message": "Field 'messages' is required and cannot be empty.",
+                                                "type": "value_error.missing"
+                                            }
+                                        ]
+                                    }),
+                                )
+                        
+                        # If successful, modify the request._body for downstream processing
+                        logger.info(f"Successfully fixed JSON format\nOriginal: {original_body}\nFixed: {json.dumps(json_body)}")
+                        request._body = json.dumps(json_body).encode('utf-8')
+                    except json.JSONDecodeError as json_err:
+                        # If we still can't parse it, return a helpful error
+                        example = json.dumps({
+                            "model": "gpt-4",
+                            "messages": [
+                                {"role": "system", "content": "You are a helpful assistant."},
+                                {"role": "user", "content": "Hello"},
+                            ]
+                        }, indent=2)
+                        return JSONResponse(
+                            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                            content=jsonable_encoder({
+                                "detail": [
+                                    {
+                                        "loc": ["body", 0],
+                                        "message": f"Invalid JSON format: {str(e)}. Make sure to use double quotes for both keys and values and avoid trailing commas. Valid example: {example}",
+                                        "type": "json_invalid"
+                                    }
+                                ]
+                            }),
+                        )
+                    except Exception as fix_error:
+                        logger.error(f"Failed to fix JSON: {str(fix_error)}")
+                        return JSONResponse(
+                            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                            content=jsonable_encoder({
+                                "detail": [
+                                    {
+                                        "loc": ["body"],
+                                        "message": f"Error processing request body: {str(fix_error)}",
+                                        "type": "request_validation"
+                                    }
+                                ]
+                            }),
+                        )
+            except Exception as e:
+                logger.error(f"Error in body parsing middleware: {str(e)}")
+                # Continue processing even if there's an error in the middleware
+        
+        # Process the request with the next middleware or route handler
+        return await call_next(request)
+
+# Custom route class to handle dynamic base URLs
+class DynamicBaseRoute(APIRoute):
+    def get_route_handler(self) -> Callable:
+        original_route_handler = super().get_route_handler()
+        
+        async def custom_route_handler(request: Request) -> Response:
+            # Check if we need to adjust for base URL
+            if AppConfig.base_url:
+                # Adjust request URL if needed
+                if not request.url.path.startswith(AppConfig.base_url):
+                    # Handle base URL adjustments if needed
+                    pass
+            
+            # Call the original route handler
+            return await original_route_handler(request)
+            
+        return custom_route_handler
 
 def create_app():
     app = FastAPI(
@@ -129,6 +321,9 @@ def create_app():
         openapi_url="/openapi.json",
     )
     
+    # Use custom route class for all routes
+    app.router.route_class = DynamicBaseRoute
+    
     # Add CORS middleware to allow cross-origin requests
     app.add_middleware(
         CORSMiddleware,
@@ -138,14 +333,80 @@ def create_app():
         allow_headers=["*"],
     )
     
+    # Add robust body parsing middleware
+    app.add_middleware(RobustBodyParsingMiddleware)
+    
     api = Api(app)
     api.register_authorization()
-    api.register_json_middleware()  # Add custom JSON middleware
     api.register_validation_exception_handler()
     api.register_routes()
     
     # Initialize provider map
     initialize_provider_map()
+    
+    # Custom OpenAPI schema generator
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+            
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        
+        # Enhance OpenAPI schema for better Swagger UI compatibility
+        if "components" not in openapi_schema:
+            openapi_schema["components"] = {}
+            
+        if "schemas" not in openapi_schema["components"]:
+            openapi_schema["components"]["schemas"] = {}
+        
+        # Add explicit schema for chat completions request
+        openapi_schema["components"]["schemas"]["ChatCompletionRequest"] = {
+            "type": "object",
+            "required": ["model", "messages"],
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "description": "ID of the model to use"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["role", "content"],
+                        "properties": {
+                            "role": {
+                                "type": "string",
+                                "enum": ["system", "user", "assistant", "function", "tool"]
+                            },
+                            "content": {
+                                "type": "string"
+                            },
+                            "name": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "temperature": {
+                    "type": "number",
+                    "format": "float",
+                    "nullable": True
+                },
+                "stream": {
+                    "type": "boolean",
+                    "default": False
+                }
+            }
+        }
+        
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+    
+    app.openapi = custom_openapi
     
     return app
 
@@ -218,286 +479,120 @@ class Api:
                         return ErrorResponse.from_message("Invalid API key", HTTP_403_FORBIDDEN)
             return await call_next(request)
 
-    def register_json_middleware(self):
-        @self.app.middleware("http")
-        async def parse_json_middleware(request: Request, call_next):
-            if request.method == "POST" and "/v1/chat/completions" in request.url.path:
-                try:
-                    # Try parsing the JSON body manually first to catch JSON errors early
-                    body = await request.body()
-                    
-                    # Handle empty body case explicitly
-                    if not body or len(body.strip() if isinstance(body, str) else body) == 0:
-                        logger.warning("Empty request body received")
-                        return JSONResponse(
-                            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                            content=jsonable_encoder({
-                                "detail": [
-                                    {
-                                        "loc": ["body"],
-                                        "message": "Request body is empty. Please provide a valid JSON body with 'model' and 'messages' fields.",
-                                        "type": "value_error.missing"
-                                    }
-                                ]
-                            }),
-                        )
-                        
-                    body_str = body.decode('utf-8', errors='ignore')
-                    original_body = body_str
-                    logger.debug(f"Original request body: {body_str}")
-                    
-                    # PowerShell with curl often has formatting issues with JSON
-                    try:
-                        # First try normal JSON parsing
-                        json.loads(body_str)
-                        logger.debug("JSON parsed successfully")
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"JSON parse error, attempting fixes: {str(e)}")
-                        
-                        # Series of fixes to try for common JSON issues from different clients
-                        import re
-                        
-                        # Fix 1: Remove trailing commas in objects and arrays
-                        # This is one of the most common JSON errors
-                        # Replace ,} with } and ,] with ]
-                        body_str = re.sub(r',\s*}', '}', body_str)
-                        body_str = re.sub(r',\s*]', ']', body_str)
-                        
-                        # Fix 2: Replace literal backslash+quote with just quote
-                        body_str = body_str.replace('\\"', '"')
-                        
-                        # Fix 3: Replace single quotes with double quotes
-                        # This is a common issue with curl and PowerShell
-                        try:
-                            fixed_body = body_str.replace("'", '"')
-                            json.loads(fixed_body)
-                            body_str = fixed_body
-                            logger.info("Fixed JSON by replacing single quotes with double quotes")
-                        except json.JSONDecodeError:
-                            # If that didn't work, continue with other fixes
-                            pass
-                                
-                        # Fix 4: Add quotes to unquoted property names
-                        # Look for patterns like {model: instead of {"model":
-                        body_str = re.sub(r'\{([^"\s][^:\s]*)(\s*:)', r'{"\1"\2', body_str)
-                        body_str = re.sub(r',\s*([^"\s][^:\s]*)(\s*:)', r', "\1"\2', body_str)
-                                
-                        # Fix 5: Fix newlines and other control characters
-                        body_str = body_str.replace('\n', '\\n')
-                                
-                        try:
-                            # Try to parse with the fixed body
-                            json.loads(body_str)
-                            # If successful, modify the request._body for downstream processing
-                            logger.info(f"Successfully fixed JSON format\nOriginal: {original_body}\nFixed: {body_str}")
-                            request._body = body_str.encode('utf-8')
-                        except json.JSONDecodeError as json_err:
-                            # If we still can't parse it, raise the error to be caught by the outer exception handler
-                            # Create a helpful error message with the proper format example
-                            example = json.dumps({
-                                "model": "gpt-4",
-                                "messages": [
-                                    {"role": "system", "content": "You are a helpful assistant."},
-                                    {"role": "user", "content": "Hello"},
-                                    {"role": "assistant", "content": "Hi there! How can I help you?"},
-                                    {"role": "user", "content": "What's the weather like?"}
-                                ]
-                            }, indent=2)
-                            return JSONResponse(
-                                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                                content=jsonable_encoder({
-                                    "detail": [
-                                            {
-                                                "loc": ["body", 0],
-                                                "message": f"Invalid JSON format: {str(e)}. Make sure to use double quotes for both keys and values and avoid trailing commas. Valid example: {example}",
-                                                "type": "json_invalid"
-                                            }
-                                        ]
-                                    }),
-                                )
-                        except Exception as fix_error:
-                            logger.error(f"Failed to fix JSON: {str(fix_error)}")
-                            
-                            # Let's return a helpful error message with the proper format example
-                            example = json.dumps({
-                                "model": "gpt-4",
-                                "messages": [
-                                    {"role": "system", "content": "You are a helpful assistant."},
-                                    {"role": "user", "content": "Hello"},
-                                    {"role": "assistant", "content": "Hi there! How can I help you?"},
-                                    {"role": "user", "content": "What's the weather like?"}
-                                ]
-                            }, indent=2)
-                            return JSONResponse(
-                                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                                content=jsonable_encoder({
-                                    "detail": [
-                                            {
-                                                "loc": ["body", 0],
-                                                "message": f"Invalid JSON format: {str(e)}. Make sure to use double quotes for both keys and values and avoid trailing commas. Valid example: {example}",
-                                                "type": "json_invalid"
-                                            }
-                                        ]
-                                    }),
-                                )
-                except Exception as e:
-                    error_detail = str(e)
-                    logger.error(f"Request processing error: {error_detail}")
-                    return JSONResponse(
-                        status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                        content=jsonable_encoder({
-                            "detail": [
-                                {
-                                    "loc": ["body", 0],
-                                    "message": f"Request processing error: {error_detail}",
-                                    "type": "request_invalid"
-                                }
-                            ]
-                        }),
-                    )
-            return await call_next(request)
-
     def register_validation_exception_handler(self):
         @self.app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, exc: RequestValidationError):
-            details = exc.errors()
-            modified_details = []
-            for error in details:
-                modified_details.append({
-                    "loc": error["loc"],
-                    "message": error["msg"],
-                    "type": error["type"],
-                })
+            # Enhanced validation error handling
+            errors = exc.errors()
+            error_messages = []
+            
+            for error in errors:
+                # Create more user-friendly error messages
+                loc = error.get("loc", [])
+                loc_str = " -> ".join(str(l) for l in loc if l != "body")
+                msg = error.get("msg", "Validation error")
+                
+                if "body" in loc:
+                    # Special handling for body validation errors
+                    if len(loc) > 1 and loc[1] == "messages":
+                        error_messages.append({
+                            "loc": loc,
+                            "message": "The 'messages' field is required and must be a non-empty array of message objects.",
+                            "type": error.get("type", "validation_error")
+                        })
+                    elif len(loc) > 1 and loc[1] == "model":
+                        error_messages.append({
+                            "loc": loc,
+                            "message": "The 'model' field is required and must be a string.",
+                            "type": error.get("type", "validation_error")
+                        })
+                    else:
+                        error_messages.append({
+                            "loc": loc,
+                            "message": f"{msg} at {loc_str}",
+                            "type": error.get("type", "validation_error")
+                        })
+                else:
+                    error_messages.append({
+                        "loc": loc,
+                        "message": f"{msg} at {loc_str}",
+                        "type": error.get("type", "validation_error")
+                    })
+            
+            # Add example of correct format for common endpoints
+            if request.url.path == "/v1/chat/completions":
+                example = {
+                    "model": "gpt-4",
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": "Hello"}
+                    ]
+                }
+                return JSONResponse(
+                    status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                    content={"detail": error_messages, "example": example}
+                )
+            
             return JSONResponse(
                 status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                content=jsonable_encoder({"detail": modified_details}),
+                content={"detail": error_messages}
             )
             
-        @self.app.exception_handler(HTTPException)
-        async def http_exception_handler(request: Request, exc: HTTPException):
+        @self.app.exception_handler(StarletteHTTPException)
+        async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+            # Enhanced HTTP exception handling
             return JSONResponse(
                 status_code=exc.status_code,
-                content=jsonable_encoder({"detail": exc.detail}),
+                content={"detail": exc.detail}
             )
             
-        @self.app.exception_handler(json.JSONDecodeError)
-        async def json_decode_error_handler(request: Request, exc: json.JSONDecodeError):
+        @self.app.exception_handler(Exception)
+        async def general_exception_handler(request: Request, exc: Exception):
+            # General exception handler for unhandled exceptions
+            logger.exception(f"Unhandled exception: {exc}")
             return JSONResponse(
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                content=jsonable_encoder({
-                    "detail": [
-                        {
-                            "loc": ["body", 0],
-                            "message": f"Invalid JSON format: {str(exc)}",
-                            "type": "json_invalid"
-                        }
-                    ]
-                }),
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": f"Internal server error: {str(exc)}"}
             )
 
     def register_routes(self):
-        @self.app.get("/")
-        async def read_root(request: Request):
+        @self.app.get("/", include_in_schema=False)
+        async def root():
             return RedirectResponse(url="/docs")
 
-        @self.app.get("/v1")
-        async def read_root_v1(request: Request):
-            return RedirectResponse(url="/docs")
-
-        @self.app.get("/docs", include_in_schema=False)
-        async def custom_swagger_ui(request: Request):
-            from fastapi.openapi.docs import get_swagger_ui_html
-            return get_swagger_ui_html(
-                openapi_url=self.app.openapi_url,
-                title=f"{self.app.title} - Swagger UI"
-            )
-
-        @self.app.get("/v1//models", include_in_schema=False)  # Handle double slash case
-        async def list_models_double_slash():
-            """Redirect double slash models endpoint to the correct one"""
-            return RedirectResponse(url="/v1/models")
-            
-        @self.app.get("/v1/models")
+        @self.app.get("/v1/models", response_model=ModelListResponse)
         async def list_models():
             """List available models"""
-            from webscout.Provider.OPENAI.utils import ModelData, ModelList
-            models_data = []
-
-            # Get current timestamp
-            created_time = int(time.time())
-
+            models = []
+            
+            # Add all provider class names as models
             for model_name, provider_class in AppConfig.provider_map.items():
-                if not hasattr(provider_class, "AVAILABLE_MODELS") or model_name in provider_class.AVAILABLE_MODELS:
-                    # Create a more detailed model data object with proper fields
-                    model = ModelData(
-                        id=model_name,
-                        created=created_time,
-                        owned_by=getattr(provider_class, "__name__", "webscout"),
-                        permission=[{
-                            "id": f"modelperm-{model_name}",
-                            "object": "model_permission",
-                            "created": created_time,
-                            "allow_create_engine": False,
-                            "allow_sampling": True,
-                            "allow_logprobs": True,
-                            "allow_search_indices": hasattr(provider_class, "supports_embeddings") and provider_class.supports_embeddings,
-                            "allow_view": True,
-                            "allow_fine_tuning": False,
-                            "organization": "*",
-                            "group": None,
-                            "is_blocking": False
-                        }]
-                    )
-                    models_data.append(model)
+                # Skip duplicates
+                if any(m["id"] == model_name for m in models):
+                    continue
+                    
+                models.append({
+                    "id": model_name,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": provider_class.__name__
+                })
             
-            # Return as ModelList for proper formatting
-            response = ModelList(data=models_data)
-            return response.to_dict()
-
-        @self.app.get("/v1/models/{model_name}")
-        async def get_model(model_name: str):
-            """Get information about a specific model"""
-            from webscout.Provider.OPENAI.utils import ModelData
-            created_time = int(time.time())
-            
-            # Check if the model exists in our provider map
-            if model_name in AppConfig.provider_map:
-                provider_class = AppConfig.provider_map[model_name]
-                
-                # Create a proper OpenAI-compatible model response
-                model = ModelData(
-                    id=model_name,
-                    created=created_time,
-                    owned_by=getattr(provider_class, "__name__", "webscout"),
-                    permission=[{
-                        "id": f"modelperm-{model_name}",
-                        "object": "model_permission",
-                        "created": created_time,
-                        "allow_create_engine": False,
-                        "allow_sampling": True,
-                        "allow_logprobs": True,
-                        "allow_search_indices": hasattr(provider_class, "supports_embeddings") and provider_class.supports_embeddings,
-                        "allow_view": True,
-                        "allow_fine_tuning": False,
-                        "organization": "*",
-                        "group": None,
-                        "is_blocking": False
-                    }]
-                )
-                return model.to_dict()
-            
-            # If we reached here, the model was not found
-            return ErrorResponse.from_message(f"Model '{model_name}' not found", HTTP_404_NOT_FOUND)
+            return {
+                "object": "list",
+                "data": models
+            }
 
         @self.app.post("/v1/chat/completions", 
-                      summary="Create a chat completion", 
-                      description="Creates a completion for the chat message",
-                      response_model=dict,
-                      responses={
-                          200: {
-                              "description": "Successful Response",
+                      response_model_exclude_none=True,
+                      response_model_exclude_unset=True,
+                      openapi_extra={
+                          "requestBody": {
                               "content": {
                                   "application/json": {
+                                      "schema": {
+                                          "$ref": "#/components/schemas/ChatCompletionRequest"
+                                      },
                                       "example": {
                                           "id": "chatcmpl-123",
                                           "object": "chat.completion",
@@ -523,45 +618,38 @@ class Api:
                       })
         async def chat_completions(
             request: Request,
-            chat_request: ChatCompletionRequest = Body(..., 
-                                                     description="The request body for chat completion",
-                                                     examples={
-                                                         "normal": {
-                                                             "summary": "A normal chat completion request",
-                                                             "description": "A standard request with model and messages",
-                                                             "value": {
-                                                                 "model": "gpt-4",
-                                                                 "messages": [
-                                                                     {"role": "system", "content": "You are a helpful assistant."},
-                                                                     {"role": "user", "content": "Hello, how are you?"}
-                                                                 ]
-                                                             }
-                                                         },
-                                                         "with_temperature": {
-                                                             "summary": "Request with temperature setting",
-                                                             "description": "A request with temperature and max_tokens set",
-                                                             "value": {
-                                                                 "model": "gpt-4",
-                                                                 "messages": [
-                                                                     {"role": "user", "content": "Tell me a joke"}
-                                                                 ],
-                                                                 "temperature": 0.7,
-                                                                 "max_tokens": 150
-                                                             }
-                                                         },
-                                                         "streaming": {
-                                                             "summary": "Streaming request",
-                                                             "description": "A request with streaming enabled",
-                                                             "value": {
-                                                                 "model": "gpt-4",
-                                                                 "messages": [
-                                                                     {"role": "user", "content": "Write a short story"}
-                                                                 ],
-                                                                 "stream": true
-                                                             }
-                                                         }
-                                                     })
+            chat_request: Optional[ChatCompletionRequest] = None
         ):
+            """Create a chat completion"""
+            # Handle case where Pydantic validation failed but our middleware fixed the body
+            if chat_request is None:
+                try:
+                    # Try to parse the request body manually
+                    body = await request.body()
+                    if body:
+                        body_str = body.decode('utf-8', errors='ignore')
+                        try:
+                            body_json = json.loads(body_str)
+                            # Create a ChatCompletionRequest from the parsed JSON
+                            chat_request = ChatCompletionRequest(**body_json)
+                        except Exception as e:
+                            logger.error(f"Failed to parse request body: {e}")
+                            return ErrorResponse.from_message(
+                                f"Invalid request body: {str(e)}",
+                                HTTP_422_UNPROCESSABLE_ENTITY
+                            )
+                    else:
+                        return ErrorResponse.from_message(
+                            "Request body is required",
+                            HTTP_422_UNPROCESSABLE_ENTITY
+                        )
+                except Exception as e:
+                    logger.error(f"Error processing request: {e}")
+                    return ErrorResponse.from_message(
+                        f"Error processing request: {str(e)}",
+                        HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
             logger.debug(f"Chat completion request received: {chat_request}")
             
             try:
@@ -714,7 +802,7 @@ def format_exception(e: Union[Exception, str]) -> str:
         }
     })
 
-def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider: str = None):
+def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider: str = None, base_url: str = None):
     """
     Simple helper function to start the OpenAI-compatible API server.
     
@@ -722,6 +810,7 @@ def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider
         port: Port to run the server on (default: 8000)
         api_key: Optional API key for authentication
         default_provider: Default provider to use (e.g., "ChatGPT", "Claude", etc.)
+        base_url: Optional base URL for the API (useful for reverse proxies)
         
     Example:
         ```python
@@ -731,7 +820,7 @@ def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider
         start_server()
         
         # Start server with custom settings
-        start_server(port=8080, api_key="your-api-key", default_provider="Claude")
+        start_server(port=8080, api_key="your-api-key", default_provider="Claude", base_url="/api")
         ```
     """
     run_api(
@@ -739,6 +828,7 @@ def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider
         port=port,
         api_key=api_key,
         default_provider=default_provider,
+        base_url=base_url,
         debug=False,
     )
 
@@ -747,6 +837,7 @@ def run_api(
     port: int = None,
     api_key: str = None,
     default_provider: str = None,
+    base_url: str = None,
     debug: bool = False,
     show_available_providers: bool = True,
 ) -> None:
@@ -757,6 +848,7 @@ def run_api(
         port: Port to bind the server to
         api_key: API key for authentication (optional)
         default_provider: Default provider to use if no provider is specified
+        base_url: Base URL for the API (optional, useful for reverse proxies)
         debug: Whether to run in debug mode
         show_available_providers: Whether to display available providers on startup
     """
@@ -768,7 +860,8 @@ def run_api(
     # Set configuration
     AppConfig.set_config(
         api_key=api_key,
-        default_provider=default_provider or AppConfig.default_provider
+        default_provider=default_provider or AppConfig.default_provider,
+        base_url=base_url
     )
     
     # Initialize provider map early to show available providers
@@ -794,6 +887,7 @@ def run_api(
 
         print(f"\nDefault provider: {AppConfig.default_provider}")
         print(f"API Authentication: {'Enabled' if api_key else 'Disabled'}")
+        print(f"Base URL: {base_url or '/'}")
         print(f"Server URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
         print(f"API Endpoint: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/v1/chat/completions")
         print(f"Documentation: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/docs")
@@ -813,36 +907,19 @@ def run_api(
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description='Start Webscout OpenAI API server')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind the server to')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='Port to bind the server to')
-    parser.add_argument('--api-key', type=str, help='API key for authentication')
-    parser.add_argument('--provider', type=str, help='Default provider (e.g., ChatGPT, Claude, etc.)')
+    parser = argparse.ArgumentParser(description='Start Webscout OpenAI-compatible API server')
+    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help=f'Port to run the server on (default: {DEFAULT_PORT})')
+    parser.add_argument('--api-key', type=str, help='API key for authentication (optional)')
+    parser.add_argument('--default-provider', type=str, help='Default provider to use (optional)')
+    parser.add_argument('--base-url', type=str, help='Base URL for the API (optional, useful for reverse proxies)')
     parser.add_argument('--debug', action='store_true', help='Run in debug mode')
-    parser.add_argument('--show-providers', action='store_true', help='Display available providers and exit')
     
     args = parser.parse_args()
     
-    # Display providers if requested
-    if args.show_providers:
-        # Configure necessary settings
-        AppConfig.set_config(
-            api_key=args.api_key,
-            default_provider=args.provider,
-        )
-        initialize_provider_map()
-        
-        # Print the available providers
-        provider_names = list(set(v.__name__ for v in AppConfig.provider_map.values()))
-        print(f"Available providers ({len(provider_names)}):\n" + "\n".join(f"{i+1}. {name}" for i, name in enumerate(provider_names)))
-        print(f"Default provider: {AppConfig.default_provider}")
-        exit(0)
-        
-    # Run the API server
     run_api(
-        host=args.host,
         port=args.port,
         api_key=args.api_key,
-        default_provider=args.provider,
-        debug=args.debug,
+        default_provider=args.default_provider,
+        base_url=args.base_url,
+        debug=args.debug
     )

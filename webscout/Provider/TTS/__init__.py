@@ -6,3 +6,4 @@ from .elevenlabs import *
 from .murfai import *
 from .gesserit import *
 from .speechma import *
+from .sthir import *

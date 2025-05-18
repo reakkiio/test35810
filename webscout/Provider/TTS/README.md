@@ -23,8 +23,8 @@ Webscout's TTS Providers offer a versatile and powerful text-to-speech conversio
 4. **ParlerTTS**
 5. **DeepgramTTS**
 6. **StreamElementsTTS**
-8. **SpeechMaTTS**
-
+7. **SpeechMaTTS**
+8. **SthirTTS**
 ## 🚀 Installation
 
 ```bash

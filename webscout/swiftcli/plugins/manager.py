@@ -3,6 +3,7 @@
 import importlib
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
@@ -42,8 +43,14 @@ class PluginManager:
             plugin_dir: Optional custom plugin directory path
         """
         self.plugins: List[Plugin] = []
-        self.plugin_dir = plugin_dir or os.path.expanduser("~/.swiftcli/plugins")
-        os.makedirs(self.plugin_dir, exist_ok=True)
+        # Use temporary directory instead of ~/.swiftcli/plugins
+        if plugin_dir:
+            self.plugin_dir = plugin_dir
+            os.makedirs(self.plugin_dir, exist_ok=True)
+        else:
+            # Create a temporary directory that will be cleaned up when the process exits
+            self.temp_dir = tempfile.TemporaryDirectory(prefix="swiftcli_")
+            self.plugin_dir = self.temp_dir.name
         
         # Add plugin directory to Python path
         if self.plugin_dir not in sys.path:

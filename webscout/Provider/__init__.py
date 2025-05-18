@@ -82,8 +82,10 @@ from .Nemotron import NEMOTRON
 from .FreeGemini import FreeGemini
 from .Flowith import Flowith
 from .samurai import samurai
+from .lmarena import lmarena
 __all__ = [
     'SCNet',
+    'lmarena',
     'NEMOTRON',
     'Flowith',
     'samurai',

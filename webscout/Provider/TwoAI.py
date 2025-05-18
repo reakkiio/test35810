@@ -2,8 +2,10 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 import base64
+import time
 from typing import Any, Dict, Optional, Generator, Union
 import re  # Import re for parsing SSE
+import urllib.parse
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
@@ -11,6 +13,7 @@ from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_st
 from webscout.AIbase import Provider
 from webscout import exceptions
 from webscout.litagent import LitAgent
+from webscout.Extra.tempmail import get_random_email
 
 
 class TwoAI(Provider):
@@ -19,6 +22,9 @@ class TwoAI(Provider):
     SUTRA is a family of large multi-lingual language models (LMLMs) developed by TWO AI.
     SUTRA's dual-transformer extends the power of both MoE and Dense AI language model architectures,
     delivering cost-efficient multilingual capabilities for over 50+ languages.
+
+    API keys can be generated using the generate_api_key() method, which uses a temporary email
+    to register for the Two AI service and extract the API key from the confirmation email.
     """
 
     AVAILABLE_MODELS = [
@@ -26,9 +32,134 @@ class TwoAI(Provider):
         "sutra-r0",  # Advanced reasoning model for complex problem-solving and deep contextual understanding
     ]
 
+    @staticmethod
+    def generate_api_key() -> str:
+        """
+        Generate a new Two AI API key using a temporary email.
+
+        This method:
+        1. Creates a temporary email using webscout's tempmail module
+        2. Registers for Two AI using the Loops.so newsletter form
+        3. Waits for and extracts the API key from the confirmation email
+
+        Returns:
+            str: The generated API key
+
+        Raises:
+            Exception: If the API key cannot be generated
+        """
+        # Get a temporary email
+        email, provider = get_random_email("tempmailio")
+
+        # Register for Two AI using the Loops.so newsletter form
+        loops_url = "https://app.loops.so/api/newsletter-form/cm7i4o92h057auy1o74cxbhxo"
+
+        # Create a session with appropriate headers
+        session = Session()
+        session.headers.update({
+            'User-Agent': LitAgent().random(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://www.two.ai',
+            'Referer': 'https://app.loops.so/',
+        })
+
+        # Prepare form data
+        form_data = {
+            'email': email,
+            'userGroup': 'Via Framer',
+            'mailingLists': 'cm8ay9cic00x70kjv0bd34k66'
+        }
+
+        # Send the registration request
+        encoded_data = urllib.parse.urlencode(form_data)
+        response = session.post(loops_url, data=encoded_data, impersonate="chrome120")
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to register for Two AI: {response.status_code} - {response.text}")
+
+        # Wait for the confirmation email and extract the API key
+        max_attempts = 5 
+        attempt = 0
+        api_key = None
+        wait_time = 2 
+
+        while attempt < max_attempts and not api_key:
+            messages = provider.get_messages()
+
+            for message in messages:
+                # Check if this is likely the confirmation email based on subject and sender
+                subject = message.get('subject', '')
+                sender = ''
+
+                # Try to get the sender from different possible fields
+                if 'from' in message:
+                    if isinstance(message['from'], dict):
+                        sender = message['from'].get('address', '')
+                    else:
+                        sender = str(message['from'])
+                elif 'sender' in message:
+                    if isinstance(message['sender'], dict):
+                        sender = message['sender'].get('address', '')
+                    else:
+                        sender = str(message['sender'])
+
+                # Look for keywords in the subject that indicate this is the confirmation email
+                subject_match = any(keyword in subject.lower() for keyword in
+                                   ['welcome', 'confirm', 'verify', 'api', 'key', 'sutra', 'two.ai', 'loops'])
+
+                # Look for keywords in the sender that indicate this is from Two AI or Loops
+                sender_match = any(keyword in sender.lower() for keyword in
+                                  ['two.ai', 'sutra', 'loops.so', 'loops', 'no-reply', 'noreply'])
+
+                is_confirmation = subject_match or sender_match
+
+                if is_confirmation:
+                    pass
+                # Try to get the message content from various possible fields
+                content = None
+
+                # Check for body field (seen in the debug output)
+                if 'body' in message:
+                    content = message['body']
+                # Check for content.text field
+                elif 'content' in message and 'text' in message['content']:
+                    content = message['content']['text']
+                # Check for html field
+                elif 'html' in message:
+                    content = message['html']
+                # Check for text field
+                elif 'text' in message:
+                    content = message['text']
+
+                if not content:
+                    continue
+
+                # Look for the API key pattern in the email content
+                # First, try to find the API key directly
+                api_key_match = re.search(r'sutra_[A-Za-z0-9]{60,70}', content)
+
+                # If not found, try looking for the key with the label
+                if not api_key_match:
+                    key_section_match = re.search(r'🔑 SUTRA API Key\s*([^\s]+)', content)
+                    if key_section_match:
+                        api_key_match = re.search(r'(sutra_[A-Za-z0-9]+)', key_section_match.group(1))
+
+                # If still not found, try a more general pattern
+                if not api_key_match:
+                    api_key_match = re.search(r'sutra_\S+', content)
+
+                if api_key_match:
+                    api_key = api_key_match.group(0)
+                    break
+            if not api_key:
+                attempt += 1
+                time.sleep(wait_time)
+        if not api_key:
+            raise Exception("Failed to get API key from confirmation email")
+        return api_key
+
     def __init__(
         self,
-        api_key: str = None,
         is_conversation: bool = True,
         max_tokens: int = 1024,
         timeout: int = 30,
@@ -42,9 +173,29 @@ class TwoAI(Provider):
         temperature: float = 0.6,
         system_message: str = "You are a helpful assistant."
     ):
-        """Initializes the TwoAI API client."""
+        """
+        Initializes the TwoAI API client.
+
+        Args:
+            is_conversation: Whether to maintain conversation history.
+            max_tokens: Maximum number of tokens to generate.
+            timeout: Request timeout in seconds.
+            intro: Introduction text for the conversation.
+            filepath: Path to save conversation history.
+            update_file: Whether to update the conversation history file.
+            proxies: Proxy configuration for requests.
+            history_offset: Maximum history length in characters.
+            act: Persona for the conversation.
+            model: Model to use. Must be one of AVAILABLE_MODELS.
+            temperature: Temperature for generation (0.0 to 1.0).
+            system_message: System message to use for the conversation.
+        """
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
+
+        # Always auto-generate API key
+        api_key = self.generate_api_key()
+
         self.url = "https://api.two.ai/v2/chat/completions"  # API endpoint
         self.headers = {
             'User-Agent': LitAgent().random(),
@@ -290,14 +441,10 @@ if __name__ == "__main__":
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
     print("-" * 80)
-    
-    # Test all available models
-    working = 0
-    total = len(TwoAI.AVAILABLE_MODELS)
 
     for model in TwoAI.AVAILABLE_MODELS:
         try:
-            test_ai = TwoAI(model=model, timeout=60, api_key="sutra_ZWvX0rojeyRLl1UIvkb72UNasgaWFIelIn6Sph0MlKDeuh4JXhBEuPbJ6cnJ")
+            test_ai = TwoAI(model=model, timeout=60)
             # Test stream first
             response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""

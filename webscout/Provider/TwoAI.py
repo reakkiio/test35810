@@ -1,6 +1,7 @@
 from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
+import base64
 from typing import Any, Dict, Optional, Generator, Union
 import re  # Import re for parsing SSE
 
@@ -15,12 +16,14 @@ from webscout.litagent import LitAgent
 class TwoAI(Provider):
     """
     A class to interact with the Two AI API (v2) with LitAgent user-agent.
+    SUTRA is a family of large multi-lingual language models (LMLMs) developed by TWO AI.
+    SUTRA's dual-transformer extends the power of both MoE and Dense AI language model architectures,
+    delivering cost-efficient multilingual capabilities for over 50+ languages.
     """
 
     AVAILABLE_MODELS = [
-        "sutra-v2",
-        "sutra-r0"
-
+        "sutra-v2",  # Multilingual AI model for instruction execution and conversational intelligence
+        "sutra-r0",  # Advanced reasoning model for complex problem-solving and deep contextual understanding
     ]
 
     def __init__(
@@ -35,19 +38,19 @@ class TwoAI(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "sutra-v2",  # Update default model
+        model: str = "sutra-v2",  # Default model
         temperature: float = 0.6,
         system_message: str = "You are a helpful assistant."
     ):
         """Initializes the TwoAI API client."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-        self.url = "https://api.two.app/v2/chat/completions"  # Update API endpoint
+        self.url = "https://api.two.ai/v2/chat/completions"  # API endpoint
         self.headers = {
             'User-Agent': LitAgent().random(),
-            'Accept': 'application/json',  # Keep application/json for request, response is text/event-stream
+            'Accept': 'text/event-stream',  # For streaming responses
             'Content-Type': 'application/json',
-            'X-Session-Token': api_key,
+            'Authorization': f'Bearer {api_key}',  # Using Bearer token authentication
             'Origin': 'https://chat.two.ai',
             'Referer': 'https://api.two.app/'
         }
@@ -64,6 +67,7 @@ class TwoAI(Provider):
         self.model = model
         self.temperature = temperature
         self.system_message = system_message
+        self.api_key = api_key
 
         self.__available_optimizers = (
             method
@@ -96,6 +100,19 @@ class TwoAI(Provider):
         content = delta.get("content")
         return content if isinstance(content, str) else None
 
+    def encode_image(self, image_path: str) -> str:
+        """
+        Encode an image file to base64 string.
+
+        Args:
+            image_path: Path to the image file
+
+        Returns:
+            Base64 encoded string of the image
+        """
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+
     def ask(
         self,
         prompt: str,
@@ -104,6 +121,7 @@ class TwoAI(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         online_search: bool = True,
+        image_path: str = None,
     ) -> Union[Dict[str, Any], Generator]:
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -112,14 +130,36 @@ class TwoAI(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
+        # Prepare messages with image if provided
+        if image_path:
+            # Create a message with image content
+            image_content = {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{self.encode_image(image_path)}"
+                }
+            }
+            user_message = {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": conversation_prompt},
+                    image_content
+                ]
+            }
+        else:
+            # Text-only message
+            user_message = {"role": "user", "content": conversation_prompt}
+
+        # Prepare the payload
         payload = {
             "messages": [
                 *([{"role": "system", "content": self.system_message}] if self.system_message else []),
-                {"role": "user", "content": conversation_prompt},
+                user_message
             ],
             "model": self.model,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens_to_sample,
+            "stream": stream,
             "extra_body": {
                 "online_search": online_search,
             }
@@ -208,6 +248,7 @@ class TwoAI(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         online_search: bool = True,
+        image_path: str = None,
     ) -> str:
         effective_stream = stream if stream is not None else True
 
@@ -220,6 +261,7 @@ class TwoAI(Provider):
                 optimizer=optimizer,
                 conversationally=conversationally,
                 online_search=online_search,
+                image_path=image_path,
             )
             for response_dict in gen:
                 yield self.get_message(response_dict) # get_message expects dict
@@ -233,6 +275,7 @@ class TwoAI(Provider):
                 optimizer=optimizer,
                 conversationally=conversationally,
                 online_search=online_search,
+                image_path=image_path,
             )
             return self.get_message(response_dict) # get_message expects dict
 
@@ -244,37 +287,42 @@ class TwoAI(Provider):
 
 
 if __name__ == "__main__":
-    from rich import print
-    import os
+    print("-" * 80)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 80)
+    
+    # Test all available models
+    working = 0
+    total = len(TwoAI.AVAILABLE_MODELS)
 
-    api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJzanl2OHJtZGxDZDFnQ2hQdGxzZHdxUlVteXkyIiwic291cmNlIjoiRmlyZWJhc2UiLCJpYXQiOjE3NDYxMDY0NjksImV4cCI6MTc0NjEwNzM2OX0.o3fprDgsUJwvwCsWr0HfqmVpSBUthHsxqnopfWhtiYc"
+    for model in TwoAI.AVAILABLE_MODELS:
+        try:
+            test_ai = TwoAI(model=model, timeout=60, api_key="sutra_ZWvX0rojeyRLl1UIvkb72UNasgaWFIelIn6Sph0MlKDeuh4JXhBEuPbJ6cnJ")
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
+            response_text = ""
+            print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
+                response_text += chunk
+                # Optional: print chunks as they arrive for visual feedback
+                # print(chunk, end="", flush=True) 
+            
+            if response_text and len(response_text.strip()) > 0:
+                status = "✓"
+                # Clean and truncate response
+                clean_text = response_text.strip() # Already decoded in get_message
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
+            else:
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
+            print(f"\r{model:<50} {status:<10} {display_text}")
+            
+            # Optional: Add non-stream test if needed, but stream test covers basic functionality
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
 
-    try:
-        ai = TwoAI(
-            api_key=api_key,
-            timeout=60,
-            model="sutra-r0",
-            system_message="You are an intelligent AI assistant. Be concise and helpful."
-        )
 
-        response_stream = ai.chat("write me a poem about AI", stream=True, online_search=True)
-        full_stream_response = ""
-        for chunk in response_stream:
-            print(chunk, end="", flush=True)
-            full_stream_response += chunk
-        print("\n[bold green]Stream Test Complete.[/bold green]\n")
-
-        # Optional: Test non-stream
-        # print("[bold blue]Testing Non-Stream:[/bold blue]")
-        # non_stream_response = ai.chat("What is the capital of France?", stream=False, online_search=False)
-        # print(non_stream_response)
-        # print("[bold green]Non-Stream Test Complete.[/bold green]\n")
-
-
-    except exceptions.FailedToGenerateResponseError as e:
-        print(f"\n[bold red]API Error:[/bold red] {e}")
-    except ValueError as e:
-        print(f"\n[bold red]Configuration Error:[/bold red] {e}")
-    except Exception as e:
-        print(f"\n[bold red]An unexpected error occurred:[/bold red] {e}")
-
+        except Exception as e:
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")

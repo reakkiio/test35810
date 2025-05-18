@@ -16,12 +16,12 @@ class TypeGPT(Provider):
     """
     AVAILABLE_MODELS = [
         # Working Models (based on testing)
-        "gpt-4o-mini-2024-07-18",
+        # "gpt-4o-mini-2024-07-18",
         "chatgpt-4o-latest",
         "deepseek-r1",
         "deepseek-v3",
         "uncensored-r1",
-        "Image-Generator",
+        # "Image-Generator",
     ]
 
     def __init__(
@@ -35,7 +35,7 @@ class TypeGPT(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "gpt-4o-mini-2024-07-18",
+        model: str = "chatgpt-4o-latest",
         system_prompt: str = "You are a helpful assistant.",
         temperature: float = 0.5,
         presence_penalty: int = 0,

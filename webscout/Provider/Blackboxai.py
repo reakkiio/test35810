@@ -7,7 +7,7 @@ from typing import Any, Dict, Union, Generator, List
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-
+from webscout.litagent import LitAgent
 def to_data_uri(image_data):
     """Convert image data to a data URI format"""
     if isinstance(image_data, str):
@@ -49,14 +49,14 @@ class BLACKBOXAI(Provider):
         "DeepSeek R1 Zero",
         "Dolphin3.0 Mistral 24B",
         "Dolphin3.0 R1 Mistral 24B",
-        "Flash 3", # FIX (<reasoning> </reasoning>)
+        "Flash 3",
         "Gemini 2.0 Flash Experimental",
         "Gemma 2 9B",
         "Gemma 3 12B",
         "Gemma 3 1B",
         "Gemma 3 27B",
         "Gemma 3 4B",
-        "Kimi VL A3B Thinking", # FIX (◁think▷ ◁/think▷)
+        "Kimi VL A3B Thinking",
         "Llama 3.1 8B Instruct",
         "Llama 3.1 Nemotron Ultra 253B v1",
         "Llama 3.2 11B Vision Instruct",
@@ -491,21 +491,23 @@ class BLACKBOXAI(Provider):
             "workspaceId": ""
         }
 
-        # Update headers based on the working example
+        # Use LitAgent to generate a realistic browser fingerprint for headers
+        agent = LitAgent()
+        fingerprint = agent.generate_fingerprint("chrome")
         headers = {
-            'accept': '*/*',
+            'accept': fingerprint['accept'],
             'accept-encoding': 'gzip, deflate, br, zstd',
-            'accept-language': 'en-US,en;q=0.9',
+            'accept-language': fingerprint['accept_language'],
             'content-type': 'application/json',
             'origin': 'https://www.blackbox.ai',
             'referer': 'https://www.blackbox.ai/',
-            'sec-ch-ua': '"Chromium";v="136", "Microsoft Edge";v="136", "Not.A/Brand";v="99"',
+            'sec-ch-ua': fingerprint['sec_ch_ua'],
             'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
+            'sec-ch-ua-platform': f'"{fingerprint["platform"]}"',
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-origin',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0'
+            'user-agent': fingerprint['user_agent']
         }
 
         try:

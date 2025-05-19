@@ -83,8 +83,10 @@ from .FreeGemini import FreeGemini
 from .Flowith import Flowith
 from .samurai import samurai
 from .lmarena import lmarena
+from .oivscode import oivscode
 __all__ = [
     'SCNet',
+    'oivscode',
     'lmarena',
     'NEMOTRON',
     'Flowith',

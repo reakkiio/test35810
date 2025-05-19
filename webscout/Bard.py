@@ -56,11 +56,11 @@ class Headers(Enum):
     UPLOAD = {"Push-ID": "feeds/mcudyrk2a4khkz"}
 
 class Model(Enum):
-    # Model definitions remain the same
+    # Updated model definitions based on reference implementation
     UNSPECIFIED = ("unspecified", {}, False)
     G_2_0_FLASH = (
         "gemini-2.0-flash",
-        {"x-goog-ext-525001261-jspb": '[null,null,null,null,"f299729663a2343f"]'},
+        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"f299729663a2343f"]'},
         False,
     )
     G_2_0_FLASH_THINKING = (
@@ -68,9 +68,14 @@ class Model(Enum):
         {"x-goog-ext-525001261-jspb": '[null,null,null,null,"7ca48d02d802f20a"]'},
         False,
     )
+    G_2_5_FLASH = (
+        "gemini-2.5-flash",
+        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"35609594dbe934d8"]'},
+        False,
+    )
     G_2_5_PRO = (
         "gemini-2.5-pro",
-        {"x-goog-ext-525001261-jspb": '[null,null,null,null,"2525e3954d185b3c"]'},
+        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"2525e3954d185b3c"]'},
         False,
     )
     G_2_0_EXP_ADVANCED = (
@@ -82,11 +87,6 @@ class Model(Enum):
         "gemini-2.5-exp-advanced",
         {"x-goog-ext-525001261-jspb": '[null,null,null,null,"203e6bb81620bcfe"]'},
         True,
-    )
-    G_2_5_FLASH = (
-        "gemini-2.5-flash",
-        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"35609594dbe934d8"]'},
-        False,
     )
 
     def __init__(self, name, header, advanced_only):
@@ -125,10 +125,11 @@ async def upload_file(
         HTTPError: If the upload request failed.
         RequestException: For other network-related errors.
     """
+    # Handle file input
     if not isinstance(file, bytes):
         file_path = Path(file)
         if not file_path.is_file():
-             raise FileNotFoundError(f"File not found at path: {file}")
+            raise FileNotFoundError(f"File not found at path: {file}")
         with open(file_path, "rb") as f:
             file_content = f.read()
     else:
@@ -146,14 +147,12 @@ async def upload_file(
         async with AsyncSession(
             proxies=proxies_dict,
             impersonate=impersonate,
-            headers=Headers.UPLOAD.value, # Pass headers directly
-            # follow_redirects=True is default in curl_cffi
+            headers=Headers.UPLOAD.value # Pass headers directly
+            # follow_redirects is handled automatically by curl_cffi
         ) as client:
             response = await client.post(
                 url=Endpoint.UPLOAD.value,
-                # headers=Headers.UPLOAD.value, # Headers passed in session
                 files={"file": file_content},
-                # follow_redirects=True, # Default
             )
             response.raise_for_status() # Raises HTTPError for bad responses
             return response.text
@@ -304,9 +303,8 @@ class AsyncChatbot:
             cookies={"__Secure-1PSID": secure_1psid, "__Secure-1PSIDTS": secure_1psidts},
             proxies=self.proxies_dict,
             timeout=timeout,
-            impersonate=self.impersonate,
-            # verify=True, # Default in curl_cffi
-            # http2=True, # Implicitly handled by curl_cffi if possible
+            impersonate=self.impersonate
+            # verify and http2 are handled automatically by curl_cffi
         )
         # No need to set proxies/headers/cookies again, done in constructor
 
@@ -411,29 +409,40 @@ class AsyncChatbot:
 
     async def __get_snlm0e(self):
         """Fetches the SNlM0e value required for API requests using curl_cffi."""
-        if not self.secure_1psid or not self.secure_1psidts:
-             raise ValueError("Both __Secure-1PSID and __Secure-1PSIDTS cookies are required.")
+        if not self.secure_1psid:
+            raise ValueError("__Secure-1PSID cookie is required.")
 
         try:
             # Use the session's get method
             resp = await self.session.get(
                 Endpoint.INIT.value,
-                timeout=self.timeout, # Timeout is already set in session, but can override
-                # follow_redirects=True # Default in curl_cffi
+                timeout=self.timeout # Timeout is already set in session, but can override
+                # follow_redirects is handled automatically by curl_cffi
             )
             resp.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
-            # Regex logic remains the same
+            # Check for authentication issues
+            if "Sign in to continue" in resp.text or "accounts.google.com" in str(resp.url):
+                raise PermissionError("Authentication failed. Cookies might be invalid or expired. Please update them.")
+
+            # Regex to find the SNlM0e value
             snlm0e_match = re.search(r'["\']SNlM0e["\']\s*:\s*["\'](.*?)["\']', resp.text)
             if not snlm0e_match:
                 error_message = "SNlM0e value not found in response."
-                if "Sign in to continue" in resp.text or "accounts.google.com" in str(resp.url):
-                     error_message += " Cookies might be invalid or expired. Please update them."
-                elif resp.status_code == 429:
-                     error_message += " Rate limit likely exceeded."
+                if resp.status_code == 429:
+                    error_message += " Rate limit likely exceeded."
                 else:
-                     error_message += f" Response status: {resp.status_code}. Check cookie validity and network."
+                    error_message += f" Response status: {resp.status_code}. Check cookie validity and network."
                 raise ValueError(error_message)
+
+            # Try to refresh PSIDTS if needed
+            if not self.secure_1psidts and "PSIDTS" not in self.session.cookies:
+                try:
+                    # Attempt to rotate cookies to get a fresh PSIDTS
+                    await self.__rotate_cookies()
+                except Exception as e:
+                    console.log(f"[yellow]Warning: Could not refresh PSIDTS cookie: {e}[/yellow]")
+                    # Continue anyway as some accounts don't need PSIDTS
 
             return snlm0e_match.group(1)
 
@@ -442,10 +451,29 @@ class AsyncChatbot:
         except (RequestException, CurlError) as e: # Catch general request errors and Curl specific errors
             raise ConnectionError(f"Network error while fetching SNlM0e: {e}") from e
         except HTTPError as e: # Catch requests.exceptions.HTTPError
-             if e.response.status_code == 401 or e.response.status_code == 403:
-                  raise PermissionError(f"Authentication failed (status {e.response.status_code}). Check cookies. {e}") from e
-             else:
-                  raise Exception(f"HTTP error {e.response.status_code} while fetching SNlM0e: {e}") from e
+            if e.response.status_code == 401 or e.response.status_code == 403:
+                raise PermissionError(f"Authentication failed (status {e.response.status_code}). Check cookies. {e}") from e
+            else:
+                raise Exception(f"HTTP error {e.response.status_code} while fetching SNlM0e: {e}") from e
+
+    async def __rotate_cookies(self):
+        """Rotates the __Secure-1PSIDTS cookie."""
+        try:
+            response = await self.session.post(
+                Endpoint.ROTATE_COOKIES.value,
+                headers=Headers.ROTATE_COOKIES.value,
+                data='[000,"-0000000000000000000"]',
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+
+            if new_1psidts := response.cookies.get("__Secure-1PSIDTS"):
+                self.secure_1psidts = new_1psidts
+                self.session.cookies.set("__Secure-1PSIDTS", new_1psidts)
+                return new_1psidts
+        except Exception as e:
+            console.log(f"[yellow]Cookie rotation failed: {e}[/yellow]")
+            raise
 
 
     async def ask(self, message: str, image: Optional[Union[bytes, str, Path]] = None) -> dict:
@@ -462,14 +490,15 @@ class AsyncChatbot:
             dict: A dictionary containing the response content and metadata.
         """
         if self.SNlM0e is None:
-             raise RuntimeError("AsyncChatbot not properly initialized. Call AsyncChatbot.create()")
+            raise RuntimeError("AsyncChatbot not properly initialized. Call AsyncChatbot.create()")
 
         params = {
-            "bl": "boq_assistant-bard-web-server_20240625.13_p0", # Example, might need updates
+            "bl": "boq_assistant-bard-web-server_20240625.13_p0",
             "_reqid": str(self._reqid),
             "rt": "c",
         }
 
+        # Handle image upload if provided
         image_upload_id = None
         if image:
             try:
@@ -480,106 +509,260 @@ class AsyncChatbot:
                 console.log(f"[red]Error uploading image: {e}[/red]")
                 return {"content": f"Error uploading image: {e}", "error": True}
 
-        # Structure logic remains the same
-        message_struct = [
-            [message],
-            None,
-            [self.conversation_id, self.response_id, self.choice_id],
-        ]
+        # Prepare message structure
         if image_upload_id:
-             message_struct = [
-                 [message],
-                 [[[image_upload_id, 1]]],
-                 [self.conversation_id, self.response_id, self.choice_id],
-             ]
+            message_struct = [
+                [message],
+                [[[image_upload_id, 1]]],
+                [self.conversation_id, self.response_id, self.choice_id],
+            ]
+        else:
+            message_struct = [
+                [message],
+                None,
+                [self.conversation_id, self.response_id, self.choice_id],
+            ]
 
+        # Prepare request data
         data = {
             "f.req": json.dumps([None, json.dumps(message_struct, ensure_ascii=False)], ensure_ascii=False),
             "at": self.SNlM0e,
         }
 
         try:
-            # Use session.post
+            # Send request
             resp = await self.session.post(
                 Endpoint.GENERATE.value,
                 params=params,
-                data=data, # curl_cffi uses data for form-encoded
+                data=data,
                 timeout=self.timeout,
             )
-            resp.raise_for_status() # Check for HTTP errors
+            resp.raise_for_status()
 
-            # Response processing logic remains the same
+            # Process response
             lines = resp.text.splitlines()
-            if len(lines) < 4:
-                 raise ValueError(f"Unexpected response format from Gemini API. Status: {resp.status_code}. Content: {resp.text[:200]}...")
+            if len(lines) < 3:
+                raise ValueError(f"Unexpected response format. Status: {resp.status_code}. Content: {resp.text[:200]}...")
 
-            chat_data_line = lines[3]
-            if chat_data_line.startswith(")]}'"):
-                 chat_data_line = chat_data_line.split('\n', 1)[-1].strip()
+            # Find the line with the response data
+            chat_data_line = None
+            for line in lines:
+                if line.startswith(")]}'"):
+                    chat_data_line = line[4:].strip()
+                    break
+                elif line.startswith("["):
+                    chat_data_line = line
+                    break
 
-            chat_data = json.loads(chat_data_line)[0][2]
+            if not chat_data_line:
+                chat_data_line = lines[3] if len(lines) > 3 else lines[-1]
+                if chat_data_line.startswith(")]}'"):
+                    chat_data_line = chat_data_line[4:].strip()
 
-            if not chat_data:
-                return {"content": f"Gemini returned an empty response structure. Status: {resp.status_code}."}
+            # Parse the response JSON
+            response_json = json.loads(chat_data_line)
 
-            json_chat_data = json.loads(chat_data)
+            # Find the main response body
+            body = None
+            body_index = 0
 
-            # Extraction logic remains the same
-            content = json_chat_data[4][0][1][0] if len(json_chat_data) > 4 and len(json_chat_data[4]) > 0 and len(json_chat_data[4][0]) > 1 and len(json_chat_data[4][0][1]) > 0 else ""
-            conversation_id = json_chat_data[1][0] if len(json_chat_data) > 1 and len(json_chat_data[1]) > 0 else self.conversation_id
-            response_id = json_chat_data[1][1] if len(json_chat_data) > 1 and len(json_chat_data[1]) > 1 else self.response_id
-            factualityQueries = json_chat_data[3] if len(json_chat_data) > 3 else None
-            textQuery = json_chat_data[2][0] if len(json_chat_data) > 2 and json_chat_data[2] else ""
-            choices = [{"id": i[0], "content": i[1]} for i in json_chat_data[4]] if len(json_chat_data) > 4 else []
-            choice_id = choices[0]["id"] if choices else self.choice_id
+            for part_index, part in enumerate(response_json):
+                try:
+                    if isinstance(part, list) and len(part) > 2:
+                        main_part = json.loads(part[2])
+                        if main_part and len(main_part) > 4 and main_part[4]:
+                            body = main_part
+                            body_index = part_index
+                            break
+                except (IndexError, TypeError, json.JSONDecodeError):
+                    continue
 
-            images = []
-            if len(json_chat_data) > 4 and len(json_chat_data[4]) > 0 and len(json_chat_data[4][0]) > 4 and json_chat_data[4][0][4]:
-                for img_data in json_chat_data[4][0][4]:
+            if not body:
+                return {"content": "Failed to parse response body. No valid data found.", "error": True}
+
+            # Extract data from the response
+            try:
+                # Extract main content
+                content = ""
+                if len(body) > 4 and len(body[4]) > 0 and len(body[4][0]) > 1:
+                    content = body[4][0][1][0] if len(body[4][0][1]) > 0 else ""
+
+                # Extract conversation metadata
+                conversation_id = body[1][0] if len(body) > 1 and len(body[1]) > 0 else self.conversation_id
+                response_id = body[1][1] if len(body) > 1 and len(body[1]) > 1 else self.response_id
+
+                # Extract additional data
+                factualityQueries = body[3] if len(body) > 3 else None
+                textQuery = body[2][0] if len(body) > 2 and body[2] else ""
+
+                # Extract choices
+                choices = []
+                if len(body) > 4:
+                    for candidate in body[4]:
+                        if len(candidate) > 1 and isinstance(candidate[1], list) and len(candidate[1]) > 0:
+                            choices.append({"id": candidate[0], "content": candidate[1][0]})
+
+                choice_id = choices[0]["id"] if choices else self.choice_id
+
+                # Extract images - multiple possible formats
+                images = []
+
+                # Format 1: Regular web images
+                if len(body) > 4 and len(body[4]) > 0 and len(body[4][0]) > 4 and body[4][0][4]:
+                    for img_data in body[4][0][4]:
+                        try:
+                            img_url = img_data[0][0][0]
+                            img_alt = img_data[2] if len(img_data) > 2 else ""
+                            img_title = img_data[1] if len(img_data) > 1 else "[Image]"
+                            images.append({"url": img_url, "alt": img_alt, "title": img_title})
+                        except (IndexError, TypeError):
+                            console.log("[yellow]Warning: Could not parse image data structure (format 1).[/yellow]")
+                            continue
+
+                # Format 2: Generated images in standard location
+                generated_images = []
+                if len(body) > 4 and len(body[4]) > 0 and len(body[4][0]) > 12 and body[4][0][12]:
                     try:
-                        img_url = img_data[0][0][0]
-                        img_alt = img_data[2] if len(img_data) > 2 else ""
-                        img_title = img_data[1] if len(img_data) > 1 else "[Image]"
-                        images.append({"url": img_url, "alt": img_alt, "title": img_title})
+                        # Path 1: Check for images in [12][7][0]
+                        if body[4][0][12][7] and body[4][0][12][7][0]:
+                            # This is the standard path for generated images
+                            for img_index, img_data in enumerate(body[4][0][12][7][0]):
+                                try:
+                                    img_url = img_data[0][3][3]
+                                    img_title = f"[Generated Image {img_index+1}]"
+                                    img_alt = img_data[3][5][0] if len(img_data[3]) > 5 and len(img_data[3][5]) > 0 else ""
+                                    generated_images.append({"url": img_url, "alt": img_alt, "title": img_title})
+                                except (IndexError, TypeError):
+                                    continue
+
+                            # If we found images, but they might be in a different part of the response
+                            if not generated_images:
+                                # Look for image generation data in other response parts
+                                for part_index, part in enumerate(response_json):
+                                    if part_index <= body_index:
+                                        continue
+                                    try:
+                                        img_part = json.loads(part[2])
+                                        if img_part[4][0][12][7][0]:
+                                            for img_index, img_data in enumerate(img_part[4][0][12][7][0]):
+                                                try:
+                                                    img_url = img_data[0][3][3]
+                                                    img_title = f"[Generated Image {img_index+1}]"
+                                                    img_alt = img_data[3][5][0] if len(img_data[3]) > 5 and len(img_data[3][5]) > 0 else ""
+                                                    generated_images.append({"url": img_url, "alt": img_alt, "title": img_title})
+                                                except (IndexError, TypeError):
+                                                    continue
+                                            break
+                                    except (IndexError, TypeError, json.JSONDecodeError):
+                                        continue
                     except (IndexError, TypeError):
-                        console.log("[yellow]Warning: Could not parse image data structure.[/yellow]")
-                        continue
+                        pass
 
-            results = {
-                "content": content,
-                "conversation_id": conversation_id,
-                "response_id": response_id,
-                "factualityQueries": factualityQueries,
-                "textQuery": textQuery,
-                "choices": choices,
-                "images": images,
-                "error": False,
-            }
+                # Format 3: Alternative location for generated images
+                if len(generated_images) == 0 and len(body) > 4 and len(body[4]) > 0:
+                    try:
+                        # Try to find images in candidate[4] structure
+                        candidate = body[4][0]
+                        if len(candidate) > 22 and candidate[22]:
+                            # Look for URLs in the candidate[22] field
+                            import re
+                            content = candidate[22][0] if isinstance(candidate[22], list) and len(candidate[22]) > 0 else str(candidate[22])
+                            urls = re.findall(r'https?://[^\s]+', content)
+                            for i, url in enumerate(urls):
+                                # Clean up URL if it ends with punctuation
+                                if url[-1] in ['.', ',', ')', ']', '}', '"', "'"]:
+                                    url = url[:-1]
+                                generated_images.append({
+                                    "url": url,
+                                    "title": f"[Generated Image {i+1}]",
+                                    "alt": ""
+                                })
+                    except (IndexError, TypeError) as e:
+                        console.log(f"[yellow]Warning: Could not parse alternative image structure: {e}[/yellow]")
 
-            # Update state
-            self.conversation_id = conversation_id
-            self.response_id = response_id
-            self.choice_id = choice_id
-            self._reqid += random.randint(1000, 9000)
+                # Format 4: Look for image URLs in the text content
+                if len(images) == 0 and len(generated_images) == 0 and content:
+                    try:
+                        import re
+                        # Look for image URLs in the content - try multiple patterns
 
-            return results
+                        # Pattern 1: Standard image URLs
+                        urls = re.findall(r'(https?://[^\s]+\.(jpg|jpeg|png|gif|webp))', content.lower())
 
-        # Update exception handling
-        except (IndexError, json.JSONDecodeError, TypeError) as e:
-            console.log(f"[red]Error parsing Gemini response: {e}[/red]")
-            return {"content": f"Error parsing Gemini response: {e}. Response: {resp.text[:200]}...", "error": True}
-        except Timeout as e: # Catch requests.exceptions.Timeout
+                        # Pattern 2: Google image URLs (which might not have extensions)
+                        google_urls = re.findall(r'(https?://lh\d+\.googleusercontent\.com/[^\s]+)', content)
+
+                        # Pattern 3: General URLs that might be images
+                        general_urls = re.findall(r'(https?://[^\s]+)', content)
+
+                        # Combine all found URLs
+                        all_urls = []
+                        if urls:
+                            all_urls.extend([url_tuple[0] for url_tuple in urls])
+                        if google_urls:
+                            all_urls.extend(google_urls)
+
+                        # Add general URLs only if we didn't find any specific image URLs
+                        if not all_urls and general_urls:
+                            all_urls = general_urls
+
+                        # Process all found URLs
+                        if all_urls:
+                            for i, url in enumerate(all_urls):
+                                # Clean up URL if it ends with punctuation
+                                if url[-1] in ['.', ',', ')', ']', '}', '"', "'"]:
+                                    url = url[:-1]
+                                images.append({
+                                    "url": url,
+                                    "title": f"[Image in Content {i+1}]",
+                                    "alt": ""
+                                })
+                            console.log(f"[green]Found {len(all_urls)} potential image URLs in content.[/green]")
+                    except Exception as e:
+                        console.log(f"[yellow]Warning: Error extracting URLs from content: {e}[/yellow]")
+
+                # Combine all images
+                all_images = images + generated_images
+
+                # Prepare results
+                results = {
+                    "content": content,
+                    "conversation_id": conversation_id,
+                    "response_id": response_id,
+                    "factualityQueries": factualityQueries,
+                    "textQuery": textQuery,
+                    "choices": choices,
+                    "images": all_images,
+                    "error": False,
+                }
+
+                # Update state
+                self.conversation_id = conversation_id
+                self.response_id = response_id
+                self.choice_id = choice_id
+                self._reqid += random.randint(1000, 9000)
+
+                return results
+
+            except (IndexError, TypeError) as e:
+                console.log(f"[red]Error extracting data from response: {e}[/red]")
+                return {"content": f"Error extracting data from response: {e}", "error": True}
+
+        except json.JSONDecodeError as e:
+            console.log(f"[red]Error parsing JSON response: {e}[/red]")
+            return {"content": f"Error parsing JSON response: {e}. Response: {resp.text[:200]}...", "error": True}
+        except Timeout as e:
             console.log(f"[red]Request timed out: {e}[/red]")
             return {"content": f"Request timed out: {e}", "error": True}
-        except (RequestException, CurlError) as e: # Catch general request/curl errors
+        except (RequestException, CurlError) as e:
             console.log(f"[red]Network error: {e}[/red]")
             return {"content": f"Network error: {e}", "error": True}
-        except HTTPError as e: # Catch requests.exceptions.HTTPError
-             console.log(f"[red]HTTP error {e.response.status_code}: {e}[/red]")
-             return {"content": f"HTTP error {e.response.status_code}: {e}", "error": True}
+        except HTTPError as e:
+            console.log(f"[red]HTTP error {e.response.status_code}: {e}[/red]")
+            return {"content": f"HTTP error {e.response.status_code}: {e}", "error": True}
         except Exception as e:
-             console.log(f"[red]An unexpected error occurred during ask: {e}[/red]", style="bold red")
-             return {"content": f"An unexpected error occurred: {e}", "error": True}
+            console.log(f"[red]An unexpected error occurred during ask: {e}[/red]", style="bold red")
+            return {"content": f"An unexpected error occurred: {e}", "error": True}
 
 
 #########################################
@@ -596,16 +779,16 @@ class Image(BaseModel):
             Title of the image (default: "[Image]").
         alt: str, optional
             Optional description.
-        proxy: Optional[Union[str, Dict[str, str]]] = None # Allow string or dict proxy
+        proxy: Optional[Union[str, Dict[str, str]]] = None
             Proxy used when saving the image.
-        impersonate: str = "chrome110" # Added impersonate for saving
+        impersonate: str = "chrome110"
             Browser profile for curl_cffi to impersonate.
     """
     url: str
     title: str = "[Image]"
     alt: str = ""
     proxy: Optional[Union[str, Dict[str, str]]] = None
-    impersonate: str = "chrome110" # Default impersonation for saving
+    impersonate: str = "chrome110"
 
     def __str__(self):
         return f"{self.title}({self.url}) - {self.alt}"
@@ -617,17 +800,17 @@ class Image(BaseModel):
 
     async def save(
         self,
-        path: str = "temp",
+        path: str = "downloaded_images",
         filename: Optional[str] = None,
         cookies: Optional[dict] = None,
         verbose: bool = False,
-        skip_invalid_filename: bool = False,
+        skip_invalid_filename: bool = True,
     ) -> Optional[str]:
         """
         Save the image to disk using curl_cffi.
         Parameters:
             path: str, optional
-                Directory to save the image (default "./temp").
+                Directory to save the image (default "downloaded_images").
             filename: str, optional
                 Filename to use; if not provided, inferred from URL.
             cookies: dict, optional
@@ -643,32 +826,38 @@ class Image(BaseModel):
             RequestException/CurlError for other network errors.
             IOError if file writing fails.
         """
-        # Filename generation logic remains the same
+        # Generate filename from URL if not provided
         if not filename:
-             try:
-                  # Use httpx.URL temporarily just for parsing, or implement manually
-                  # Let's use basic parsing to avoid httpx dependency here
-                  from urllib.parse import urlparse, unquote
-                  parsed_url = urlparse(self.url)
-                  base_filename = os.path.basename(unquote(parsed_url.path))
-                  safe_filename = re.sub(r'[<>:"/\\|?*]', '_', base_filename)
-                  filename = safe_filename if safe_filename else f"image_{random.randint(1000, 9999)}.jpg"
-             except Exception:
-                  filename = f"image_{random.randint(1000, 9999)}.jpg"
+            try:
+                from urllib.parse import urlparse, unquote
+                parsed_url = urlparse(self.url)
+                base_filename = os.path.basename(unquote(parsed_url.path))
+                # Remove invalid characters for filenames
+                safe_filename = re.sub(r'[<>:"/\\|?*]', '_', base_filename)
+                if safe_filename and len(safe_filename) > 0:
+                    filename = safe_filename
+                else:
+                    filename = f"image_{random.randint(1000, 9999)}.jpg"
+            except Exception:
+                filename = f"image_{random.randint(1000, 9999)}.jpg"
 
+        # Validate filename length
         try:
             _ = Path(filename)
             max_len = 255
             if len(filename) > max_len:
-                 name, ext = os.path.splitext(filename)
-                 filename = name[:max_len - len(ext) -1] + ext
+                name, ext = os.path.splitext(filename)
+                filename = name[:max_len - len(ext) - 1] + ext
         except (OSError, ValueError):
-            if verbose: console.log(f"[yellow]Invalid filename generated: {filename}[/yellow]")
+            if verbose:
+                console.log(f"[yellow]Invalid filename generated: {filename}[/yellow]")
             if skip_invalid_filename:
-                if verbose: console.log("[yellow]Skipping save due to invalid filename.[/yellow]")
+                if verbose:
+                    console.log("[yellow]Skipping save due to invalid filename.[/yellow]")
                 return None
             filename = f"image_{random.randint(1000, 9999)}.jpg"
-            if verbose: console.log(f"[yellow]Using fallback filename: {filename}[/yellow]")
+            if verbose:
+                console.log(f"[yellow]Using fallback filename: {filename}[/yellow]")
 
         # Prepare proxy dictionary for curl_cffi
         proxies_dict = None
@@ -680,31 +869,35 @@ class Image(BaseModel):
         try:
             # Use AsyncSession from curl_cffi
             async with AsyncSession(
-                follow_redirects=True, # Default
                 cookies=cookies,
                 proxies=proxies_dict,
-                impersonate=self.impersonate # Use stored impersonate setting
+                impersonate=self.impersonate
+                # follow_redirects is handled automatically by curl_cffi
             ) as client:
                 if verbose:
                     console.log(f"Attempting to download image from: {self.url}")
-                response = await client.get(self.url)
-                response.raise_for_status() # Raise HTTPError for bad responses
 
+                response = await client.get(self.url)
+                response.raise_for_status()
+
+                # Check content type
                 content_type = response.headers.get("content-type", "").lower()
-                if "image" not in content_type:
+                if "image" not in content_type and verbose:
                     console.log(f"[yellow]Warning: Content type is '{content_type}', not an image. Saving anyway.[/yellow]")
 
+                # Create directory and save file
                 dest_path = Path(path)
                 dest_path.mkdir(parents=True, exist_ok=True)
                 dest = dest_path / filename
 
-                # Use response.content which holds the bytes
+                # Write image data to file
                 dest.write_bytes(response.content)
+
                 if verbose:
                     console.log(f"Image saved successfully as {dest.resolve()}")
+
                 return str(dest.resolve())
 
-        # Update exception handling
         except HTTPError as e:
             console.log(f"[red]Error downloading image {self.url}: {e.response.status_code} {e}[/red]")
             raise
@@ -715,8 +908,8 @@ class Image(BaseModel):
             console.log(f"[red]Error writing image file to {dest}: {e}[/red]")
             raise
         except Exception as e:
-             console.log(f"[red]An unexpected error occurred during image save: {e}[/red]")
-             raise
+            console.log(f"[red]An unexpected error occurred during image save: {e}[/red]")
+            raise
 
 
 class WebImage(Image):
@@ -764,145 +957,3 @@ class GeneratedImage(Image):
 
         # Pass the required cookies and other args (like impersonate) to the parent save method
         return await super().save(cookies=self.cookies, **kwargs)
-
-#########################################
-# Main usage demonstration
-#########################################
-
-async def main_async():
-    """Asynchronous main function for demonstration."""
-    cookies_file = "cookies.json"
-    impersonate_profile = "chrome110" # Example browser profile
-
-    bot = None
-    try:
-        bot = await AsyncChatbot.create(
-            *load_cookies(cookies_file),
-            model=Model.G_2_5_PRO,
-            impersonate=impersonate_profile, # Pass impersonate setting
-            # proxy="socks5://127.0.0.1:9050" # Example SOCKS proxy
-        )
-        console.log(f"[green]AsyncChatbot initialized successfully (impersonating {impersonate_profile}).[/green]")
-    except FileNotFoundError:
-        console.log(f"[bold red]Error: Cookie file '{cookies_file}' not found.[/bold red]")
-        console.log("Please export cookies from your browser after logging into Google Gemini and save as cookies.json.")
-        return
-    except Exception as e:
-        console.log(f"[bold red]Error initializing AsyncChatbot: {e}[/bold red]")
-        return
-
-    # --- Sample text query ---
-    text_message = "Explain the concept of asynchronous programming in Python in simple terms."
-    console.log(f"\n[cyan]Sending text query:[/cyan] '{text_message}'")
-    try:
-        response_text = await bot.ask(text_message)
-        if response_text.get("error"):
-             console.log(f"[red]Error in text response: {response_text.get('content')}[/red]")
-        else:
-             console.log("[blue]Text Response:[/blue]")
-             console.print(Markdown(response_text.get("content", "No content received.")))
-    except Exception as e:
-        console.log(f"[red]Error during text query: {e}[/red]")
-
-    # --- Image Generation Query ---
-    image_prompt = "Generate an artistic image of a cat sitting on a crescent moon, starry night background."
-    console.log(f"\n[cyan]Sending image generation query:[/cyan] '{image_prompt}'")
-    try:
-        response_image = await bot.ask(image_prompt)
-
-        if response_image.get("error"):
-             console.log(f"[red]Error in image response: {response_image.get('content')}[/red]")
-        else:
-            returned_images = response_image.get("images", [])
-            if not returned_images:
-                console.log("[yellow]No direct image data returned. Response content:[/yellow]")
-                console.print(Markdown(response_image.get("content", "No content received.")))
-            else:
-                console.log(f"[green]Received {len(returned_images)} image(s).[/green]")
-                for i, img_data in enumerate(returned_images):
-                    console.log(f"Processing image {i+1}: URL: {img_data.get('url')}")
-                    try:
-                        # Pass impersonate setting when creating Image object
-                        generated_img = GeneratedImage(
-                            url=img_data.get('url'),
-                            title=img_data.get('title', f"Generated Image {i+1}"),
-                            alt=img_data.get('alt', ""),
-                            cookies={"__Secure-1PSID": bot.secure_1psid, "__Secure-1PSIDTS": bot.secure_1psidts},
-                            proxy=bot.proxy, # Pass proxy settings from bot
-                            impersonate=bot.impersonate # Pass impersonate setting from bot
-                        )
-                        save_path = "downloaded_images"
-                        saved_file = await generated_img.save(path=save_path, verbose=True, skip_invalid_filename=True)
-                        if saved_file:
-                            console.log(f"[blue]Image {i+1} saved to: {saved_file}[/blue]")
-                        else:
-                            console.log(f"[yellow]Image {i+1} skipped due to filename issue.[/yellow]")
-                    except Exception as img_e:
-                        console.log(f"[red]Error saving image {i+1}: {img_e}[/red]")
-
-    except Exception as e:
-        console.log(f"[red]Error during image generation query: {e}[/red]")
-
-    # --- Image Understanding Query ---
-    local_image_path = "path/to/your/local/image.jpg" # <--- CHANGE THIS PATH
-    image_understanding_prompt = "Describe what you see in this image."
-
-    if Path(local_image_path).is_file():
-        console.log(f"\n[cyan]Sending image understanding query with image:[/cyan] '{local_image_path}'")
-        console.log(f"[cyan]Prompt:[/cyan] '{image_understanding_prompt}'")
-        try:
-            response_understanding = await bot.ask(image_understanding_prompt, image=local_image_path)
-            if response_understanding.get("error"):
-                 console.log(f"[red]Error in image understanding response: {response_understanding.get('content')}[/red]")
-            else:
-                 console.log("[blue]Image Understanding Response:[/blue]")
-                 console.print(Markdown(response_understanding.get("content", "No content received.")))
-        except Exception as e:
-            console.log(f"[red]Error during image understanding query: {e}[/red]")
-    else:
-        console.log(f"\n[yellow]Skipping image understanding query: File not found at '{local_image_path}'.[/yellow]")
-        console.log("[yellow]Please update 'local_image_path' in the script to test this feature.[/yellow]")
-
-
-    # --- Save/Load Conversation (logic remains the same) ---
-    conversation_file = "conversations.json"
-    conversation_name = f"Demo Conversation - {datetime.now().strftime('%Y%m%d_%H%M')}"
-    console.log(f"\n[cyan]Saving conversation as:[/cyan] '{conversation_name}' to '{conversation_file}'")
-    try:
-        await bot.save_conversation(conversation_file, conversation_name)
-        console.log(f"[green]Conversation saved successfully.[/green]")
-    except Exception as e:
-        console.log(f"[red]Error saving conversation: {e}[/red]")
-
-    console.log(f"\n[cyan]Attempting to load conversation:[/cyan] '{conversation_name}' from '{conversation_file}'")
-    try:
-        loaded = await bot.load_conversation(conversation_file, conversation_name)
-        if loaded:
-            console.log("[green]Conversation loaded successfully. Sending a follow-up query.[/green]")
-            follow_up_message = "What was the first question I asked in this session?"
-            console.log(f"[cyan]Sending follow-up query:[/cyan] '{follow_up_message}'")
-            response_follow_up = await bot.ask(follow_up_message)
-            if response_follow_up.get("error"):
-                 console.log(f"[red]Error in follow-up response: {response_follow_up.get('content')}[/red]")
-            else:
-                 console.log("[blue]Follow-up Response:[/blue]")
-                 console.print(Markdown(response_follow_up.get("content", "No content received.")))
-        else:
-            console.log("[yellow]Could not load the conversation.[/yellow]")
-    except Exception as e:
-        console.log(f"[red]Error loading or using loaded conversation: {e}[/red]")
-
-    # --- Cleanup ---
-    if bot and bot.session:
-        await bot.session.close() # Use close() for AsyncSession
-        console.log("\n[grey]HTTP session closed.[/grey]")
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        console.log("\n[yellow]Operation cancelled by user.[/yellow]")
-    except Exception as main_e:
-        console.log(f"[bold red]An error occurred in the main execution: {main_e}[/bold red]")
-

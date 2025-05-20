@@ -347,22 +347,79 @@ class BLACKBOXAI(Provider):
         raise ValueError(f"Unknown model: {model}. Available models: {', '.join(cls.AVAILABLE_MODELS)}")
 
     @classmethod
-    def generate_session(cls, email: str, id_length: int = 21, days_ahead: int = 30) -> dict:
+    def generate_session(cls, email: str = None, id_length: int = 21, days_ahead: int = 30) -> dict:
         """
         Generate a dynamic session with proper ID and expiry format using a specific email.
+        Uses a large hardcoded list of names and domains for diversity.
 
         Args:
-            email: The email to use for this session
+            email: The email to use for this session (optional, will be generated if not provided)
             id_length: Length of the numeric ID (default: 21)
             days_ahead: Number of days ahead for expiry (default: 30)
 
         Returns:
             dict: A session dictionary with user information and expiry
         """
-        # Generate a random name
-        first_names = ["Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn", "Skyler", "Dakota"]
-        last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis", "Garcia", "Rodriguez", "Wilson"]
+        # Large list of first and last names
+        first_names = [
+            "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn", "Skyler", "Dakota",
+            "Jamie", "Cameron", "Drew", "Harper", "Peyton", "Reese", "Rowan", "Sawyer", "Shawn", "Terry",
+            "Robin", "Kendall", "Finley", "Blake", "Charlie", "Emerson", "Hayden", "Jesse", "Kai", "Lane",
+            "Logan", "Marley", "Micah", "Parker", "Phoenix", "Remy", "Rory", "Sage", "Shiloh", "Spencer",
+            "Sydney", "Tatum", "Teagan", "Tristan", "Val", "Winter", "Zion", "Bailey", "Brett", "Case",
+            "Corey", "Devon", "Eden", "Ellis", "Frankie", "Gray", "Indigo", "Jaden", "Jules", "Justice",
+            "Kieran", "Lake", "Lennon", "Linden", "Luca", "Milan", "Monroe", "Oakley", "Perry", "Quincy",
+            "Reagan", "Reed", "Rene", "River", "Robin", "Sasha", "Shane", "Shawn", "Sky", "Sterling",
+            "Storm", "Toby", "Vesper", "Wren", "Zane", "Zuri", "Ainsley", "Arden", "Aspen", "Blaine", "Briar",
+            "Campbell", "Cleo", "Cruz", "Dallas", "Darby", "Denver", "Echo", "Emery", "Everest", "Hollis",
+            "Indy", "Joss", "Karsen", "Kit", "Laken", "Linden", "Lyle", "Marlow", "Merritt", "Nico", "Onyx",
+            "Pax", "Peyton", "Quill", "Raleigh", "Reeve", "Ridley", "Rio", "Rylan", "Sailor", "Scout", "Shia",
+            "Sonny", "Story", "Tanner", "Tate", "Tegan", "Tiernan", "True", "Vaughn", "Wynn", "Zephyr",
+            # Add more names as needed for diversity
+        ]
+        last_names = [
+            "Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis", "Garcia", "Rodriguez", "Wilson",
+            "Martinez", "Anderson", "Taylor", "Thomas", "Hernandez", "Moore", "Martin", "Jackson", "Thompson", "White",
+            "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Perez", "Hall",
+            "Young", "Allen", "Sanchez", "Wright", "King", "Scott", "Green", "Baker", "AdAMS", "Nelson",
+            "Carter", "Mitchell", "Perez", "Roberts", "Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards",
+            "Collins", "Stewart", "Sanchez", "Morris", "Rogers", "Reed", "Cook", "Morgan", "Bell", "Murphy",
+            "Bailey", "Rivera", "Cooper", "Richardson", "Cox", "Howard", "Ward", "Torres", "Peterson", "Gray",
+            "Ramirez", "James", "Watson", "Brooks", "Kelly", "Sanders", "Price", "Bennett", "Wood", "Barnes",
+            "Ross", "Henderson", "Coleman", "Jenkins", "Perry", "Powell", "Long", "Patterson", "Hughes", "Flores",
+            "Washington", "Butler", "Simmons", "Foster", "Gonzales", "Bryant", "Alexander", "Russell", "Griffin", "Diaz",
+            # Add more last names as needed
+        ]
+        # Large list of fake domains
+        fake_domains = [
+            "example.com", "mailinator.com", "fakemail.com", "tempmail.net", "yopmail.com", "testmail.org", "maildrop.cc",
+            "inboxkitten.com", "guerrillamail.com", "sharklasers.com", "mailnesia.com", "dispostable.com", "getnada.com",
+            "10minutemail.com", "throwawaymail.com", "mailcatch.com", "spambog.com", "mintemail.com", "mail-temp.com",
+            "fakeinbox.com", "mytrashmail.com", "trashmail.com", "mailnull.com", "spamgourmet.com", "mailhazard.com",
+            "mailbox52.ga", "mailpoof.com", "mailtothis.com", "nowmymail.com", "mailimate.com", "mailboxy.fun",
+            "mailbolt.net", "mailblip.com", "mailbucket.org", "mailchimp.biz", "mailclark.ai", "maildog.info",
+            "maildrop.cc", "maildu.de", "maileater.com", "mailexpire.com", "mailforspam.com", "mailfreeonline.com",
+            "mailhub24.com", "mailimate.com", "mailin8r.com", "mailinator.net", "mailismagic.com", "mailjunk.cf",
+            "mailmate.com", "mailme24.com", "mailmoat.com", "mailnator.com", "mailnesia.com", "mailnull.com",
+            "mailpick.biz", "mailrock.biz", "mailsac.com", "mailseal.de", "mailtemp.net", "mailtothis.com",
+            "mailtrash.net", "mailtv.net", "mailup.net", "mailwire.net", "mailzilla.com", "meltmail.com",
+            "moakt.com", "my10minutemail.com", "mytemp.email", "neomailbox.com", "nospamfor.us", "objectmail.com",
+            "oneoffemail.com", "owlpic.com", "pookmail.com", "proxymail.eu", "rcpt.at", "sharklasers.com",
+            "smellfear.com", "sogetthis.com", "spam4.me", "spamavert.com", "spambob.com", "spambog.com",
+            "spambox.us", "spamcannon.com", "spamday.com", "spamex.com", "spamfree24.com", "spamgourmet.com",
+            "spamhole.com", "spaminator.de", "spamkill.info", "spaml.com", "spammotel.com", "spamobox.com",
+            "spamspot.com", "superrito.com", "teleworm.us", "temp-mail.org", "temp-mail.ru", "tempail.com",
+            "tempe-mail.com", "tempemail.co.za", "tempinbox.com", "tempmail.eu", "tempmail.net", "tempmail.us",
+            "tempomail.fr", "temporaryemail.net", "thankyou2010.com", "thisisnotmyrealemail.com", "throwam.com",
+            "throwawayemailaddress.com", "trash-mail.com", "trash2009.com", "trashdevil.com", "trashemail.de",
+            "trashmail.at", "trashmail.com", "trashmail.me", "trashmail.net", "trashymail.com", "trbvm.com",
+            "yepmail.net", "yopmail.com", "zoemail.net"
+            # Add more as needed
+        ]
         name = f"{random.choice(first_names)} {random.choice(last_names)}"
+        if not email:
+            domain = random.choice(fake_domains)
+            email = f"{name.lower().replace(' ','.')}{random.randint(1,9999)}@{domain}"
 
         # Generate numeric ID - using Google-like ID format
         numeric_id = ''.join(random.choice('0123456789') for _ in range(id_length))
@@ -433,7 +490,34 @@ class BLACKBOXAI(Provider):
         # Generate a random email for the session
         chars = string.ascii_lowercase + string.digits
         random_team = ''.join(random.choice(chars) for _ in range(8))
-        request_email = f"{random_team}@blackbox.ai"
+        # Use a random domain from the fake_domains set for the request email
+        fake_domains = [
+            "example.com", "mailinator.com", "fakemail.com", "tempmail.net", "yopmail.com", "testmail.org", "maildrop.cc",
+            "inboxkitten.com", "guerrillamail.com", "sharklasers.com", "mailnesia.com", "dispostable.com", "getnada.com",
+            "10minutemail.com", "throwawaymail.com", "mailcatch.com", "spambog.com", "mintemail.com", "mail-temp.com",
+            "fakeinbox.com", "mytrashmail.com", "trashmail.com", "mailnull.com", "spamgourmet.com", "mailhazard.com",
+            "mailbox52.ga", "mailpoof.com", "mailtothis.com", "nowmymail.com", "mailimate.com", "mailboxy.fun",
+            "mailbolt.net", "mailblip.com", "mailbucket.org", "mailchimp.biz", "mailclark.ai", "maildog.info",
+            "maildrop.cc", "maildu.de", "maileater.com", "mailexpire.com", "mailforspam.com", "mailfreeonline.com",
+            "mailhub24.com", "mailimate.com", "mailin8r.com", "mailinator.net", "mailismagic.com", "mailjunk.cf",
+            "mailmate.com", "mailme24.com", "mailmoat.com", "mailnator.com", "mailnesia.com", "mailnull.com",
+            "mailpick.biz", "mailrock.biz", "mailsac.com", "mailseal.de", "mailtemp.net", "mailtothis.com",
+            "mailtrash.net", "mailtv.net", "mailup.net", "mailwire.net", "mailzilla.com", "meltmail.com",
+            "moakt.com", "my10minutemail.com", "mytemp.email", "neomailbox.com", "nospamfor.us", "objectmail.com",
+            "oneoffemail.com", "owlpic.com", "pookmail.com", "proxymail.eu", "rcpt.at", "sharklasers.com",
+            "smellfear.com", "sogetthis.com", "spam4.me", "spamavert.com", "spambob.com", "spambog.com",
+            "spambox.us", "spamcannon.com", "spamday.com", "spamex.com", "spamfree24.com", "spamgourmet.com",
+            "spamhole.com", "spaminator.de", "spamkill.info", "spaml.com", "spammotel.com", "spamobox.com",
+            "spamspot.com", "superrito.com", "teleworm.us", "temp-mail.org", "temp-mail.ru", "tempail.com",
+            "tempe-mail.com", "tempemail.co.za", "tempinbox.com", "tempmail.eu", "tempmail.net", "tempmail.us",
+            "tempomail.fr", "temporaryemail.net", "thankyou2010.com", "thisisnotmyrealemail.com", "throwam.com",
+            "throwawayemailaddress.com", "trash-mail.com", "trash2009.com", "trashdevil.com", "trashemail.de",
+            "trashmail.at", "trashmail.com", "trashmail.me", "trashmail.net", "trashymail.com", "trbvm.com",
+            "yepmail.net", "yopmail.com", "zoemail.net"
+            # Add more as needed
+        ]
+        domain = random.choice(fake_domains)
+        request_email = f"{random_team}@{domain}"
 
         # Generate a session with the email
         session_data = self.generate_session(request_email)
@@ -541,12 +625,12 @@ class BLACKBOXAI(Provider):
                 for line in response.iter_lines(decode_unicode=True):
                     if line:
                         if "You have reached your request limit for the hour" in line:
-                            raise exceptions.RateLimitError("Rate limit exceeded")
+                            raise exceptions.RatelimitE("Rate limit exceeded")
                         yield line
             else:
                 response_text = response.text
                 if "You have reached your request limit for the hour" in response_text:
-                    raise exceptions.RateLimitError("Rate limit exceeded")
+                    raise exceptions.RatelimitE("Rate limit exceeded")
                 yield response_text
 
         except requests.exceptions.RequestException as e:

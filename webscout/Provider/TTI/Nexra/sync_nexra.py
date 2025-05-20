@@ -13,7 +13,7 @@ from webscout.litagent import LitAgent
 # Initialize our fire logger and agent 🔥
 logger = Logger(
     "Nexra",
-    format=LogFormat.MODERN_EMOJI,
+    format=LogFormat.DEFAULT,
 
 )
 agent = LitAgent()

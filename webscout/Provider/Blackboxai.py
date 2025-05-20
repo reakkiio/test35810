@@ -766,6 +766,6 @@ if __name__ == "__main__":
     #         print(f"{model:<50} {'✗':<10} {str(e)}")
 
     ai = BLACKBOXAI(model="gpt-4.1", timeout=60)
-    response = ai.chat("Write me about humans in points", stream=True)
+    response = ai.chat("tell me about humans", stream=True)
     for line in response:
         print(line, end="", flush=True)

@@ -56,49 +56,49 @@ class Completions(BaseCompletions):
         self, request_id: str, created_time: int, model: str,
         conversation_prompt: str, country: str, user_id: str
     ) -> Generator[ChatCompletionChunk, None, None]:
-        """Simulate streaming by breaking up the full response."""
+        """Simulate streaming by breaking up the full response into fixed-size character chunks."""
         try:
             # Get the full response first
             full_response = self._get_ai4chat_response(conversation_prompt, country, user_id)
-
-            # Break it into chunks for simulated streaming
-            words = full_response.split()
-            chunk_size = max(1, len(words) // 10)  # Divide into ~10 chunks
 
             # Track token usage
             prompt_tokens = len(conversation_prompt.split())
             completion_tokens = 0
 
-            # Stream chunks
-            for i in range(0, len(words), chunk_size):
-                chunk_text = " ".join(words[i:i+chunk_size])
+            # Stream fixed-size character chunks (e.g., 48 chars)
+            buffer = full_response
+            chunk_size = 48
+            while buffer:
+                chunk_text = buffer[:chunk_size]
+                buffer = buffer[chunk_size:]
                 completion_tokens += len(chunk_text.split())
 
-                # Create the delta object
-                delta = ChoiceDelta(
-                    content=chunk_text,
-                    role="assistant",
-                    tool_calls=None
-                )
+                if chunk_text.strip():
+                    # Create the delta object
+                    delta = ChoiceDelta(
+                        content=chunk_text,
+                        role="assistant",
+                        tool_calls=None
+                    )
 
-                # Create the choice object
-                choice = Choice(
-                    index=0,
-                    delta=delta,
-                    finish_reason=None,
-                    logprobs=None
-                )
+                    # Create the choice object
+                    choice = Choice(
+                        index=0,
+                        delta=delta,
+                        finish_reason=None,
+                        logprobs=None
+                    )
 
-                # Create the chunk object
-                chunk = ChatCompletionChunk(
-                    id=request_id,
-                    choices=[choice],
-                    created=created_time,
-                    model=model,
-                    system_fingerprint=None
-                )
+                    # Create the chunk object
+                    chunk = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model,
+                        system_fingerprint=None
+                    )
 
-                yield chunk
+                    yield chunk
 
             # Final chunk with finish_reason="stop"
             delta = ChoiceDelta(

@@ -76,9 +76,10 @@ class AI4Chat(Provider):
         conversationally: bool = False,
         country: str = None,
         user_id: str = None,
-    ) -> Dict[str, Any]:
+    ):
         """
         Sends a prompt to the AI4Chat API and returns the response.
+        If stream=True, yields small chunks of the response (simulated streaming).
         """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -107,9 +108,20 @@ class AI4Chat(Provider):
             response_text = response_text[1:]
         if response_text.endswith('"'):
             response_text = response_text[:-1]
+        response_text = response_text.replace('\\n', '\n').replace('\\n\\n', '\n\n')
         self.last_response.update(dict(text=response_text))
         self.conversation.update_chat_history(prompt, response_text)
-        return self.last_response
+        if stream:
+            # Simulate streaming by yielding fixed-size character chunks (e.g., 48 chars)
+            buffer = response_text
+            chunk_size = 48
+            while buffer:
+                chunk = buffer[:chunk_size]
+                buffer = buffer[chunk_size:]
+                if chunk.strip():
+                    yield {"text": chunk}
+        else:
+            return self.last_response
 
     def chat(
         self,
@@ -119,19 +131,31 @@ class AI4Chat(Provider):
         conversationally: bool = False,
         country: str = None,
         user_id: str = None,
-    ) -> str:
+    ):
         """
         Generates a response from the AI4Chat API.
+        If stream=True, yields each chunk as a string.
         """
-        return self.get_message(
-            self.ask(
+        if stream:
+            for chunk in self.ask(
                 prompt,
+                stream=True,
                 optimizer=optimizer,
                 conversationally=conversationally,
                 country=country,
                 user_id=user_id,
+            ):
+                yield self.get_message(chunk)
+        else:
+            return self.get_message(
+                self.ask(
+                    prompt,
+                    optimizer=optimizer,
+                    conversationally=conversationally,
+                    country=country,
+                    user_id=user_id,
+                )
             )
-        )
 
     def get_message(self, response: Union[dict, str]) -> str:
         """
@@ -145,5 +169,6 @@ class AI4Chat(Provider):
 if __name__ == "__main__":
     from rich import print
     ai = AI4Chat() 
-    response = ai.chat("Tell me something interesting")
-    print(response)
+    response = ai.chat("Tell me about humans in points", stream=True)
+    for c in response:
+        print(c, end="")

@@ -7,26 +7,22 @@ import uuid
 import time
 import sys
 import inspect
-from pathlib import Path
 from typing import List, Dict, Optional, Union, Any, Generator, Callable
-from fastapi import FastAPI, Response, Request, Depends, Body, HTTPException
+from fastapi import FastAPI, Response, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.status import (
-    HTTP_200_OK,
     HTTP_422_UNPROCESSABLE_ENTITY, 
     HTTP_404_NOT_FOUND,
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
-from fastapi.encoders import jsonable_encoder
 from webscout.Provider.OPENAI.pydantic_imports import * # Imports BaseModel, Field
 from typing import Literal
 
@@ -34,8 +30,7 @@ from typing import Literal
 # Import provider classes from the OPENAI directory
 from webscout.Provider.OPENAI import *
 from webscout.Provider.OPENAI.utils import (
-    ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletion, Choice, ChatCompletionMessage, CompletionUsage
 )
 
 

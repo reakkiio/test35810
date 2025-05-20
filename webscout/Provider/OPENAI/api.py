@@ -1,5 +1,4 @@
 from __future__ import annotations
-import logging
 import json
 import uvicorn
 import secrets
@@ -39,7 +38,6 @@ from webscout.Provider.OPENAI.utils import (
     ChatCompletionMessage, CompletionUsage
 )
 
-logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8000
 
@@ -209,7 +207,6 @@ def create_app():
     return app
 
 def create_app_debug():
-    logging.basicConfig(level=logging.DEBUG)
     return create_app()
 
 def initialize_provider_map():
@@ -218,14 +215,11 @@ def initialize_provider_map():
     for name, obj in inspect.getmembers(module):
         if inspect.isclass(obj) and issubclass(obj, OpenAICompatibleProvider) and obj.__name__ != "OpenAICompatibleProvider":
             AppConfig.provider_map[obj.__name__] = obj
-            logger.info(f"Registered provider: {obj.__name__}")
             if hasattr(obj, "AVAILABLE_MODELS") and isinstance(obj.AVAILABLE_MODELS, (list, tuple, set)):
                 for model in obj.AVAILABLE_MODELS:
                     if model and isinstance(model, str) and model != obj.__name__:
                         AppConfig.provider_map[model] = obj
-                        logger.info(f"Mapped model {model} to provider {obj.__name__}")
     if not AppConfig.provider_map:
-        logger.warning("No providers found, using ChatGPT as fallback")
         from webscout.Provider.OPENAI.chatgpt import ChatGPT
         AppConfig.provider_map["ChatGPT"] = ChatGPT
         AppConfig.provider_map["gpt-4"] = ChatGPT
@@ -235,9 +229,6 @@ def initialize_provider_map():
     provider_names = list(set(v.__name__ for v in AppConfig.provider_map.values()))
     provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
     model_names = [model for model in AppConfig.provider_map.keys() if model not in provider_class_names]
-    logger.info(f"Available providers ({len(provider_names)}): {provider_names}")
-    logger.info(f"Available models ({len(model_names)}): {sorted(model_names)}")
-    logger.info(f"Default provider: {AppConfig.default_provider}")
 
 class Api:
     def __init__(self, app: FastAPI) -> None:
@@ -338,13 +329,10 @@ class Api:
                             "example": example
                         }
                     )
-                # Log the detailed validation errors that Pydantic provides
-                logger.error(f"[TEMPLOG] Validation error: {exc.errors()}")
                 return JSONResponse(
                     status_code=HTTP_422_UNPROCESSABLE_ENTITY,
                     content={"detail": error_messages, "example": example}
                 )
-            logger.error(f"[TEMPLOG] Validation error (non-chat/completions): {exc.errors()}")
             return JSONResponse(
                 status_code=HTTP_422_UNPROCESSABLE_ENTITY,
                 content={"detail": error_messages}
@@ -357,7 +345,6 @@ class Api:
             )
         @self.app.exception_handler(Exception)
         async def general_exception_handler(request: Request, exc: Exception):
-            logger.exception(f"Unhandled exception: {exc}")
             return JSONResponse(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": f"Internal server error: {str(exc)}"}
@@ -410,35 +397,25 @@ class Api:
             chat_request: ChatCompletionRequest = Body(...)
         ):
             # raw_body = await request.body() # Already read by validation_exception_handler if error
-            # logger.info(f"[TEMPLOG] Raw request payload: {raw_body.decode('utf-8', errors='ignore')}") # Redundant if already logged
-            logger.info(f"[TEMPLOG] Received chat completion request model: {chat_request.model}")
-            logger.debug(f"[TEMPLOG] Full request body parsed: {chat_request.model_dump_json(indent=2, exclude_none=True)}")
-
             try:
                 start_time = time.time()
                 provider_class = None
                 model = chat_request.model
-                logger.info(f"[TEMPLOG] Chat completion request for model: {model}")
                 
                 if model in AppConfig.provider_map:
                     provider_class = AppConfig.provider_map[model]
-                    logger.info(f"[TEMPLOG] Found provider class for model {model}: {provider_class.__name__}")
                 else:
                     provider_class = AppConfig.provider_map.get(AppConfig.default_provider)
-                    logger.info(f"[TEMPLOG] Using default provider {AppConfig.default_provider} for model {model}")
                 
                 if not provider_class:
-                    logger.error(f"[TEMPLOG] No provider available for model {model}. Available models: {list(AppConfig.provider_map.keys())}")
                     return ErrorResponse.from_message(
                         f"Model '{model}' not supported. Available models: {list(AppConfig.provider_map.keys())}",
                         HTTP_404_NOT_FOUND
                     )
                 
-                logger.info(f"[TEMPLOG] Initializing provider {provider_class.__name__}")
                 try:
                     provider = provider_class()
                 except Exception as e:
-                    logger.exception(f"[TEMPLOG] Failed to initialize provider {provider_class.__name__}: {e}")
                     return ErrorResponse.from_message(
                         f"Failed to initialize provider {provider_class.__name__}: {e}",
                         HTTP_500_INTERNAL_SERVER_ERROR
@@ -475,18 +452,14 @@ class Api:
                 if chat_request.temperature is not None: params["temperature"] = chat_request.temperature
                 if chat_request.max_tokens is not None: params["max_tokens"] = chat_request.max_tokens
                 if chat_request.top_p is not None: params["top_p"] = chat_request.top_p
-                # ... (add other params like presence_penalty, frequency_penalty, logit_bias, user, stop)
 
                 if chat_request.stream:
                     async def streaming():
                         try:
-                            logger.info(f"[TEMPLOG] Creating streaming completion with {provider_class.__name__}")
                             completion_stream = provider.chat.completions.create(**params)
-                            logger.info(f"[TEMPLOG] Got streaming response: {type(completion_stream)}")
                             
                             if isinstance(completion_stream, Generator):
                                 for chunk in completion_stream:
-                                    logger.debug(f"[TEMPLOG] Streaming chunk: {type(chunk)}")
                                     # Standardize chunk format before sending
                                     if hasattr(chunk, 'model_dump'): # Pydantic v2
                                         chunk_data = chunk.model_dump(exclude_none=True)
@@ -495,11 +468,9 @@ class Api:
                                     elif isinstance(chunk, dict):
                                         chunk_data = chunk
                                     else: # Fallback for unknown chunk types
-                                        logger.warning(f"Unknown chunk type in stream: {type(chunk)}. Sending as is.")
                                         chunk_data = chunk 
                                     yield f"data: {json.dumps(chunk_data)}\n\n"
                             else: # Non-generator, might be a full response or an async iterable
-                                logger.warning(f"[TEMPLOG] Provider returned non-generator for stream: {type(completion_stream)}. Simulating stream if possible.")
                                 # This branch might need more robust handling for different async iterable types or full responses
                                 if hasattr(completion_stream, 'model_dump'):
                                     yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
@@ -509,17 +480,13 @@ class Api:
                                     yield f"data: {json.dumps(completion_stream)}\n\n"
 
                         except Exception as e:
-                            logger.exception(f"[TEMPLOG] Error in streaming: {e}")
                             yield f"data: {format_exception(e)}\n\n"
                         yield "data: [DONE]\n\n"
                     return StreamingResponse(streaming(), media_type="text/event-stream")
                 else: # Non-streaming
-                    logger.info(f"[TEMPLOG] Creating non-streaming completion with {provider_class.__name__}")
                     try:
                         completion = provider.chat.completions.create(**params)
-                        logger.info(f"[TEMPLOG] Got completion response: {type(completion)}")
                         if completion is None:
-                            logger.warning(f"[TEMPLOG] Provider {provider_class.__name__} returned None for completion")
                             # Return a valid OpenAI-compatible error or empty response
                             return ChatCompletion( # Assuming ChatCompletion is a Pydantic model for the response
                                 id=f"chatcmpl-{uuid.uuid4()}",
@@ -541,20 +508,15 @@ class Api:
                         elif isinstance(completion, dict):
                             response_data = completion
                         else:
-                            logger.error(f"Provider returned unexpected completion type: {type(completion)}")
                             return ErrorResponse.from_message("Invalid response format from provider", HTTP_500_INTERNAL_SERVER_ERROR)
                         
-                        logger.info(f"[TEMPLOG] Returning completion response: {response_data}")
                         return response_data
                     except Exception as e:
-                        logger.exception(f"[TEMPLOG] Error in completion: {e}")
                         return ErrorResponse.from_exception(e, HTTP_500_INTERNAL_SERVER_ERROR)
                 
                 elapsed = time.time() - start_time
-                logger.info(f"[TEMPLOG] Chat completion request processed in {elapsed:.3f} seconds")
 
             except Exception as e:
-                logger.exception(f"[TEMPLOG] Unhandled error in chat_completions: {e}")
                 return ErrorResponse.from_exception(e, HTTP_500_INTERNAL_SERVER_ERROR)
 
 def format_exception(e: Union[Exception, str]) -> str:
@@ -645,7 +607,7 @@ def run_api(
         port=int(port),
         factory=True,
         reload=debug, # Enable reload only in debug mode for stability
-        log_level="debug" if debug else "info"
+        # log_level="debug" if debug else "info"
     )
 
 if __name__ == "__main__":
@@ -658,9 +620,6 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', default=os.getenv('DEBUG', 'false').lower() == 'true', help='Run in debug mode')
     args = parser.parse_args()
     
-    # Basic logging setup for the main script execution phase
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     run_api(
         host="0.0.0.0", # Host configurable via env if needed

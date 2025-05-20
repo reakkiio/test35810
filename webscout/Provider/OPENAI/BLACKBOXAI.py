@@ -9,8 +9,8 @@ import uuid
 import time
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage
 )
@@ -59,18 +59,14 @@ class Completions(BaseCompletions):
             model: The model to use (from AVAILABLE_MODELS)
             messages: List of message dictionaries with 'role' and 'content'
             max_tokens: Maximum number of tokens to generate
-            stream: If True, raises an error as streaming is not supported
+            stream: If True, yields streaming chunks
             temperature: Sampling temperature (0-1)
             top_p: Nucleus sampling parameter (0-1)
             **kwargs: Additional parameters to pass to the API
 
         Returns:
-            Returns a ChatCompletion object
+            Returns a ChatCompletion object or a generator for streaming
         """
-        # Check if streaming is requested and raise an error
-        if stream:
-            raise ValueError("Streaming is not supported by the BLACKBOXAI provider. Please use stream=False.")
-
         # Generate request ID and timestamp
         request_id = str(uuid.uuid4())
         created_time = int(time.time())
@@ -108,6 +104,20 @@ class Completions(BaseCompletions):
                                     except Exception as e:
                                         pass
 
+        # Check if streaming is requested and raise an error
+        if stream:
+            return self._create_streaming(
+                request_id=request_id,
+                created_time=created_time,
+                model=model,
+                messages=messages,
+                system_message=system_message,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                media=media
+            )
+
         # Use non-streaming implementation
         return self._create_non_streaming(
             request_id=request_id,
@@ -120,7 +130,6 @@ class Completions(BaseCompletions):
             top_p=top_p,
             media=media
         )
-
 
 
     def _create_non_streaming(
@@ -250,6 +259,103 @@ class Completions(BaseCompletions):
 
         except Exception as e:
             raise IOError(f"BlackboxAI request failed: {str(e)}") from e
+
+    def _create_streaming(
+        self,
+        *,
+        request_id: str,
+        created_time: int,
+        model: str,
+        messages: List[Dict[str, Any]],
+        system_message: str,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        media: List = None
+    ):
+        """Implementation for streaming chat completions (OpenAI-compatible chunks)."""
+        # Prepare user messages for BlackboxAI API format
+        blackbox_messages = []
+        for i, msg in enumerate(messages):
+            if msg["role"] == "system":
+                continue  # System message handled separately
+            msg_id = self._client.generate_id() if i > 0 else request_id
+            blackbox_messages.append({
+                "id": msg_id,
+                "content": msg["content"],
+                "role": msg["role"]
+            })
+        # Add image data if provided
+        if media and blackbox_messages:
+            blackbox_messages[-1]['data'] = {
+                "imagesData": [
+                    {
+                        "filePath": f"/",
+                        "contents": to_data_uri(image)
+                    } for image in media
+                ],
+                "fileText": "",
+                "title": ""
+            }
+        # Generate request payload with session
+        request_email = f"{self._client.generate_random_string(8)}@blackbox.ai"
+        session_data = self._client.generate_session(request_email)
+        payload = self._client.create_request_payload(
+            messages=blackbox_messages,
+            chat_id=request_id,
+            system_message=system_message,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            session_data=session_data,
+            model=model
+        )
+        # Make the API request with cookies, stream=True
+        response = self._client.session.post(
+            self._client.api_endpoint,
+            json=payload,
+            headers=self._client.headers,
+            cookies=self._client.cookies,
+            stream=True,
+            timeout=self._client.timeout
+        )
+        # Blackbox streams as raw text, no line breaks, so chunk manually
+        buffer = ""
+        chunk_size = 32  # Tune as needed for smoothness
+        from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
+        for chunk in response.iter_content(chunk_size=chunk_size):
+            if not chunk:
+                continue
+            text = chunk.decode(errors="ignore")
+            buffer += text
+            # Yield in small pieces, but only non-empty
+            while len(buffer) >= chunk_size:
+                out = buffer[:chunk_size]
+                buffer = buffer[chunk_size:]
+                if out.strip():
+                    # Wrap the chunk in OpenAI-compatible structure
+                    delta = ChoiceDelta(content=out, role="assistant")
+                    choice = Choice(index=0, delta=delta, finish_reason=None)
+                    chunk_obj = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model,
+                        system_fingerprint=None
+                    )
+                    yield chunk_obj
+        # Yield any remaining buffer
+        if buffer.strip():
+            delta = ChoiceDelta(content=buffer, role="assistant")
+            choice = Choice(index=0, delta=delta, finish_reason=None)
+            chunk_obj = ChatCompletionChunk(
+                id=request_id,
+                choices=[choice],
+                created=created_time,
+                model=model,
+                system_fingerprint=None
+            )
+            yield chunk_obj
 
 
 class Chat(BaseChat):
@@ -733,3 +839,13 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             "designerMode": False,
             "workspaceId": ""
         }
+if __name__ == "__main__":
+    # Example usage
+    client = BLACKBOXAI()
+    response = client.chat.completions.create(
+        model="GPT-4.1",
+        messages=[{"role": "user", "content": "Tell me about india in points"}],
+        stream=True
+    )
+    for chunk in response:
+        print(chunk.choices[0].delta.content, end='', flush=True)

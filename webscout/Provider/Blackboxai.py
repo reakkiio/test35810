@@ -622,11 +622,20 @@ class BLACKBOXAI(Provider):
                 raise exceptions.FailedToGenerateResponseError(error_msg)
 
             if stream:
-                for line in response.iter_lines(decode_unicode=True):
-                    if line:
-                        if "You have reached your request limit for the hour" in line:
-                            raise exceptions.RatelimitE("Rate limit exceeded")
-                        yield line
+                buffer = ""
+                chunk_size = 32
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if not chunk:
+                        continue
+                    text = chunk.decode(errors="ignore")
+                    buffer += text
+                    while len(buffer) >= chunk_size:
+                        out = buffer[:chunk_size]
+                        buffer = buffer[chunk_size:]
+                        if out.strip():
+                            yield out
+                if buffer.strip():
+                    yield buffer
             else:
                 response_text = response.text
                 if "You have reached your request limit for the hour" in response_text:
@@ -735,23 +744,28 @@ class BLACKBOXAI(Provider):
         return response["text"].replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 if __name__ == "__main__":
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
 
-    for model in BLACKBOXAI.AVAILABLE_MODELS:
-        try:
-            test_ai = BLACKBOXAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            response_text = response
+    # for model in BLACKBOXAI.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = BLACKBOXAI(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word")
+    #         response_text = response
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"{model:<50} {'✗':<10} {str(e)}")
+
+    ai = BLACKBOXAI(model="gpt-4.1", timeout=60)
+    response = ai.chat("Write me about humans in points", stream=True)
+    for line in response:
+        print(line, end="", flush=True)

@@ -14,7 +14,7 @@ from webscout.litagent import LitAgent
 # Initialize our fire logger and agent 🔥
 logger = Logger(
     "AsyncNexra",
-    format=LogFormat.DEFAULT,
+    fmt=LogFormat.DEFAULT,
 
 )
 agent = LitAgent()

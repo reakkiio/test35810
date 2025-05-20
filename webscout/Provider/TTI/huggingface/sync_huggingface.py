@@ -37,7 +37,7 @@ from webscout.litagent import LitAgent
 # Initialize our fire logger and agent 🔥
 logger = Logger(
     "HuggingFace",
-    format=LogFormat.DEFAULT,
+    fmt=LogFormat.DEFAULT,
 
 )
 agent = LitAgent()

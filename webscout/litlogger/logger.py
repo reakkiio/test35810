@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from .levels import LogLevel
-from .formats import DEFAULT
+from .formats import LogFormat
 from .handlers import Handler, ConsoleHandler
 
 class Logger:
@@ -14,7 +14,7 @@ class Logger:
         name: str = "LitLogger",
         level: LogLevel = LogLevel.INFO,
         handlers: Optional[List[Handler]] = None,
-        fmt: str = DEFAULT,
+        fmt: str = LogFormat.DEFAULT,  # <--- use LogFormat.DEFAULT
         async_mode: bool = False,
     ):
         self.name = name

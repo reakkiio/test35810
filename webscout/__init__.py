@@ -10,7 +10,7 @@ from .Provider.TTI import *
 from .Provider.TTS import *
 from .Provider.AISEARCH import *
 from .Extra import *
-from .litlogger import *
+from .Litlogger import *
 from .optimizers import *
 from .swiftcli import *
 from .litagent import LitAgent

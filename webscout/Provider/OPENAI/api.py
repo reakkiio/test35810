@@ -593,24 +593,15 @@ class Api:
                                       "schema": {
                                           "$ref": "#/components/schemas/ChatCompletionRequest"
                                       },
-                                      "example": {
-                                          "id": "chatcmpl-123",
-                                          "object": "chat.completion",
-                                          "created": 1677652288,
-                                          "model": "gpt-4",
-                                          "choices": [{
-                                              "index": 0,
-                                              "message": {
-                                                  "role": "assistant",
-                                                  "content": "Hello there, how may I assist you today?"
-                                              },
-                                              "finish_reason": "stop"
-                                          }],
-                                          "usage": {
-                                              "prompt_tokens": 9,
-                                              "completion_tokens": 12,
-                                              "total_tokens": 21
-                                          }
+                                        "example": {
+                                            "model": "gpt-4",
+                                            "messages": [
+                                                {"role": "system", "content": "You are a helpful assistant."},
+                                                {"role": "user", "content": "Hello"}
+                                            ],
+                                            "max_tokens": 20,
+                                            "temperature": 0.8
+                                        }
                                       }
                                   }
                               }
@@ -618,38 +609,9 @@ class Api:
                       })
         async def chat_completions(
             request: Request,
-            chat_request: Optional[ChatCompletionRequest] = None
+            chat_request: ChatCompletionRequest = Body(...)
         ):
             """Create a chat completion"""
-            # Handle case where Pydantic validation failed but our middleware fixed the body
-            if chat_request is None:
-                try:
-                    # Try to parse the request body manually
-                    body = await request.body()
-                    if body:
-                        body_str = body.decode('utf-8', errors='ignore')
-                        try:
-                            body_json = json.loads(body_str)
-                            # Create a ChatCompletionRequest from the parsed JSON
-                            chat_request = ChatCompletionRequest(**body_json)
-                        except Exception as e:
-                            logger.error(f"Failed to parse request body: {e}")
-                            return ErrorResponse.from_message(
-                                f"Invalid request body: {str(e)}",
-                                HTTP_422_UNPROCESSABLE_ENTITY
-                            )
-                    else:
-                        return ErrorResponse.from_message(
-                            "Request body is required",
-                            HTTP_422_UNPROCESSABLE_ENTITY
-                        )
-                except Exception as e:
-                    logger.error(f"Error processing request: {e}")
-                    return ErrorResponse.from_message(
-                        f"Error processing request: {str(e)}",
-                        HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-            
             logger.debug(f"Chat completion request received: {chat_request}")
             
             try:

@@ -169,6 +169,7 @@ class ChatCompletionChunk(BaseModel):
     created: StrictInt = Field(default_factory=lambda: int(time.time()))
     object: StrictStr = "chat.completion.chunk"
     system_fingerprint: Optional[StrictStr] = None
+    usage: Optional[Dict[str, Any]] = None  # Add usage field for streaming chunks
 
 
 # --- Helper Functions ---
@@ -263,3 +264,55 @@ def get_last_user_message(messages: List[Dict[str, Any]]) -> str:
                         text_parts.append(part)
                 return "".join(text_parts)
     return ""
+
+
+# --- Token Counter ---
+
+def count_tokens(text_or_messages: Any) -> int:
+    """
+    Count tokens in a string or a list of messages using tiktoken if available, else fallback to webstoken's WordTokenizer.
+
+    Args:
+        text_or_messages: A string or a list of messages (string or any type).
+        model: Optional model name for tiktoken encoding.
+
+    Returns:
+        int: Number of tokens.
+    """
+    try:
+        import tiktoken
+        # Use tiktoken if available
+        if isinstance(text_or_messages, str):
+            enc = tiktoken.encoding_for_model("gpt-4o")
+            return len(enc.encode(text_or_messages))
+        elif isinstance(text_or_messages, list):
+            enc = tiktoken.encoding_for_model("gpt-4o")
+            total = 0
+            for m in text_or_messages:
+                # Remove .get('content', '') and treat m as string or convert to string
+                if isinstance(m, str):
+                    total += len(enc.encode(m))
+                else:
+                    total += len(enc.encode(str(m)))
+            return total
+        else:
+            return 0
+    except ImportError:
+        # Fallback to webstoken's WordTokenizer
+        try:
+            from webstoken import WordTokenizer
+        except ImportError:
+            return 0
+        tokenizer = WordTokenizer()
+        if isinstance(text_or_messages, str):
+            return len(tokenizer.tokenize(text_or_messages))
+        elif isinstance(text_or_messages, list):
+            total = 0
+            for m in text_or_messages:
+                if isinstance(m, str):
+                    total += len(tokenizer.tokenize(m))
+                else:
+                    total += len(tokenizer.tokenize(str(m)))
+            return total
+        else:
+            return 0

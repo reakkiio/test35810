@@ -14,7 +14,8 @@ from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage
 )
-
+from webscout.litagent import LitAgent, agent
+agent = LitAgent()
 
 def to_data_uri(image_data):
     """Convert image data to a data URI format"""
@@ -548,88 +549,9 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         'Heroku Agent': {'mode': True, 'id': "heroku"},
     }
 
-    # Create a list of all model aliases
-    _all_model_aliases = list(dict.fromkeys([
-        # Add all model aliases
-        "gpt-4", "gpt-4.1", "gpt-4o", "gpt-4o-mini",
-        "claude-3.7-sonnet", "claude-3.5-sonnet",
-        "deepcoder-14b", "deephermes-3-8b", "deepseek-r1-zero", "deepseek-r1",
-        "dolphin-3.0-24b", "dolphin-3.0-r1-24b", "reka-flash", "gemini-2.0-flash",
-        "gemma-2-9b", "gemma-3-12b", "gemma-3-1b", "gemma-3-27b", "gemma-3-4b",
-        "kimi-vl-a3b-thinking", "llama-3.1-8b", "nemotron-253b", "llama-3.2-11b",
-        "llama-3.2-1b", "llama-3.2-3b", "llama-3.3-70b", "nemotron-49b",
-        "llama-4-maverick", "llama-4-scout", "mistral-7b", "mistral-nemo",
-        "mistral-small-24b", "mistral-small-24b-instruct-2501", "mistral-small-3.1-24b",
-        "molmo-7b", "moonlight-16b", "qwen-2.5-72b", "qwen-2.5-7b", "qwen-2.5-coder-32b",
-        "qwen-2.5-vl-32b", "qwen-2.5-vl-3b", "qwen-2.5-vl-72b", "qwen-2.5-vl-7b",
-        "qwerky-72b", "qwq-32b", "qwq-32b-preview", "qwq-32b-arliai",
-        "deepseek-r1-distill-llama-70b", "deepseek-r1-distill-qwen-14b", "deepseek-r1-distill-qwen-32b",
-        # Add base models
-        "o3-mini", "gpt-4.1-nano"
-    ]))
+    # Create AVAILABLE_MODELS as a list with just the model aliases (no "BLACKBOXAI/" prefix)
+    AVAILABLE_MODELS = list(models)
 
-    # Create AVAILABLE_MODELS as a list with the format "BLACKBOXAI/model"
-    AVAILABLE_MODELS = [f"BLACKBOXAI/{name}" for name in _all_model_aliases]
-
-    # Create a mapping dictionary for internal use
-    _model_mapping = {name: f"BLACKBOXAI/{name}" for name in _all_model_aliases}
-
-
-    # Model aliases for easier reference
-    model_aliases = {
-        "gpt-4": default_model, # default_model is "GPT-4.1"
-        "gpt-4.1": default_model,
-        "gpt-4o": default_model, # Defaulting to GPT-4.1 as per previous logic if specific GPT-4o handling isn't defined elsewhere
-        "gpt-4o-mini": default_model, # Defaulting
-        "claude-3.7-sonnet": "Claude-sonnet-3.7",
-        "claude-3.5-sonnet": "Claude-sonnet-3.5",
-        # "deepseek-r1": "DeepSeek-R1", # This is in base models, maps to R1 or DeepSeek R1 Zero in agentMode
-        #
-        "deepcoder-14b": "Deepcoder 14B Preview",
-        "deephermes-3-8b": "DeepHermes 3 Llama 3 8B Preview",
-        "deepseek-r1-zero": "DeepSeek R1 Zero",
-        "deepseek-r1": "R1", # Alias for R1 (which is deepseek/deepseek-r1:free)
-        "dolphin-3.0-24b": "Dolphin3.0 Mistral 24B",
-        "dolphin-3.0-r1-24b": "Dolphin3.0 R1 Mistral 24B",
-        "reka-flash": "Flash 3",
-        "gemini-2.0-flash": "Gemini 2.0 Flash Experimental",
-        "gemma-2-9b": "Gemma 2 9B",
-        "gemma-3-12b": "Gemma 3 12B",
-        "gemma-3-1b": "Gemma 3 1B",
-        "gemma-3-27b": "Gemma 3 27B",
-        "gemma-3-4b": "Gemma 3 4B",
-        "kimi-vl-a3b-thinking": "Kimi VL A3B Thinking",
-        "llama-3.1-8b": "Llama 3.1 8B Instruct",
-        "nemotron-253b": "Llama 3.1 Nemotron Ultra 253B v1",
-        "llama-3.2-11b": "Llama 3.2 11B Vision Instruct",
-        "llama-3.2-1b": "Llama 3.2 1B Instruct",
-        "llama-3.2-3b": "Llama 3.2 3B Instruct",
-        "llama-3.3-70b": "Llama 3.3 70B Instruct",
-        "nemotron-49b": "Llama 3.3 Nemotron Super 49B v1",
-        "llama-4-maverick": "Llama 4 Maverick",
-        "llama-4-scout": "Llama 4 Scout",
-        "mistral-7b": "Mistral 7B Instruct",
-        "mistral-nemo": "Mistral Nemo",
-        "mistral-small-24b": "Mistral Small 3", # Alias for "Mistral Small 3"
-        "mistral-small-24b-instruct-2501": "Mistral-Small-24B-Instruct-2501", # Specific name
-        "mistral-small-3.1-24b": "Mistral Small 3.1 24B",
-        "molmo-7b": "Molmo 7B D",
-        "moonlight-16b": "Moonlight 16B A3B Instruct",
-        "qwen-2.5-72b": "Qwen2.5 72B Instruct",
-        "qwen-2.5-7b": "Qwen2.5 7B Instruct",
-        "qwen-2.5-coder-32b": "Qwen2.5 Coder 32B Instruct",
-        "qwen-2.5-vl-32b": "Qwen2.5 VL 32B Instruct",
-        "qwen-2.5-vl-3b": "Qwen2.5 VL 3B Instruct",
-        "qwen-2.5-vl-72b": "Qwen2.5 VL 72B Instruct",
-        "qwen-2.5-vl-7b": "Qwen2.5-VL 7B Instruct",
-        "qwerky-72b": "Qwerky 72B",
-        "qwq-32b": "QwQ 32B",
-        "qwq-32b-preview": "QwQ 32B Preview",
-        "qwq-32b-arliai": "QwQ 32B RpR v1",
-        "deepseek-r1-distill-llama-70b": "R1 Distill Llama 70B",
-        "deepseek-r1-distill-qwen-14b": "R1 Distill Qwen 14B",
-        "deepseek-r1-distill-qwen-32b": "R1 Distill Qwen 32B",
-    }
 
     def __init__(
         self,
@@ -659,7 +581,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+            'User-Agent': agent.random(),
         }
 
         # Set cookies for the session
@@ -685,29 +607,11 @@ class BLACKBOXAI(OpenAICompatibleProvider):
 
     @classmethod
     def get_model(cls, model: str) -> str:
-        """Resolve model name from alias."""
-        # Remove BLACKBOXAI/ prefix if present
+        """Return the model name, removing BLACKBOXAI/ prefix if present, or default_model."""
         if model.startswith("BLACKBOXAI/"):
             model = model[len("BLACKBOXAI/"):]
-
-        # Convert to lowercase for case-insensitive matching
-        model_lower = model.lower()
-
-        # Check aliases (case-insensitive)
-        for alias, target in cls.model_aliases.items():
-            if model_lower == alias.lower():
-                return target
-
-        # If the model is directly in available models (without the prefix), return it
-        for available_model in cls._all_model_aliases:
-            if model_lower == available_model.lower():
-                # Find the corresponding model in model_aliases or use the model directly
-                for alias, target in cls.model_aliases.items():
-                    if available_model.lower() == alias.lower():
-                        return target
-                return available_model
-
-        # If we get here, use the default model
+        if model in cls.models:
+            return model
         return cls.default_model
 
     @classmethod

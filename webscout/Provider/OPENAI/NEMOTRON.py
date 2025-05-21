@@ -111,15 +111,9 @@ class Chat(BaseChat):
 
 class NEMOTRON(OpenAICompatibleProvider):
     AVAILABLE_MODELS = [
-        "NEMOTRON/gpt4o",
-        "NEMOTRON/nemotron70b",
+        "gpt4o",
+        "nemotron70b",
     ]
-    
-    # Model mapping for payload
-    MODEL_PAYLOAD_MAPPING = {
-        "NEMOTRON/gpt4o": "gpt4o",
-        "NEMOTRON/nemotron70b": "nemotron70b",
-    }
     
     API_BASE_URL = "https://nemotron.one/api/chat"
     def __init__(
@@ -183,18 +177,12 @@ class NEMOTRON(OpenAICompatibleProvider):
         Returns:
             NEMOTRON model name for API payload
         """
-        # Handle NEMOTRON/ prefix aliases for payload
-        if model_alias.startswith("NEMOTRON/"):
-            base_model = model_alias.split("/")[1]
-            if base_model in ["gpt4o", "nemotron70b"]:
-                return base_model
-        
-        # Handle direct model names
-        if model_alias in ["gpt4o", "nemotron70b"]:
+        # Accept only direct model names
+        if model_alias in self.AVAILABLE_MODELS:
             return model_alias
         
         # Case-insensitive matching
-        for m in ["gpt4o", "nemotron70b"]:
+        for m in self.AVAILABLE_MODELS:
             if m.lower() == model_alias.lower():
                 return m
         

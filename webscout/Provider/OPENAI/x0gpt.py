@@ -9,7 +9,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 
 # Import LitAgent
@@ -82,14 +82,10 @@ class Completions(BaseCompletions):
                     f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 )
 
-            # Track token usage across chunks
-            prompt_tokens = 0
+            # Use count_tokens for prompt tokens
+            prompt_tokens = count_tokens([msg.get("content", "") for msg in payload.get("messages", [])])
             completion_tokens = 0
             total_tokens = 0
-
-            # Estimate prompt tokens based on message length
-            for msg in payload.get("messages", []):
-                prompt_tokens += len(msg.get("content", "").split())
 
             for line in response.iter_lines():
                 if line:
@@ -103,8 +99,8 @@ class Completions(BaseCompletions):
                         # Format the content (replace escaped newlines)
                         content = self._client.format_text(content)
 
-                        # Update token counts
-                        completion_tokens += 1
+                        # Update token counts using count_tokens
+                        completion_tokens += count_tokens(content)
                         total_tokens = prompt_tokens + completion_tokens
 
                         # Create the delta object
@@ -131,20 +127,15 @@ class Completions(BaseCompletions):
                             system_fingerprint=None
                         )
 
-                        # Convert to dict for proper formatting
-                        chunk_dict = chunk.to_dict()
-
-                        # Add usage information to match OpenAI format
-                        usage_dict = {
+                        # Set usage directly on the chunk object
+                        chunk.usage = {
                             "prompt_tokens": prompt_tokens,
                             "completion_tokens": completion_tokens,
                             "total_tokens": total_tokens,
                             "estimated_cost": None
                         }
 
-                        chunk_dict["usage"] = usage_dict
-
-                        # Return the chunk object for internal processing
+                        # Return the chunk object with usage information
                         yield chunk
 
             # Final chunk with finish_reason="stop"
@@ -169,8 +160,8 @@ class Completions(BaseCompletions):
                 system_fingerprint=None
             )
 
-            chunk_dict = chunk.to_dict()
-            chunk_dict["usage"] = {
+            # Set usage directly on the chunk object
+            chunk.usage = {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
@@ -187,7 +178,6 @@ class Completions(BaseCompletions):
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
     ) -> ChatCompletion:
         try:
-            # For non-streaming, we still use streaming internally to collect the full response
             response = self._client.session.post(
                 self._client.api_endpoint,
                 headers=self._client.headers,
@@ -214,12 +204,9 @@ class Completions(BaseCompletions):
             # Format the text (replace escaped newlines)
             full_text = self._client.format_text(full_text)
 
-            # Estimate token counts
-            prompt_tokens = 0
-            for msg in payload.get("messages", []):
-                prompt_tokens += len(msg.get("content", "").split())
-
-            completion_tokens = len(full_text.split())
+            # Use count_tokens for accurate token counts
+            prompt_tokens = count_tokens([msg.get("content", "") for msg in payload.get("messages", [])])
+            completion_tokens = count_tokens(full_text)
             total_tokens = prompt_tokens + completion_tokens
 
             # Create the message object

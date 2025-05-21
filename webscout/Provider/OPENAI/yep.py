@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage, get_system_prompt  # Import get_system_prompt
+    ChatCompletionMessage, CompletionUsage, get_system_prompt, count_tokens  # Import count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -56,13 +56,10 @@ class Completions(BaseCompletions):
         Mimics openai.chat.completions.create
         Note: YEPCHAT does not support system messages. They will be ignored.
         """
-        # Accept both raw and prefixed model names from the user, but always send the raw name to the API
-        if model.startswith("YEPCHAT/"):
-            model_raw = model.replace("YEPCHAT/", "", 1)
-        else:
-            model_raw = model
+        # Only accept and use the raw model name (no prefix logic)
+        model_raw = model
         # Validate model
-        if f"YEPCHAT/{model_raw}" not in self._client.AVAILABLE_MODELS:
+        if model_raw not in self._client.AVAILABLE_MODELS:
             raise ValueError(
                 f"Invalid model: {model}. Choose from: {self._client.AVAILABLE_MODELS}"
             )
@@ -124,6 +121,11 @@ class Completions(BaseCompletions):
                     f"YEPCHAT API Error: {response.status_code} {response.reason} - {response.text}"
                 )
 
+            # Track tokens for streaming
+            prompt_tokens = count_tokens([m.get('content', '') for m in payload.get('messages', [])])
+            completion_tokens = 0
+            total_tokens = prompt_tokens
+
             for line in response.iter_lines(decode_unicode=True):
                 if line:
                     line = line.strip()
@@ -139,6 +141,11 @@ class Completions(BaseCompletions):
                             content = delta_data.get('content')
                             role = delta_data.get('role', None)
 
+                            # Count tokens for this chunk
+                            chunk_tokens = count_tokens(content) if content else 0
+                            completion_tokens += chunk_tokens
+                            total_tokens = prompt_tokens + completion_tokens
+
                             if content is not None or role is not None:
                                 delta = ChoiceDelta(content=content, role=role)
                                 choice = Choice(index=0, delta=delta, finish_reason=finish_reason)
@@ -148,6 +155,14 @@ class Completions(BaseCompletions):
                                     created=created_time,
                                     model=model,
                                 )
+                                # Set usage directly on the chunk object
+                                chunk.usage = {
+                                    "prompt_tokens": prompt_tokens,
+                                    "completion_tokens": completion_tokens,
+                                    "total_tokens": total_tokens,
+                                    "estimated_cost": None
+                                }
+                                # Yield the chunk with usage information
                                 yield chunk
 
                         except json.JSONDecodeError:
@@ -163,6 +178,13 @@ class Completions(BaseCompletions):
                 created=created_time,
                 model=model,
             )
+            # Set usage directly on the chunk object
+            chunk.usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "estimated_cost": None
+            }
             yield chunk
 
         except cloudscraper.exceptions.CloudflareChallengeError as e:
@@ -209,7 +231,14 @@ class Completions(BaseCompletions):
             message=message,
             finish_reason=finish_reason
         )
-        usage = CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        # Use count_tokens to compute usage
+        prompt_tokens = count_tokens([m.get('content', '') for m in payload.get('messages', [])])
+        completion_tokens = count_tokens(full_response_content)
+        usage = CompletionUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens
+        )
         completion = ChatCompletion(
             id=request_id,
             choices=[choice],
@@ -237,11 +266,8 @@ class YEPCHAT(OpenAICompatibleProvider):
     """
     _base_models = ["DeepSeek-R1-Distill-Qwen-32B", "Mixtral-8x7B-Instruct-v0.1"]
 
-    # Create AVAILABLE_MODELS as a list with the format "YEPCHAT/model"
-    AVAILABLE_MODELS = [f"YEPCHAT/{model}" for model in _base_models]
-
-    # Create a mapping dictionary for internal use
-    _model_mapping = {model: f"YEPCHAT/{model}" for model in _base_models}
+    # Create AVAILABLE_MODELS as a list of base model names (no prefix)
+    AVAILABLE_MODELS = _base_models
 
     def __init__(
         self,

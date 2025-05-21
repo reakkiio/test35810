@@ -180,14 +180,14 @@ class GliderAI(Provider):
         """
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, stream=True, optimizer=optimizer, conversationally=conversationally
             ):
                 yield self.get_message(response)
         def for_non_stream():
             return self.get_message(
                 self.ask(
                     prompt,
-                    False,
+                    stream=False,
                     optimizer=optimizer,
                     conversationally=conversationally,
                 )

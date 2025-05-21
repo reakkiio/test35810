@@ -28,7 +28,26 @@ def _process_chunk(
     yield_raw_on_error: bool,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
 ) -> Union[str, Dict[str, Any], None]:
-    """Internal helper to sanitize and potentially parse a single chunk.
+    """
+    Sanitizes and potentially parses a single chunk of text.
+
+    This function performs several operations on the input chunk:
+    - Removes a specified prefix (`intro_value`).
+    - Strips leading/trailing characters (`strip_chars`).
+    - Skips chunks matching specific markers (`skip_markers`).
+    - Optionally parses the chunk as JSON (`to_json`).
+    - Handles JSON parsing errors with an optional callback (`error_handler`).
+
+    Args:
+        chunk (str): The chunk of text to process.
+        intro_value (str): The prefix to remove from the chunk.
+        to_json (bool): If True, attempts to parse the chunk as JSON.
+        skip_markers (List[str]): A list of markers; chunks matching these are skipped.
+        strip_chars (Optional[str]): Characters to strip from the beginning and end of the chunk.
+        yield_raw_on_error (bool): If True, returns the raw chunk when JSON parsing fails; otherwise, returns None.
+        error_handler (Optional[Callable[[Exception, str], Optional[Any]]]): An optional callback function that is called when JSON parsing fails.
+            It receives the exception and the sanitized chunk as arguments.  It should return a value to yield instead of the raw chunk, or None to ignore.
+
 
     Args:
         chunk: Chunk of text to process.
@@ -89,7 +108,25 @@ def _decode_byte_stream(
     errors: str = 'replace',
     buffer_size: int = 8192
 ) -> Generator[str, None, None]:
-    """Realtime byte stream decoder with flexible encoding support.
+    """
+    Decodes a byte stream in realtime with flexible encoding support.
+
+    This function takes an iterator of bytes and decodes it into a stream of strings
+    using the specified character encoding. It handles encoding errors gracefully
+    and can be tuned for performance with the `buffer_size` parameter.
+
+    Args:
+        byte_iterator (Iterable[bytes]): An iterator that yields chunks of bytes.
+        encoding (EncodingType): The character encoding to use for decoding.
+            Defaults to 'utf-8'.  Supports a wide range of encodings, including:
+            'utf-8', 'utf-16', 'utf-32', 'ascii', 'latin1', 'cp1252', 'iso-8859-1',
+            'iso-8859-2', 'windows-1250', 'windows-1251', 'windows-1252', 'gbk', 'big5',
+            'shift_jis', 'euc-jp', 'euc-kr'.
+        errors (str): Specifies how encoding errors should be handled.
+            Options are 'strict' (raises an error), 'ignore' (skips the error), and
+            'replace' (replaces the erroneous byte with a replacement character).
+            Defaults to 'replace'.
+        buffer_size (int): The size of the internal buffer used for decoding.
 
     Args:
         byte_iterator: Iterator yielding bytes
@@ -139,7 +176,27 @@ async def _decode_byte_stream_async(
     errors: str = 'replace',
     buffer_size: int = 8192
 ) -> AsyncGenerator[str, None]:
-    """Asynchronous version of :func:`_decode_byte_stream`."""
+    """
+    Asynchronously decodes a byte stream with flexible encoding support.
+
+    This function is the asynchronous counterpart to `_decode_byte_stream`. It takes
+    an asynchronous iterator of bytes and decodes it into a stream of strings using
+    the specified character encoding. It handles encoding errors gracefully and can
+    be tuned for performance with the `buffer_size` parameter.
+
+    Args:
+        byte_iterator (Iterable[bytes]): An asynchronous iterator that yields chunks of bytes.
+        encoding (EncodingType): The character encoding to use for decoding.
+            Defaults to 'utf-8'.  Supports a wide range of encodings, including:
+            'utf-8', 'utf-16', 'utf-32', 'ascii', 'latin1', 'cp1252', 'iso-8859-1',
+            'iso-8859-2', 'windows-1250', 'windows-1251', 'windows-1252', 'gbk', 'big5',
+            'shift_jis', 'euc-jp', 'euc-kr'.
+        errors (str): Specifies how encoding errors should be handled.
+            Options are 'strict' (raises an error), 'ignore' (skips the error), and
+            'replace' (replaces the erroneous byte with a replacement character).
+            Defaults to 'replace'.
+        buffer_size (int): The size of the internal buffer used for decoding.
+    """
     try:
         decoder = codecs.getincrementaldecoder(encoding)(errors=errors)
     except LookupError:
@@ -186,11 +243,11 @@ def _sanitize_stream_sync(
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
 ) -> Generator[Any, None, None]:
     """
-    Robust realtime stream processor for string or byte streams.
+    Processes a stream of data (strings or bytes) in real-time, applying various transformations and filtering.
 
-    This function supports advanced marker handling, optional JSON parsing, and
-    flexible line splitting. Errors during JSON parsing can be intercepted with a
-    custom ``error_handler`` callback.
+    This function is designed to handle streaming data, allowing for operations such as
+    prefix removal, JSON parsing, skipping lines based on markers, and extracting specific content.
+    It also supports custom error handling for JSON parsing failures.
 
     Args:
         data: String, iterable of strings, or iterable of bytes to process.
@@ -208,8 +265,13 @@ def _sanitize_stream_sync(
         line_delimiter: Delimiter used to split incoming text into lines. ``None``
             uses ``str.splitlines()``.
         error_handler: Callback invoked with ``(Exception, str)`` when JSON
-            parsing fails. If the callback returns a value, it is yielded in place
-            of the raw line.
+            parsing fails. If the callback returns a value, it is yielded instead of the raw line.
+
+    Yields:
+        Any: Processed data, which can be a string, a dictionary (if `to_json` is True), or the result of `content_extractor`.
+
+    Raises:
+        TypeError: If the input `data` is not a string or an iterable.
     """
     effective_skip_markers = skip_markers or []
     processing_active = start_marker is None
@@ -380,9 +442,31 @@ async def _sanitize_stream_async(
     buffer_size: int = 8192,
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
-) -> Generator[Any, None, None]:
-    """Asynchronous variant of :func:`sanitize_stream`."""
+) -> AsyncGenerator[Any, None]:
+    """
+    Asynchronously processes a stream of data (strings or bytes), applying transformations and filtering.
 
+    This function is the asynchronous counterpart to `_sanitize_stream_sync`. It handles
+    streaming data, allowing for operations such as prefix removal, JSON parsing,
+    skipping lines based on markers, and extracting specific content. It also supports
+    custom error handling for JSON parsing failures.
+
+    Args:
+        data: String, iterable of strings, or iterable of bytes to process.
+        intro_value: Prefix indicating the start of meaningful data.
+        to_json: Parse JSON content if ``True``.
+        skip_markers: Lines containing any of these markers are skipped.
+        strip_chars: Characters to strip from each line.
+        start_marker: Begin processing only after this marker is found.
+        end_marker: Stop processing once this marker is found.
+        content_extractor: Optional callable to transform parsed content before yielding.
+        yield_raw_on_error: Yield raw lines when JSON parsing fails.
+        encoding: Byte stream encoding.
+        encoding_errors: How to handle encoding errors.
+        buffer_size: Buffer size for byte decoding.
+        line_delimiter: Delimiter used to split incoming text into lines. ``None`` uses ``str.splitlines()``.
+        error_handler: Callback invoked with ``(Exception, str)`` when JSON parsing fails. If the callback returns a value, it is yielded in place of the raw line.
+    """
     if isinstance(data, str):
         for item in _sanitize_stream_sync(
             data,
@@ -565,7 +649,40 @@ def sanitize_stream(
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
 ) -> Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
-    """Process streaming data in either sync or async mode."""
+    """
+    Processes streaming data (strings or bytes) in either synchronous or asynchronous mode.
+
+    This function acts as a unified interface for handling both synchronous and
+    asynchronous data streams. It automatically detects the type of input data and
+    dispatches it to the appropriate processing function (`_sanitize_stream_sync` or
+    `_sanitize_stream_async`).
+
+    Args:
+        data (Union[str, Iterable[str], Iterable[bytes], AsyncIterable[str], AsyncIterable[bytes]]):
+            The data to be processed. Can be a string, a synchronous iterable of strings or bytes,
+            or an asynchronous iterable of strings or bytes.
+        intro_value (str): Prefix indicating the start of meaningful data. Defaults to "data:".
+        to_json (bool): Parse JSON content if ``True``. Defaults to True.
+        skip_markers (Optional[List[str]]): Lines containing any of these markers are skipped. Defaults to None.
+        strip_chars (Optional[str]): Characters to strip from each line. Defaults to None.
+        start_marker (Optional[str]): Begin processing only after this marker is found. Defaults to None.
+        end_marker (Optional[str]): Stop processing once this marker is found. Defaults to None.
+        content_extractor (Optional[Callable[[Union[str, Dict[str, Any]]], Optional[Any]]]):
+            Optional callable to transform parsed content before yielding. Defaults to None.
+        yield_raw_on_error (bool): Yield raw lines when JSON parsing fails. Defaults to True.
+        encoding (EncodingType): Byte stream encoding. Defaults to "utf-8".
+        encoding_errors (str): How to handle encoding errors. Defaults to "replace".
+        buffer_size (int): Buffer size for byte decoding. Defaults to 8192.
+        line_delimiter (Optional[str]): Delimiter used to split incoming text into lines.
+            ``None`` uses ``str.splitlines()``. Defaults to None.
+        error_handler (Optional[Callable[[Exception, str], Optional[Any]]]):
+            Callback invoked with ``(Exception, str)`` when JSON parsing fails.
+            If the callback returns a value, it is yielded in place of the raw line. Defaults to None.
+
+    Returns:
+        Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
+            A generator or an asynchronous generator yielding the processed data.
+    """
 
     if hasattr(data, "__aiter__"):
         return _sanitize_stream_async(
@@ -584,7 +701,3 @@ from .conversation import Conversation  # noqa: E402,F401
 from .Extra.autocoder import AutoCoder  # noqa: E402,F401
 from .optimizers import Optimizers  # noqa: E402,F401
 from .prompt_manager import AwesomePrompts  # noqa: E402,F401
-
-
-
-

@@ -1,7 +1,3 @@
-############################################################
-#                       NOT WORKING
-############################################################
-
 import secrets
 import requests
 import json
@@ -21,6 +17,7 @@ class oivscode(Provider):
     A class to interact with a test API.
     """
     AVAILABLE_MODELS = [
+        "*",
         "Qwen/Qwen2.5-72B-Instruct-Turbo",
         "Qwen/Qwen2.5-Coder-32B-Instruct",
         "claude-3-5-sonnet-20240620",
@@ -38,6 +35,7 @@ class oivscode(Provider):
         "grok-3-beta",
         "image-gen",
         "llama-4-maverick-17b-128e-instruct-fp8",
+        "o1",
         "o3-mini",
         "o4-mini",
         "transcribe"
@@ -263,10 +261,10 @@ class oivscode(Provider):
         return ""
 
     # def fetch_available_models(self):
-    #     """Fetches available models from the /models endpoint of all API endpoints and prints all unique models found."""
+    #     """Fetches available models from the /models endpoint of all API endpoints and prints models per endpoint."""
     #     endpoints = self.api_endpoints.copy()
     #     random.shuffle(endpoints)
-    #     all_models = set()
+    #     results = {}
     #     errors = []
     #     for endpoint in endpoints:
     #         models_url = endpoint.replace('/v1/chat/completions', '/v1/models')
@@ -274,28 +272,31 @@ class oivscode(Provider):
     #             response = self.session.get(models_url, timeout=self.timeout)
     #             if response.ok:
     #                 data = response.json()
-    #                 # Try to extract models from common OpenAI-compatible structure
     #                 if isinstance(data, dict) and "data" in data:
     #                     models = [m["id"] if isinstance(m, dict) and "id" in m else m for m in data["data"]]
     #                 elif isinstance(data, list):
     #                     models = data
     #                 else:
     #                     models = list(data.keys()) if isinstance(data, dict) else []
-    #                 all_models.update(models)
+    #                 results[models_url] = models
     #             else:
     #                 errors.append(f"Failed to fetch models from {models_url}: {response.status_code} {response.text}")
     #         except Exception as e:
     #             errors.append(f"Error fetching from {models_url}: {e}")
-    #     if all_models:
-    #         print("Available models from all endpoints:")
-    #         for m in sorted(all_models):
-    #             print(m)
-    #         return list(all_models)
+    #     if results:
+    #         for url, models in results.items():
+    #             print(f"Models from {url}:")
+    #             if models:
+    #                 for m in sorted(models):
+    #                     print(f"  {m}")
+    #             else:
+    #                 print("  No models found.")
+    #         return results
     #     else:
     #         print("No models found from any endpoint.")
     #         for err in errors:
     #             print(err)
-    #         return []
+    #         return {}
 
 if __name__ == "__main__":
     from rich import print

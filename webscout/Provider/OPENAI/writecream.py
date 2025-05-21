@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -90,8 +90,8 @@ class Completions(BaseCompletions):
             # Extract the response content according to the new API format
             content = data.get("response_content", "")
             # Estimate tokens
-            prompt_tokens = sum(len(m.get("content", "").split()) for m in payload)
-            completion_tokens = len(content.split())
+            prompt_tokens = sum(count_tokens(m.get("content", "")) for m in payload)
+            completion_tokens = count_tokens(content)
             usage = CompletionUsage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,

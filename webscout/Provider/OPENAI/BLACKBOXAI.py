@@ -12,7 +12,7 @@ import time
 from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 from webscout.litagent import LitAgent, agent
 agent = LitAgent()
@@ -239,9 +239,9 @@ class Completions(BaseCompletions):
                 finish_reason="stop"
             )
 
-            # Estimate token usage
-            prompt_tokens = sum(len(str(msg.get("content", ""))) // 4 for msg in messages)
-            completion_tokens = len(full_content) // 4
+            # Estimate token usage using count_tokens
+            prompt_tokens = count_tokens([str(msg.get("content", "")) for msg in messages])
+            completion_tokens = count_tokens(full_content)
 
             # Create the final completion object
             completion = ChatCompletion(

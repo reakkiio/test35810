@@ -9,7 +9,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage, format_prompt
+    ChatCompletionMessage, CompletionUsage, format_prompt, count_tokens
 )
 try:
     from webscout.litagent import LitAgent
@@ -89,8 +89,8 @@ class Completions(BaseCompletions):
             pass
         message = ChatCompletionMessage(role="assistant", content=full_response_content)
         choice = Choice(index=0, message=message, finish_reason="stop")
-        prompt_tokens = len(payload.get("content", "")) // 4 
-        completion_tokens = len(full_response_content) // 4
+        prompt_tokens = count_tokens(payload.get("content", ""))
+        completion_tokens = count_tokens(full_response_content)
         usage = CompletionUsage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,

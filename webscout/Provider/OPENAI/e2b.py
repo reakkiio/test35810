@@ -11,7 +11,7 @@ import requests  # For bypassing Cloudflare protection
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage, format_prompt
+    ChatCompletionMessage, CompletionUsage, format_prompt, count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -1039,9 +1039,9 @@ class Completions(BaseCompletions):
             model_config = self._client.MODEL_PROMPT[model_id]
             full_response_text = self._send_request(request_body, model_config)
 
-            # Estimate token counts
-            prompt_tokens = sum(len(msg.get("content", [{"text": ""}])[0].get("text", "")) for msg in request_body.get("messages", [])) // 4
-            completion_tokens = len(full_response_text) // 4
+            # Estimate token counts using count_tokens
+            prompt_tokens = count_tokens([msg.get("content", [{"text": ""}])[0].get("text", "") for msg in request_body.get("messages", [])])
+            completion_tokens = count_tokens(full_response_text)
             total_tokens = prompt_tokens + completion_tokens
 
             message = ChatCompletionMessage(role="assistant", content=full_response_text)

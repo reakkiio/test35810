@@ -9,7 +9,7 @@ from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage,
-    format_prompt
+    format_prompt, count_tokens
 )
 
 # Import curl_cffi for Cloudflare bypass
@@ -154,9 +154,9 @@ class Completions(BaseCompletions):
             message = ChatCompletionMessage(role="assistant", content=response_text)
             choice = Choice(index=0, message=message, finish_reason="stop")
 
-            # Estimate token usage (this is approximate)
-            prompt_tokens = len(user_message) // 4  # Rough estimate
-            completion_tokens = len(response_text) // 4  # Rough estimate
+            # Estimate token usage using count_tokens
+            prompt_tokens = count_tokens(user_message)
+            completion_tokens = count_tokens(response_text)
             total_tokens = prompt_tokens + completion_tokens
 
             usage = CompletionUsage(

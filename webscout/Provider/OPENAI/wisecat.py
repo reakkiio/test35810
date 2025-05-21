@@ -9,7 +9,7 @@ from typing import List, Dict, Optional, Union, Generator, Any
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -104,7 +104,7 @@ class Completions(BaseCompletions):
 
             # Estimate prompt tokens based on message length
             for msg in payload.get("messages", []):
-                prompt_tokens += len(msg.get("content", "").split())
+                prompt_tokens += count_tokens(msg.get("content", ""))
 
             for line in response.iter_lines():
                 if line:
@@ -146,8 +146,11 @@ class Completions(BaseCompletions):
                             system_fingerprint=None
                         )
 
-                        # Convert to dict for proper formatting
-                        chunk_dict = chunk.to_dict()
+                        # Convert chunk to dict using Pydantic's API
+                        if hasattr(chunk, "model_dump"):
+                            chunk_dict = chunk.model_dump(exclude_none=True)
+                        else:
+                            chunk_dict = chunk.dict(exclude_none=True)
 
                         # Add usage information to match OpenAI format
                         usage_dict = {
@@ -184,7 +187,10 @@ class Completions(BaseCompletions):
                 system_fingerprint=None
             )
 
-            chunk_dict = chunk.to_dict()
+            if hasattr(chunk, "model_dump"):
+                chunk_dict = chunk.model_dump(exclude_none=True)
+            else:
+                chunk_dict = chunk.dict(exclude_none=True)
             chunk_dict["usage"] = {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
@@ -232,9 +238,9 @@ class Completions(BaseCompletions):
             # Estimate token counts
             prompt_tokens = 0
             for msg in payload.get("messages", []):
-                prompt_tokens += len(msg.get("content", "").split())
+                prompt_tokens += count_tokens(msg.get("content", ""))
 
-            completion_tokens = len(full_text.split())
+            completion_tokens = count_tokens(full_text)
             total_tokens = prompt_tokens + completion_tokens
 
             # Create the message object

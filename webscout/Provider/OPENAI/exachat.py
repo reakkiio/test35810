@@ -166,22 +166,22 @@ class Completions(BaseCompletions):
                     data = json.loads(line.decode('utf-8'))
                     if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0].get('delta', {}).get('content', '')
-                            if content:
-                                streaming_text += content
-                                completion_tokens += count_tokens(content)
-                            
-                            # Create a delta object for this chunk
-                            delta = ChoiceDelta(content=content)
-                            choice = Choice(index=0, delta=delta, finish_reason=None)
-                            
-                            chunk = ChatCompletionChunk(
-                                id=request_id,
-                                choices=[choice],
-                                created=created_time,
-                                model=model,
-                            )
-                            
-                            yield chunk
+                        if content:
+                            streaming_text += content
+                            completion_tokens += count_tokens(content)
+                        
+                        # Create a delta object for this chunk
+                        delta = ChoiceDelta(content=content)
+                        choice = Choice(index=0, delta=delta, finish_reason=None)
+                        
+                        chunk = ChatCompletionChunk(
+                            id=request_id,
+                            choices=[choice],
+                            created=created_time,
+                            model=model,
+                        )
+                        
+                        yield chunk
                 except json.JSONDecodeError:
                     continue
 

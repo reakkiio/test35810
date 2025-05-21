@@ -9,7 +9,7 @@ from curl_cffi.requests import Session, CurlWsFlag
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage, format_prompt
+    ChatCompletionMessage, CompletionUsage, format_prompt, count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -90,9 +90,8 @@ class Completions(BaseCompletions):
                 "mode": mode
             }).encode(), CurlWsFlag.TEXT)
 
-            # Track token usage (estimated)
-            # Use a simple approximation: 1 token ≈ 4 characters for English text
-            prompt_tokens = len(prompt_text) // 4
+            # Track token usage using count_tokens
+            prompt_tokens = count_tokens(prompt_text)
             completion_tokens = 0
             total_tokens = prompt_tokens
 
@@ -107,9 +106,8 @@ class Completions(BaseCompletions):
                     started = True
                     content = msg.get("text", "")
                     
-                    # Update token counts (estimated)
-                    # Use a simple approximation: 1 token ≈ 4 characters for English text
-                    content_tokens = len(content) // 4
+                    # Update token counts using count_tokens
+                    content_tokens = count_tokens(content)
                     completion_tokens += content_tokens
                     total_tokens = prompt_tokens + completion_tokens
 
@@ -189,10 +187,9 @@ class Completions(BaseCompletions):
             finish_reason="stop"
         )
 
-        # Estimate token usage
-        # Use a simple approximation: 1 token ≈ 4 characters for English text
-        prompt_tokens = len(prompt_text) // 4
-        completion_tokens = len(result) // 4
+        # Estimate token usage using count_tokens
+        prompt_tokens = count_tokens(prompt_text)
+        completion_tokens = count_tokens(result)
         total_tokens = prompt_tokens + completion_tokens
 
         # Create usage object

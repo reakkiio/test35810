@@ -167,9 +167,15 @@ class Completions(BaseCompletions):
                 # system_fingerprint=..., # Can be added if available in final event
             )
             # Add usage to the final chunk dictionary representation if available
-            final_chunk_dict = final_chunk.to_dict()
+            if hasattr(final_chunk, "model_dump"):
+                final_chunk_dict = final_chunk.model_dump(exclude_none=True)
+            else:
+                final_chunk_dict = final_chunk.dict(exclude_none=True)
             if usage_obj:
-                final_chunk_dict["usage"] = usage_obj.to_dict()
+                if hasattr(usage_obj, "model_dump"):
+                    final_chunk_dict["usage"] = usage_obj.model_dump(exclude_none=True)
+                else:
+                    final_chunk_dict["usage"] = usage_obj.dict(exclude_none=True)
 
             # Yield the final dictionary or object as needed by downstream consumers
             # Yielding the object aligns better with the generator type hint

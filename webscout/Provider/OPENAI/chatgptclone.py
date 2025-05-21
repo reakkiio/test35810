@@ -167,8 +167,11 @@ class Completions(BaseCompletions):
                             system_fingerprint=None
                         )
 
-                        # Convert to dict for proper formatting
-                        chunk_dict = chunk.to_dict()
+                        # Convert chunk to dict using Pydantic's API
+                        if hasattr(chunk, "model_dump"):
+                            chunk_dict = chunk.model_dump(exclude_none=True)
+                        else:
+                            chunk_dict = chunk.dict(exclude_none=True)
 
                         # Add usage information to match OpenAI format
                         usage_dict = {
@@ -211,7 +214,10 @@ class Completions(BaseCompletions):
                 system_fingerprint=None
             )
 
-            chunk_dict = chunk.to_dict()
+            if hasattr(chunk, "model_dump"):
+                chunk_dict = chunk.model_dump(exclude_none=True)
+            else:
+                chunk_dict = chunk.dict(exclude_none=True)
             chunk_dict["usage"] = {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,

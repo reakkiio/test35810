@@ -13,7 +13,8 @@ from .utils import (
     ChatCompletionMessage,
     ChoiceDelta,
     CompletionUsage,
-    format_prompt
+    format_prompt,
+    count_tokens
 )
 
 # ANSI escape codes for formatting
@@ -95,7 +96,7 @@ class Completions(BaseCompletions):
                     if "content" in data:
                         content = data["content"]
                         streaming_text += content
-                        completion_tokens += len(content) // 4  # Rough estimate
+                        completion_tokens += count_tokens(content)
                         
                         # Create a delta object for this chunk
                         delta = ChoiceDelta(content=content)
@@ -154,9 +155,9 @@ class Completions(BaseCompletions):
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         continue
 
-            # Create usage statistics (estimated)
-            prompt_tokens = len(files['message'][1]) // 4
-            completion_tokens = len(full_response) // 4
+            # Create usage statistics using count_tokens
+            prompt_tokens = count_tokens(files.get('message', ['',''])[1])
+            completion_tokens = count_tokens(full_response)
             total_tokens = prompt_tokens + completion_tokens
             
             usage = CompletionUsage(

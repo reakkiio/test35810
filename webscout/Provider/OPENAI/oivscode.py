@@ -128,7 +128,10 @@ class Completions(BaseCompletions):
                                 system_fingerprint=data.get('system_fingerprint')
                             )
 
-                            chunk_dict = chunk.to_dict()
+                            if hasattr(chunk, "model_dump"):
+                                chunk_dict = chunk.model_dump(exclude_none=True)
+                            else:
+                                chunk_dict = chunk.dict(exclude_none=True)
 
                             usage_dict = {
                                 "prompt_tokens": prompt_tokens or 10,

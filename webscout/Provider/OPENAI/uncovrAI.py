@@ -16,7 +16,8 @@ from .utils import (
     CompletionUsage,
     format_prompt,
     get_system_prompt,
-    get_last_user_message
+    get_last_user_message,
+    count_tokens
 )
 
 # ANSI escape codes for formatting
@@ -276,9 +277,9 @@ class Completions(BaseCompletions):
                 finish_reason="stop"
             )
 
-            # Estimate token usage (this is approximate)
-            prompt_tokens = len(payload["content"]) // 4
-            completion_tokens = len(full_response) // 4
+            # Estimate token usage using count_tokens
+            prompt_tokens = count_tokens(payload.get("content", ""))
+            completion_tokens = count_tokens(full_response)
             total_tokens = prompt_tokens + completion_tokens
 
             usage = CompletionUsage(

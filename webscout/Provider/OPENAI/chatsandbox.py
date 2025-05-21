@@ -10,7 +10,8 @@ from .utils import (
     ChatCompletionMessage,
     ChoiceDelta,
     CompletionUsage,
-    format_prompt
+    format_prompt,
+    count_tokens
 )
 import requests
 
@@ -124,8 +125,8 @@ class Completions(BaseCompletions):
                     content = data.get("reasoning_content", text)
                 except Exception:
                     content = text
-                prompt_tokens = len(question) // 4
-                completion_tokens = len(content) // 4
+                prompt_tokens = count_tokens(question)
+                completion_tokens = count_tokens(content)
                 total_tokens = prompt_tokens + completion_tokens
                 usage = CompletionUsage(
                     prompt_tokens=prompt_tokens,

@@ -12,7 +12,7 @@ from uuid import uuid4
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage 
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 
 from webscout.AIutel import sanitize_stream
@@ -123,9 +123,9 @@ class Completions(BaseCompletions):
                     delta = ChoiceDelta(content=content_chunk)
                     choice = Choice(index=0, delta=delta, finish_reason=None)
                     
-                    # Estimate token usage (very rough estimate)
-                    prompt_tokens = sum(len(msg.get("content", "")) // 4 for msg in payload["messages"])
-                    completion_tokens = len(accumulated_content) // 4
+                    # Estimate token usage using count_tokens
+                    prompt_tokens = count_tokens([msg.get("content", "") for msg in payload["messages"]])
+                    completion_tokens = count_tokens(accumulated_content)
                     
                     chunk = ChatCompletionChunk(
                         id=request_id,
@@ -202,9 +202,9 @@ class Completions(BaseCompletions):
                 finish_reason="stop"
             )
             
-            # Estimate token usage (very rough estimate)
-            prompt_tokens = sum(len(msg.get("content", "")) // 4 for msg in payload["messages"])
-            completion_tokens = len(full_content) // 4
+            # Estimate token usage using count_tokens
+            prompt_tokens = count_tokens([msg.get("content", "") for msg in payload["messages"]])
+            completion_tokens = count_tokens(full_content)
             usage = CompletionUsage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,

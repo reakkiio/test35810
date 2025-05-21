@@ -77,7 +77,7 @@ class ChatCompletionRequest(BaseModel):
         extra = "ignore"  # Ignore extra fields that aren't in the model
         schema_extra = {
             "example": {
-                "model": "gpt-4",
+                "model": "ChatGPT/gpt-4",
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "Hello, how are you?"}
@@ -208,18 +208,25 @@ def initialize_provider_map():
     from webscout.Provider.OPENAI.base import OpenAICompatibleProvider
     module = sys.modules["webscout.Provider.OPENAI"]
     for name, obj in inspect.getmembers(module):
-        if inspect.isclass(obj) and issubclass(obj, OpenAICompatibleProvider) and obj.__name__ != "OpenAICompatibleProvider":
-            AppConfig.provider_map[obj.__name__] = obj
-            if hasattr(obj, "AVAILABLE_MODELS") and isinstance(obj.AVAILABLE_MODELS, (list, tuple, set)):
+        if (
+            inspect.isclass(obj)
+            and issubclass(obj, OpenAICompatibleProvider)
+            and obj.__name__ != "OpenAICompatibleProvider"
+        ):
+            provider_name = obj.__name__
+            AppConfig.provider_map[provider_name] = obj
+            if hasattr(obj, "AVAILABLE_MODELS") and isinstance(
+                obj.AVAILABLE_MODELS, (list, tuple, set)
+            ):
                 for model in obj.AVAILABLE_MODELS:
-                    if model and isinstance(model, str) and model != obj.__name__:
-                        AppConfig.provider_map[model] = obj
+                    if model and isinstance(model, str):
+                        AppConfig.provider_map[f"{provider_name}/{model}"] = obj
     if not AppConfig.provider_map:
         from webscout.Provider.OPENAI.chatgpt import ChatGPT
         AppConfig.provider_map["ChatGPT"] = ChatGPT
-        AppConfig.provider_map["gpt-4"] = ChatGPT
-        AppConfig.provider_map["gpt-4o"] = ChatGPT
-        AppConfig.provider_map["gpt-4o-mini"] = ChatGPT
+        AppConfig.provider_map["ChatGPT/gpt-4"] = ChatGPT
+        AppConfig.provider_map["ChatGPT/gpt-4o"] = ChatGPT
+        AppConfig.provider_map["ChatGPT/gpt-4o-mini"] = ChatGPT
         AppConfig.default_provider = "ChatGPT"
     provider_names = list(set(v.__name__ for v in AppConfig.provider_map.values()))
     provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
@@ -357,6 +364,8 @@ class Api:
         async def list_models():
             models = []
             for model_name, provider_class in AppConfig.provider_map.items():
+                if "/" not in model_name:
+                    continue  # Skip provider names
                 if any(m["id"] == model_name for m in models):
                     continue
                 models.append({
@@ -395,19 +404,33 @@ class Api:
             try:
                 start_time = time.time()
                 provider_class = None
-                model = chat_request.model
-                
-                if model in AppConfig.provider_map:
-                    provider_class = AppConfig.provider_map[model]
+                model_identifier = chat_request.model
+                model_name = None
+
+                # Check for explicit provider/model syntax
+                if model_identifier in AppConfig.provider_map and "/" in model_identifier:
+                    provider_class = AppConfig.provider_map[model_identifier]
+                    _, model_name = model_identifier.split("/", 1)
+                elif "/" in model_identifier:
+                    provider_name, model_name = model_identifier.split("/", 1)
+                    provider_class = AppConfig.provider_map.get(provider_name)
                 else:
                     provider_class = AppConfig.provider_map.get(AppConfig.default_provider)
-                
+                    model_name = model_identifier
+
                 if not provider_class:
                     return ErrorResponse.from_message(
-                        f"Model '{model}' not supported. Available models: {list(AppConfig.provider_map.keys())}",
+                        f"Provider for model '{model_identifier}' not found.",
                         HTTP_404_NOT_FOUND
                     )
-                
+
+                if hasattr(provider_class, "AVAILABLE_MODELS") and model_name is not None:
+                    available = getattr(provider_class, "AVAILABLE_MODELS", [])
+                    if available and model_name not in available:
+                        return ErrorResponse.from_message(
+                            f"Model '{model_name}' not supported by provider '{provider_class.__name__}'.",
+                            HTTP_404_NOT_FOUND,
+                        )
                 try:
                     provider = provider_class()
                 except Exception as e:
@@ -439,7 +462,7 @@ class Api:
                     processed_messages.append(message_dict_out)
 
                 params = {
-                    "model": model,
+                    "model": model_name,
                     "messages": processed_messages, # Use processed messages
                     "stream": chat_request.stream,
                 }
@@ -486,7 +509,7 @@ class Api:
                             return ChatCompletion( # Assuming ChatCompletion is a Pydantic model for the response
                                 id=f"chatcmpl-{uuid.uuid4()}",
                                 created=int(time.time()),
-                                model=model,
+                                model=model_name,
                                 choices=[Choice( # Assuming Choice model
                                     index=0,
                                     message=ChatCompletionMessage(role="assistant", content="Apology: No response generated."), # Assuming ChatCompletionMessage
@@ -547,7 +570,7 @@ def run_api(
     debug: bool = False,
     show_available_providers: bool = True,
 ) -> None:
-    print(f"Starting Webscout OpenAI API server...")
+    print("Starting Webscout OpenAI API server...")
     if port is None:
         port = DEFAULT_PORT
     AppConfig.set_config(

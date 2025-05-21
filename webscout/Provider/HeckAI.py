@@ -13,7 +13,27 @@ from webscout.litagent import LitAgent
 
 class HeckAI(Provider):
     """
-    A class to interact with the HeckAI API with LitAgent user-agent.
+    Provides an interface to interact with the HeckAI API using a LitAgent user-agent.
+
+    This class supports conversational AI interactions with multiple available models,
+    manages session state, handles streaming and non-streaming responses, and integrates
+    with conversation history and prompt optimizers.
+
+    Attributes:
+        AVAILABLE_MODELS (list): List of supported model identifiers.
+        url (str): API endpoint URL.
+        session_id (str): Unique session identifier for the conversation.
+        language (str): Language for the conversation.
+        headers (dict): HTTP headers used for API requests.
+        session (Session): curl_cffi session for HTTP requests.
+        is_conversation (bool): Whether to maintain conversation history.
+        max_tokens_to_sample (int): Maximum tokens to sample (not used by API).
+        timeout (int): Request timeout in seconds.
+        last_response (dict): Stores the last API response.
+        model (str): Model identifier in use.
+        previous_question (str): Last question sent to the API.
+        previous_answer (str): Last answer received from the API.
+        conversation (Conversation): Conversation history manager.
     """
 
     AVAILABLE_MODELS = [
@@ -29,7 +49,7 @@ class HeckAI(Provider):
     def __init__(
         self,
         is_conversation: bool = True,
-        max_tokens: int = 2049, # Note: max_tokens is not used by this API
+        max_tokens: int = 2049,
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -40,7 +60,25 @@ class HeckAI(Provider):
         model: str = "google/gemini-2.0-flash-001",
         language: str = "English"
     ):
-        """Initializes the HeckAI API client."""
+        """
+        Initializes the HeckAI API client.
+
+        Args:
+            is_conversation (bool): Whether to maintain conversation history.
+            max_tokens (int): Maximum tokens to sample (not used by this API).
+            timeout (int): Timeout for API requests in seconds.
+            intro (str, optional): Introductory prompt for the conversation.
+            filepath (str, optional): File path for storing conversation history.
+            update_file (bool): Whether to update the conversation file.
+            proxies (dict): Proxy settings for HTTP requests.
+            history_offset (int): Offset for conversation history truncation.
+            act (str, optional): Role or act for the conversation.
+            model (str): Model identifier to use.
+            language (str): Language for the conversation.
+
+        Raises:
+            ValueError: If the provided model is not in AVAILABLE_MODELS.
+        """
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
             
@@ -53,6 +91,7 @@ class HeckAI(Provider):
             'Content-Type': 'application/json',
             'Origin': 'https://heck.ai', # Keep Origin
             'Referer': 'https://heck.ai/', # Keep Referer
+            'User-Agent': LitAgent().random(), # Use random user agent
         }
         
         # Initialize curl_cffi Session
@@ -90,11 +129,29 @@ class HeckAI(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False, # API supports streaming
+        stream: bool = False,
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[Dict[str, Any], Generator]:
+        """
+        Sends a prompt to the HeckAI API and returns the response.
+
+        Args:
+            prompt (str): The prompt or question to send to the API.
+            stream (bool): If True, yields streaming responses as they arrive.
+            raw (bool): If True, yields raw string chunks instead of dicts.
+            optimizer (str, optional): Name of the optimizer to apply to the prompt.
+            conversationally (bool): If True, optimizer is applied to the full conversation prompt.
+
+        Returns:
+            Union[Dict[str, Any], Generator]: If stream is False, returns a dict with the response text.
+            If stream is True, yields response chunks as dicts or strings.
+
+        Raises:
+            Exception: If the optimizer is not available.
+            exceptions.FailedToGenerateResponseError: On API or network errors.
+        """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -197,6 +254,15 @@ class HeckAI(Provider):
 
     @staticmethod
     def fix_encoding(text):
+        """
+        Fixes encoding issues in the response text.
+
+        Args:
+            text (Union[str, dict]): The text or response dict to fix encoding for.
+
+        Returns:
+            Union[str, dict]: The text or dict with encoding corrected if possible.
+        """
         if isinstance(text, dict) and "text" in text:
             try:
                 text["text"] = text["text"].encode("latin1").decode("utf-8")
@@ -216,7 +282,19 @@ class HeckAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Union[str, Generator[str, None, None]]: # Corrected return type hint
+    ) -> Union[str, Generator[str, None, None]]:
+        """
+        Sends a prompt to the HeckAI API and returns only the message text.
+
+        Args:
+            prompt (str): The prompt or question to send to the API.
+            stream (bool): If True, yields streaming response text.
+            optimizer (str, optional): Name of the optimizer to apply to the prompt.
+            conversationally (bool): If True, optimizer is applied to the full conversation prompt.
+
+        Returns:
+            Union[str, Generator[str, None, None]]: The response text, or a generator yielding text chunks.
+        """
         def for_stream_chat():
             # ask() yields dicts or strings when streaming
             gen = self.ask(
@@ -237,19 +315,31 @@ class HeckAI(Provider):
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
+        """
+        Extracts the message text from the API response.
+
+        Args:
+            response (dict): The API response dictionary.
+
+        Returns:
+            str: The extracted message text. Returns an empty string if not found.
+
+        Raises:
+            TypeError: If the response is not a dictionary.
+        """
         # Validate response format
         if not isinstance(response, dict):
             raise TypeError(f"Expected dict response, got {type(response).__name__}")
-        
+
         # Handle missing text key gracefully
         if "text" not in response:
             return ""
-        
+
         # Ensure text is a string
         text = response["text"]
         if not isinstance(text, str):
             return str(text)
-            
+
         return text
 
 if __name__ == "__main__":

@@ -35,3 +35,4 @@ from .Cloudflare import *
 from .NEMOTRON import *
 from .BLACKBOXAI import *
 from .copilot import * # Add Microsoft Copilot
+from .TwoAI import *

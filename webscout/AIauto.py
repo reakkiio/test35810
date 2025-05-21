@@ -14,13 +14,16 @@ import inspect
 
 def load_providers():
     """
-    Dynamically loads all Provider classes from the webscout.Provider package.
-
-    Identifies providers that require special authentication parameters like
-    'api_key', 'cookie_file', or 'cookie_path'.
-
+    Dynamically loads all Provider classes from the `webscout.Provider` package.
+    
+    This function iterates through the modules in the `webscout.Provider` package,
+    imports each module, and inspects its attributes to identify classes that
+    inherit from the `Provider` base class. It also identifies providers that
+    require special authentication parameters like 'api_key', 'cookie_file', or
+    'cookie_path'.
+    
     Returns:
-        tuple: A tuple containing:
+        tuple: A tuple containing two elements:
             - provider_map (dict): A dictionary mapping uppercase provider names to their classes.
             - api_key_providers (set): A set of uppercase provider names requiring special authentication.
     """
@@ -50,7 +53,10 @@ provider_map, api_key_providers = load_providers()
 
 class AUTO(Provider):
     """
-    An automatic provider that cycles through available free providers
+    An automatic provider that intelligently selects and utilizes an available
+    LLM provider from the webscout library.
+    
+    It cycles through available free providers
     until one successfully processes the request. Excludes providers
     requiring API keys or cookies by default.
     """
@@ -69,7 +75,10 @@ class AUTO(Provider):
         print_provider_info: bool = False,
     ):
         """
-        Initializes the AUTO provider.
+        Initializes the AUTO provider, setting up the parameters for provider selection and request handling.
+        
+        This constructor initializes the AUTO provider with various configuration options,
+        including conversation settings, request limits, and provider exclusions.
 
         Args:
             is_conversation (bool): Flag for conversational mode. Defaults to True.
@@ -102,14 +111,20 @@ class AUTO(Provider):
     @property
     def last_response(self) -> dict[str, Any]:
         """
-        Returns the last response dictionary from the successful provider.
+        Retrieves the last response dictionary from the successfully used provider.
+        
+        Returns:
+            dict[str, Any]: The last response dictionary, or an empty dictionary if no provider has been used yet.
         """
         return self.provider.last_response if self.provider else {}
 
     @property
     def conversation(self) -> object:
         """
-        Returns the conversation object from the successful provider.
+        Retrieves the conversation object from the successfully used provider.
+        
+        Returns:
+            object: The conversation object, or None if no provider has been used yet.
         """
         return self.provider.conversation if self.provider else None
 
@@ -122,8 +137,11 @@ class AUTO(Provider):
         conversationally: bool = False,
     ) -> Union[Dict, Generator]:
         """
-        Sends the prompt to providers, trying each available free provider
-        in a random order until one succeeds.
+        Sends the prompt to available providers, attempting to get a response from each until one succeeds.
+        
+        This method iterates through a shuffled list of available providers (excluding those requiring API keys or
+        specified in the exclusion list) and attempts to send the prompt to each provider until a successful response
+        is received.
 
         Args:
             prompt (str): The user's prompt.
@@ -187,7 +205,7 @@ class AUTO(Provider):
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]: 
         """
-        Provides a simplified chat interface, returning the message string(s).
+        Provides a simplified chat interface, returning the message string or a generator of message strings.
 
         Args:
             prompt (str): The user's prompt.
@@ -218,7 +236,7 @@ class AUTO(Provider):
         Extracts the message text from the provider's response dictionary.
 
         Args:
-            response (dict): The response dictionary from the ask method.
+            response (dict): The response dictionary obtained from the `ask` method.
 
         Returns:
             str: The extracted message string.

@@ -35,12 +35,29 @@ console = Console()
 #########################################
 
 class Endpoint(Enum):
+    """
+    Enum for Google Gemini API endpoints.
+
+    Attributes:
+        INIT (str): URL for initializing the Gemini session.
+        GENERATE (str): URL for generating chat responses.
+        ROTATE_COOKIES (str): URL for rotating authentication cookies.
+        UPLOAD (str): URL for uploading files/images.
+    """
     INIT = "https://gemini.google.com/app"
     GENERATE = "https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
     ROTATE_COOKIES = "https://accounts.google.com/RotateCookies"
     UPLOAD = "https://content-push.googleapis.com/upload"
 
 class Headers(Enum):
+    """
+    Enum for HTTP headers used in Gemini API requests.
+
+    Attributes:
+        GEMINI (dict): Headers for Gemini chat requests.
+        ROTATE_COOKIES (dict): Headers for rotating cookies.
+        UPLOAD (dict): Headers for file/image upload.
+    """
     GEMINI = {
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
         "Host": "gemini.google.com",
@@ -56,6 +73,14 @@ class Headers(Enum):
     UPLOAD = {"Push-ID": "feeds/mcudyrk2a4khkz"}
 
 class Model(Enum):
+    """
+    Enum for available Gemini model configurations.
+
+    Attributes:
+        model_name (str): Name of the model.
+        model_header (dict): Additional headers required for the model.
+        advanced_only (bool): Whether the model is available only for advanced users.
+    """
     # Updated model definitions based on reference implementation
     UNSPECIFIED = ("unspecified", {}, False)
     G_2_0_FLASH = (
@@ -90,12 +115,32 @@ class Model(Enum):
     )
 
     def __init__(self, name, header, advanced_only):
+        """
+        Initialize a Model enum member.
+
+        Args:
+            name (str): Model name.
+            header (dict): Model-specific headers.
+            advanced_only (bool): If True, model is for advanced users only.
+        """
         self.model_name = name
         self.model_header = header
         self.advanced_only = advanced_only
 
     @classmethod
     def from_name(cls, name: str):
+        """
+        Get a Model enum member by its model name.
+
+        Args:
+            name (str): Name of the model.
+
+        Returns:
+            Model: Corresponding Model enum member.
+
+        Raises:
+            ValueError: If the model name is not found.
+        """
         for model in cls:
             if model.model_name == name:
                 return model
@@ -106,24 +151,23 @@ class Model(Enum):
 async def upload_file(
     file: Union[bytes, str, Path],
     proxy: Optional[Union[str, Dict[str, str]]] = None,
-    impersonate: str = "chrome110" # Added impersonate
+    impersonate: str = "chrome110"
 ) -> str:
     """
-    Upload a file to Google's server and return its identifier using curl_cffi.
+    Uploads a file to Google's Gemini server using curl_cffi and returns its identifier.
 
-    Parameters:
-        file: bytes | str | Path
-            File data in bytes, or path to the file to be uploaded.
-        proxy: str | Dict, optional
-            Proxy URL or dictionary.
-        impersonate: str, optional
-            Browser profile for curl_cffi to impersonate. Defaults to "chrome110".
+    Args:
+        file (bytes | str | Path): File data in bytes or path to the file to be uploaded.
+        proxy (str | dict, optional): Proxy URL or dictionary for the request.
+        impersonate (str, optional): Browser profile for curl_cffi to impersonate. Defaults to "chrome110".
 
     Returns:
         str: Identifier of the uploaded file.
+
     Raises:
-        HTTPError: If the upload request failed.
+        HTTPError: If the upload request fails.
         RequestException: For other network-related errors.
+        FileNotFoundError: If the file path does not exist.
     """
     # Handle file input
     if not isinstance(file, bytes):
@@ -168,7 +212,18 @@ async def upload_file(
 #########################################
 
 def load_cookies(cookie_path: str) -> Tuple[str, str]:
-    """Loads cookies from the provided JSON file."""
+    """
+    Loads authentication cookies from a JSON file.
+
+    Args:
+        cookie_path (str): Path to the JSON file containing cookies.
+
+    Returns:
+        tuple[str, str]: Tuple containing __Secure-1PSID and __Secure-1PSIDTS cookie values.
+
+    Raises:
+        Exception: If the file is not found, invalid, or required cookies are missing.
+    """
     try:
         with open(cookie_path, 'r', encoding='utf-8') as file: # Added encoding
             cookies = json.load(file)
@@ -193,6 +248,15 @@ def load_cookies(cookie_path: str) -> Tuple[str, str]:
 class Chatbot:
     """
     Synchronous wrapper for the AsyncChatbot class.
+
+    This class provides a synchronous interface to interact with Google Gemini,
+    handling authentication, conversation management, and message sending.
+
+    Attributes:
+        loop (asyncio.AbstractEventLoop): Event loop for running async tasks.
+        secure_1psid (str): Authentication cookie.
+        secure_1psidts (str): Authentication cookie.
+        async_chatbot (AsyncChatbot): Underlying asynchronous chatbot instance.
     """
     def __init__(
         self,
@@ -236,20 +300,26 @@ class Chatbot:
 
 class AsyncChatbot:
     """
-    A class to interact with Google Gemini using curl_cffi.
-    Parameters:
-        secure_1psid: str
-            The __Secure-1PSID cookie.
-        secure_1psidts: str
-            The __Secure-1PSIDTS cookie.
-        proxy: Optional[Union[str, Dict[str, str]]]
-            Proxy URL string or dictionary for curl_cffi.
-        timeout: int
-            Request timeout in seconds.
-        model: Model
-            Selected model for the session.
-        impersonate: str
-            Browser profile for curl_cffi to impersonate.
+    Asynchronous chatbot client for interacting with Google Gemini using curl_cffi.
+
+    This class manages authentication, session state, conversation history,
+    and sending/receiving messages (including images) asynchronously.
+
+    Attributes:
+        headers (dict): HTTP headers for requests.
+        _reqid (int): Request identifier for Gemini API.
+        SNlM0e (str): Session token required for API requests.
+        conversation_id (str): Current conversation ID.
+        response_id (str): Current response ID.
+        choice_id (str): Current choice ID.
+        proxy (str | dict | None): Proxy configuration.
+        proxies_dict (dict | None): Proxy dictionary for curl_cffi.
+        secure_1psid (str): Authentication cookie.
+        secure_1psidts (str): Authentication cookie.
+        session (AsyncSession): curl_cffi session for HTTP requests.
+        timeout (int): Request timeout in seconds.
+        model (Model): Selected Gemini model.
+        impersonate (str): Browser profile for curl_cffi to impersonate.
     """
     __slots__ = [
         "headers",
@@ -771,18 +841,14 @@ class AsyncChatbot:
 
 class Image(BaseModel):
     """
-    A single image object returned from Gemini.
-    Parameters:
-        url: str
-            URL of the image.
-        title: str, optional
-            Title of the image (default: "[Image]").
-        alt: str, optional
-            Optional description.
-        proxy: Optional[Union[str, Dict[str, str]]] = None
-            Proxy used when saving the image.
-        impersonate: str = "chrome110"
-            Browser profile for curl_cffi to impersonate.
+    Represents a single image object returned from Gemini.
+
+    Attributes:
+        url (str): URL of the image.
+        title (str): Title of the image (default: "[Image]").
+        alt (str): Optional description of the image.
+        proxy (str | dict | None): Proxy used when saving the image.
+        impersonate (str): Browser profile for curl_cffi to impersonate.
     """
     url: str
     title: str = "[Image]"
@@ -914,18 +980,19 @@ class Image(BaseModel):
 
 class WebImage(Image):
     """
-    Image retrieved from web search results.
+    Represents an image retrieved from web search results.
+
     Returned when asking Gemini to "SEND an image of [something]".
     """
     pass
 
 class GeneratedImage(Image):
     """
-    Image generated by Google's AI image generator (e.g., ImageFX).
-    Parameters:
-        cookies: dict[str, str]
-            Cookies required for accessing the generated image URL, typically
-            from the GeminiClient/Chatbot instance.
+    Represents an image generated by Google's AI image generator (e.g., ImageFX).
+
+    Attributes:
+        cookies (dict[str, str]): Cookies required for accessing the generated image URL,
+            typically from the GeminiClient/Chatbot instance.
     """
     cookies: Dict[str, str]
 

@@ -49,33 +49,6 @@ images = quiet_imager.generate("Secret art")
 paths = quiet_imager.save(images)
 ```
 
-### ⚡ Async Way (AsyncTalkaiImager)
-
-```python
-from webscout import AsyncTalkaiImager
-import asyncio
-
-async def generate_art():
-    # Initialize with fire logging! 🚀
-    imager = AsyncTalkaiImager(logging=True)
-    
-    # Generate multiple images
-    images = await imager.generate(
-        "Epic dragon breathing fire",
-        amount=2,
-        max_retries=3,
-        retry_delay=5
-    )
-    paths = await imager.save(images)
-    print(paths)  # ['epic_dragon_0.png', 'epic_dragon_1.png']
-
-    # Custom save location
-    images = await imager.generate("Cool art")
-    paths = await imager.save(images, dir="my_art", filenames_prefix="fire_")
-
-# Run it!
-asyncio.run(generate_art())
-```
 
 ### 🛠️ Advanced Usage
 

@@ -42,30 +42,6 @@ images = provider.generate(
 provider.save(images, dir="dragon_pics")
 ```
 
-### Asynchronous Usage
-
-```python
-import asyncio
-from webscout import AsyncPollinationsAI
-
-async def main():
-    # Create provider
-    provider = AsyncPollinationsAI()
-    
-    # Generate images
-    images = await provider.generate(
-        prompt="A beautiful sunset",
-        amount=2,
-        model="flux-realism"  # Use realistic style
-    )
-    
-    # Save images
-    paths = await provider.save(images, dir="sunset_pics")
-    print(f"Saved images to: {paths}")
-
-# Run async code
-asyncio.run(main())
-```
 
 ## Available Models 🎭
 

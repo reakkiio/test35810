@@ -39,25 +39,6 @@ images = provider.generate(
 paths = provider.save(images, dir="dragon_pics")
 ```
 
-### Async Usage
-
-```python
-from webscout import AsyncMagicStudioImager
-import asyncio
-
-async def generate_images():
-    provider = AsyncMagicStudioImager()
-    
-    # Generate multiple images
-    images = await provider.generate(
-        "Epic dragon in cyberpunk city",
-        amount=2
-    )
-    paths = await provider.save(images, dir="outputs")
-
-# Run the async function
-asyncio.run(generate_images())
-```
 
 ## ⚙️ Configuration
 

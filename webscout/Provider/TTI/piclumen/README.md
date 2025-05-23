@@ -49,36 +49,6 @@ images = custom_imager.generate("Abstract architectural concept")
 paths = custom_imager.save(images)
 ```
 
-### Asynchronous Usage (AsyncPiclumenImager)
-
-```python
-from webscout import AsyncPiclumenImager
-import asyncio
-
-async def generate_images():
-    imager = AsyncPiclumenImager()
-    
-    # Generate multiple images concurrently
-    images = await imager.generate(
-        "Architectural visualization of modern building",
-        amount=2,
-        max_retries=3,
-        retry_delay=5
-    )
-    paths = await imager.save(images)
-    print(f"Generated images: {paths}")
-
-    # Custom save configuration
-    images = await imager.generate("Modern art composition")
-    paths = await imager.save(
-        images, 
-        dir="artwork",
-        filenames_prefix="modern_"
-    )
-
-# Execute the async function
-asyncio.run(generate_images())
-```
 
 ### Advanced Configuration
 

@@ -14,8 +14,8 @@ Welcome to WebScout's Text-to-Image providers - your ultimate collection of AI a
 * **[PiclumenImager](piclumen/README.md):** Professional photorealistic image generation with advanced concurrent processing, optimized for macro photography, underwater scenes, and architectural visualization
 * **[MagicStudio](MagicStudio/README.md):** Generate amazing images with MagicStudio's AI art generator! 🚀
 * **[FastFlux](fastflux/README.md):** Generate amazing images with FastFlux's AI art generator! 🚀
-* **[ImgSys](ImgSys/README.md):** Multi-provider image generation that creates 2 unique images from random AI models for each prompt, with comprehensive error handling and async support 🎨
-* **[PixelMuse](pixelmuse/README.md):** Create stunning AI art with PixelMuse's powerful models including flux-schnell, imagen-3, and recraft-v3, featuring both sync and async support for optimal performance 🎨
+* **[ImgSys](ImgSys/README.md):** Multi-provider image generation that creates 2 unique images from random AI models for each prompt with comprehensive error handling 🎨
+* **[PixelMuse](pixelmuse/README.md):** Create stunning AI art with PixelMuse's powerful models including flux-schnell, imagen-3, and recraft-v3
 
 ## 🚀 Features
 
@@ -23,7 +23,7 @@ All providers come with these fire features:
 
 ### 🛠️ Core Features
 
-* Both sync and async implementations
+* Synchronous implementations
 
 * Comprehensive error handling
 * Optional logging with cyberpunk theme
@@ -60,16 +60,6 @@ imager = BlackboxAIImager()
 images = imager.generate("Epic dragon breathing fire", amount=2)
 paths = imager.save(images)
 
-# Async way
-from webscout.Provider.TTI import AsyncDeepInfraImager
-import asyncio
-
-async def generate_art():
-    imager = AsyncDeepInfraImager()
-    images = await imager.generate("Cyberpunk city at night")
-    paths = await imager.save(images)
-
-asyncio.run(generate_art())
 ```
 
 ## 🔧 Installation
@@ -83,7 +73,6 @@ pip install webscout
 All providers implement these base classes:
 
 * `ImageProvider` for sync operations
-* `AsyncImageProvider` for async operations
 
 ### 🎨 Common Methods
 

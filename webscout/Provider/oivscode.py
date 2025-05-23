@@ -38,8 +38,10 @@ class oivscode(Provider):
         "o1",
         "o3-mini",
         "o4-mini",
-        "transcribe"
+        "transcribe",
+        "anthropic/claude-sonnet-4"
     ]
+
 
     def __init__(
         self,
@@ -301,6 +303,7 @@ class oivscode(Provider):
 if __name__ == "__main__":
     from rich import print
     chatbot = oivscode()
+    print(chatbot.fetch_available_models())
     response = chatbot.chat(input(">>> "), stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)

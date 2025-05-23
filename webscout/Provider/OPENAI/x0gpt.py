@@ -255,12 +255,12 @@ class X0GPT(OpenAICompatibleProvider):
     Usage:
         client = X0GPT()
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="X0GPT",
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
 
-    AVAILABLE_MODELS = ["gpt-4", "gpt-3.5-turbo"]
+    AVAILABLE_MODELS = ["X0GPT"]
 
     def __init__(
         self,

@@ -11,7 +11,7 @@ import requests  # For bypassing Cloudflare protection
 from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from .utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
-    ChatCompletionMessage, CompletionUsage, format_prompt, count_tokens
+    ChatCompletionMessage, CompletionUsage, count_tokens
 )
 
 # Attempt to import LitAgent, fallback if not available
@@ -899,7 +899,65 @@ MODEL_PROMPT = {
                 }
             }
         }
-    }
+    },
+    "claude-opus-4-20250514": {
+        "apiUrl": "https://fragments.e2b.dev/api/chat",
+        "id": "claude-opus-4-20250514",
+        "name": "Claude Opus 4 (2025-05-14)",
+        "Knowledge": "2025-05",
+        "provider": "Anthropic",
+        "providerId": "anthropic",
+        "multiModal": True,
+        "templates": {
+            "system": {
+                "intro": "You are Claude Opus 4, a large language model trained by Anthropic",
+                "principles": ["honesty", "ethics", "diligence"],
+                "latex": {
+                    "inline": "$x^2$",
+                    "block": "$e=mc^2$"
+                }
+            }
+        },
+        "requestConfig": {
+            "template": {
+                "txt": {
+                    "name": "chat with users and start role-playing, Above of all: Follow the latest news from users",
+                    "lib": [""],
+                    "file": "pages/ChatWithUsers.txt",
+                    "port": 3000
+                }
+            }
+        }
+    },
+    "claude-sonnet-4": {
+        "apiUrl": "https://fragments.e2b.dev/api/chat",
+        "id": "claude-sonnet-4",
+        "name": "Claude Sonnet 4",
+        "Knowledge": "2025-05",
+        "provider": "Anthropic",
+        "providerId": "anthropic",
+        "multiModal": True,
+        "templates": {
+            "system": {
+                "intro": "You are Claude Sonnet 4, a large language model trained by Anthropic",
+                "principles": ["honesty", "ethics", "diligence"],
+                "latex": {
+                    "inline": "$x^2$",
+                    "block": "$e=mc^2$"
+                }
+            }
+        },
+        "requestConfig": {
+            "template": {
+                "txt": {
+                    "name": "chat with users and start role-playing, Above of all: Follow the latest news from users",
+                    "lib": [""],
+                    "file": "pages/ChatWithUsers.txt",
+                    "port": 3000
+                }
+            }
+        }
+    },
 }
 
 class Completions(BaseCompletions):

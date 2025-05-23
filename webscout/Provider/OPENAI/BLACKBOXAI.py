@@ -439,8 +439,13 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         default_model,
         "o3-mini",
         "gpt-4.1-nano",
+        "Claude Opus 4",  # Added Claude Opus 4
+        "Claude Sonnet 4",  # Added Claude Sonnet 4
         "Claude-sonnet-3.7",
         "Claude-sonnet-3.5",
+        "Grok 3",  # Added Grok 3
+        "Gemini 2.5 Pro",  # Added Gemini 2.5 Pro
+        "UI-TARS 72B",  # Added UI-TARS 72B
         "DeepSeek-R1",
         "Mistral-Small-24B-Instruct-2501",
         *openrouter_models,
@@ -454,10 +459,10 @@ class BLACKBOXAI(OpenAICompatibleProvider):
     ]
 
     # Models that support vision capabilities
-    vision_models = [default_vision_model, 'o3-mini', "Llama 3.2 11B Vision Instruct"] # Added Llama vision
+    vision_models = [default_vision_model, 'o3-mini', "Llama 3.2 11B Vision Instruct", "Gemini 2.5 Pro", "Claude Sonnet 4", "Claude Opus 4", "UI-TARS 72B"] # Added Llama vision, Gemini 2.5 Pro, Claude Sonnet 4, Claude Opus 4, and UI-TARS 72B
 
     # Models that can be directly selected by users
-    userSelectedModel = ['o3-mini','Claude-sonnet-3.7', 'Claude-sonnet-3.5', 'DeepSeek-R1', 'Mistral-Small-24B-Instruct-2501'] + openrouter_models
+    userSelectedModel = ['o3-mini', 'Claude Opus 4', 'Claude Sonnet 4', 'Claude-sonnet-3.7', 'Claude-sonnet-3.5', 'Grok 3', 'Gemini 2.5 Pro', 'UI-TARS 72B', 'DeepSeek-R1', 'Mistral-Small-24B-Instruct-2501'] + openrouter_models
 
     # Agent mode configurations
     agentMode = {
@@ -506,8 +511,13 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         'R1 Distill Qwen 14B': {'mode': True, 'id': "deepseek/deepseek-r1-distill-qwen-14b:free", 'name': "R1 Distill Qwen 14B"},
         'R1 Distill Qwen 32B': {'mode': True, 'id': "deepseek/deepseek-r1-distill-qwen-32b:free", 'name': "R1 Distill Qwen 32B"},
         # Default models from the new list
+        'Claude Opus 4': {'mode': True, 'id': "anthropic/claude-opus-4", 'name': "Claude Opus 4"},
+        'Claude Sonnet 4': {'mode': True, 'id': "anthropic/claude-sonnet-4", 'name': "Claude Sonnet 4"},
         'Claude-sonnet-3.7': {'mode': True, 'id': "Claude-sonnet-3.7", 'name': "Claude-sonnet-3.7"},
         'Claude-sonnet-3.5': {'mode': True, 'id': "Claude-sonnet-3.5", 'name': "Claude-sonnet-3.5"},
+        'Grok 3': {'mode': True, 'id': "x-ai/grok-3-beta", 'name': "Grok 3"},
+        'Gemini 2.5 Pro': {'mode': True, 'id': "google/gemini-2.5-pro-preview-03-25", 'name': "Gemini 2.5 Pro"},
+        'UI-TARS 72B': {'mode': True, 'id': "bytedance-research/ui-tars-72b:free", 'name': "UI-TARS 72B"},
         'DeepSeek-R1': {'mode': True, 'id': "deepseek-reasoner", 'name': "DeepSeek-R1"}, # This is 'R1' in openrouter, but 'DeepSeek-R1' in base models
         'Mistral-Small-24B-Instruct-2501': {'mode': True, 'id': "mistralai/Mistral-Small-24B-Instruct-2501", 'name': "Mistral-Small-24B-Instruct-2501"},
         # Add default_model if it's not covered and has an agent mode

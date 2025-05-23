@@ -22,6 +22,7 @@ class samurai(Provider):
         "gpt-4o",
         "o3-mini",
         "Claude-sonnet-3.7",
+        "uncensored-r1",
         "anthropic/claude-3.5-sonnet",
         "gemini-1.5-pro",
         "gemini-1.5-pro-latest",
@@ -56,9 +57,9 @@ class samurai(Provider):
         system_prompt: str = "You are a helpful assistant."
     ):
         """Initializes the Custom API client."""
-        self.url = "https://vmxvcq-5000.csb.app/v1/chat/completions"
+        self.url = "https://newapi-9qln.onrender.com/v1/chat/completions"
         self.headers = {
-            "Authorization": "Bearer Public-Samurai-001",
+            "Authorization": "Bearer Samurai-AP1-Fr33",
             "Content-Type": "application/json"
         }
         self.session = Session()

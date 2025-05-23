@@ -210,6 +210,7 @@ class Chat(BaseChat):
         self.completions = Completions(client)
 
 class oivscode(OpenAICompatibleProvider):
+    
     AVAILABLE_MODELS = [
         "*",
         "Qwen/Qwen2.5-72B-Instruct-Turbo",
@@ -232,7 +233,8 @@ class oivscode(OpenAICompatibleProvider):
         "o1",
         "o3-mini",
         "o4-mini",
-        "transcribe"
+        "transcribe",
+        "anthropic/claude-sonnet-4"
     ]
 
     def __init__(self, timeout: Optional[int] = None):

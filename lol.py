@@ -1,4 +1,4 @@
-from webscout.Provider.OPENAI.yep import YEPCHAT
+from webscout.client import YEPCHAT
 from rich import print
 client = YEPCHAT()
 response = client.chat.completions.create(

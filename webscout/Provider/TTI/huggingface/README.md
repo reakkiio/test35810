@@ -46,36 +46,6 @@ images = provider.generate(
 paths = provider.save(images, name="dragon", dir="outputs")
 ```
 
-### Async Usage
-
-```python
-from webscout import AsyncHFimager
-import asyncio
-
-async def example():
-    # Initialize with your API key
-    provider = AsyncHFimager(api_token="your-hf-token")
-    
-    # Generate a single image
-    images = await provider.generate("A shiny red sports car")
-    paths = await provider.save(images)
-    
-    # Generate multiple images with parameters
-    images = await provider.generate(
-        prompt="Epic dragon in cyberpunk city",
-        amount=3,
-        model="runwayml/stable-diffusion-v1-5",
-        guidance_scale=7.5,
-        negative_prompt="blurry, bad quality",
-        num_inference_steps=50,
-        width=768,
-        height=768
-    )
-    paths = await provider.save(images, name="dragon", dir="outputs")
-
-# Run the example
-asyncio.run(example())
-```
 
 ## 🎨 Supported Models
 

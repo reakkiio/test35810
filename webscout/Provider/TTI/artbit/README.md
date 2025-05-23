@@ -43,33 +43,6 @@ images = provider.generate(
 paths = provider.save(images, name="dragon", dir="outputs")
 ```
 
-### Async Usage
-
-```python
-from webscout import AsyncArtbitImager
-import asyncio
-
-async def example():
-    # Initialize with logging
-    provider = AsyncArtbitImager(logging=True)
-    
-    # Generate a single image
-    images = await provider.generate("A shiny red sports car")
-    paths = await provider.save(images)
-    
-    # Generate multiple images with parameters
-    images = await provider.generate(
-        prompt="Epic dragon in cyberpunk city",
-        amount=3,
-        caption_model="sdxl",
-        selected_ratio="1024",
-        negative_prompt="blurry, bad quality"
-    )
-    paths = await provider.save(images, name="dragon", dir="outputs")
-
-# Run the example
-asyncio.run(example())
-```
 
 ## 🎨 Supported Models
 

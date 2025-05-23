@@ -30,15 +30,6 @@ provider = AiForceimager()
 images = provider.generate("Epic dragon")
 paths = provider.save(images)
 
-# Async way
-from webscout import AsyncAiForceimager
-import asyncio
-
-async def generate():
-    provider = AsyncAiForceimager()
-    images = await provider.generate("Cool art")
-    paths = await provider.save(images)
-
 asyncio.run(generate())
 ```
 
@@ -96,24 +87,6 @@ paths = provider.save(
 )
 ```
 
-### Async with Error Handling ⚡
-
-```python
-async def generate_safely():
-    provider = AsyncAiForceimager()
-    try:
-        images = await provider.generate(
-            prompt="Epic dragon",
-            model="flux-3d",
-            amount=2
-        )
-        paths = await provider.save(images, dir="dragons")
-        print(f"Saved to: {paths}")
-    except Exception as e:
-        print(f"Oops! Something went wrong: {e}")
-
-asyncio.run(generate_safely())
-```
 
 ## Tips & Tricks 💡
 

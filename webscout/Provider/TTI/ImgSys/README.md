@@ -38,25 +38,6 @@ images = provider.generate("A cool cyberpunk city at night")
 provider.save(images, dir="my_images")
 ```
 
-### Asynchronous Usage
-
-```python
-import asyncio
-from webscout import AsyncImgSys
-
-async def main():
-    # Initialize the provider
-    provider = AsyncImgSys()
-    
-    # Generate images
-    images = await provider.generate("A cool cyberpunk city at night")
-    
-    # Save the images
-    await provider.save(images, dir="my_images")
-
-# Run the async function
-asyncio.run(main())
-```
 
 ### Advanced Usage
 
@@ -152,9 +133,6 @@ Parameters:
 Returns:
 - `List[str]`: Paths to saved images
 
-### AsyncImgSys Class
-
-The `AsyncImgSys` class provides the same functionality as `ImgSys` but with async/await support. All methods are prefixed with `async` and should be called with `await`.
 
 ## Error Handling 🛡️
 

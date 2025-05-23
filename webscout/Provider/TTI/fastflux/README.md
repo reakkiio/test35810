@@ -43,26 +43,6 @@ images = provider.generate(
 paths = provider.save(images, dir="dragon_pics")
 ```
 
-### Async Usage
-
-```python
-from webscout import AsyncFastFluxImager
-import asyncio
-
-async def generate_images():
-    provider = AsyncFastFluxImager()
-    
-    # Generate multiple images
-    images = await provider.generate(
-        "Epic dragon in cyberpunk city",
-        amount=2,
-        model="flux_1_schnell"
-    )
-    paths = await provider.save(images, dir="outputs")
-
-# Run the async function
-asyncio.run(generate_images())
-```
 
 ## 🎨 Available Models
 

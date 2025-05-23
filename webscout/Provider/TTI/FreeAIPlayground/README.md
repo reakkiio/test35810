@@ -27,17 +27,6 @@ from webscout import FreeAIImager
 provider = FreeAIImager()
 images = provider.generate("Epic dragon")
 paths = provider.save(images)
-
-# Async way
-from webscout import AsyncFreeAIImager
-import asyncio
-
-async def generate():
-    provider = AsyncFreeAIImager()
-    images = await provider.generate("Cool art")
-    paths = await provider.save(images)
-
-asyncio.run(generate())
 ```
 
 ## Available Models 🎭
@@ -72,23 +61,6 @@ images = provider.generate(
 paths = provider.save(images, dir="dragons")
 ```
 
-### Async with Error Handling ⚡
-```python
-async def generate_safely():
-    provider = AsyncFreeAIImager()
-    try:
-        images = await provider.generate(
-            prompt="Epic dragon",
-            model="Flux Pro Ultra",
-            amount=2
-        )
-        paths = await provider.save(images, dir="dragons")
-        print(f"Saved to: {paths}")
-    except Exception as e:
-        print(f"Oops! Something went wrong: {e}")
-
-asyncio.run(generate_safely())
-```
 
 ## Tips & Tricks 💡
 

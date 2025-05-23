@@ -39,34 +39,6 @@ images = provider.generate(
 provider.save(images, dir="dragon_pics")
 ```
 
-### Asynchronous Usage
-
-```python
-from webscout import AsyncAIArtaImager
-import asyncio
-
-async def generate_images():
-    # Initialize with logging
-    provider = AsyncAIArtaImager(logging=True)
-    
-    # Generate a single image
-    images = await provider.generate("A beautiful sunset over mountains")
-    paths = await provider.save(images)
-    
-    # Generate multiple images with parameters
-    images = await provider.generate(
-        prompt="Epic dragon in cyberpunk city",
-        amount=2,
-        model="fantasy_art",
-        negative_prompt="ugly, deformed",
-        guidance_scale=7,
-        num_inference_steps=30
-    )
-    paths = await provider.save(images, name="dragon", dir="outputs")
-
-# Run the async function
-asyncio.run(generate_images())
-```
 
 ## Available Models
 
@@ -106,12 +78,6 @@ provider = AIArtaImager(
     logging=True
 )
 
-# Asynchronous with custom settings
-async_provider = AsyncAIArtaImager(
-    timeout=120,
-    proxies={"http": "http://proxy:8080"},
-    logging=True
-)
 ```
 
 ### Saving Images with Custom Naming

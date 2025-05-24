@@ -17,6 +17,7 @@ import time
 import uuid
 import inspect
 from typing import List, Dict, Optional, Union, Any, Generator, Callable
+import types
 
 import uvicorn
 from fastapi import FastAPI, Response, Request, Body
@@ -705,7 +706,7 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
             logger.debug(f"Starting streaming response for request {request_id}")
             completion_stream = provider.chat.completions.create(**params)
 
-            if isinstance(completion_stream, Generator):
+            if isinstance(completion_stream, types.GeneratorType):
                 for chunk in completion_stream:
                     # Standardize chunk format before sending
                     if hasattr(chunk, 'model_dump'):  # Pydantic v2
@@ -737,7 +738,6 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
             yield f"data: {json.dumps(error_data)}\n\n"
         finally:
             yield "data: [DONE]\n\n"
-
     return StreamingResponse(streaming(), media_type="text/event-stream")
 
 

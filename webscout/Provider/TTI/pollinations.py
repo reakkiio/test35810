@@ -1,265 +1,221 @@
-"""PollinationsAI Synchronous Provider - Your go-to for text-to-image generation! 🔥
-
-Examples:
-    >>> from webscout import PollinationsAI
-    >>> provider = PollinationsAI()
-    >>> 
-    >>> # Generate a single image
-    >>> images = provider.generate("A cool cyberpunk city at night")
-    >>> provider.save(images, dir="my_images")
-    >>> 
-    >>> # Generate multiple images with different settings
-    >>> images = provider.generate(
-    ...     prompt="A majestic dragon", 
-    ...     amount=3,
-    ...     width=1024,
-    ...     height=1024,
-    ...     model="sdxl"
-    ... )
-"""
-
 import requests
-import os
-import time
-from typing import List, Optional, Union
-from string import punctuation
-from random import choice
-from requests.exceptions import RequestException
+from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
-
-from webscout.AIbase import ImageProvider
+from requests.exceptions import RequestException
+from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
+from io import BytesIO
+import os
+import tempfile
 from webscout.litagent import LitAgent
+import time
+import json
+import random
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
-# Get a fresh user agent! 🔄
-agent = LitAgent()
+class Images(BaseImages):
+    def __init__(self, client):
+        self._client = client
 
-class PollinationsAI(ImageProvider):
-    """Your homie for generating fire images using pollinations.ai! 🎨
+    def create(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        n: int = 1,
+        size: str = "1024x1024",
+        response_format: str = "url",
+        user: Optional[str] = None,
+        style: str = "none",
+        aspect_ratio: str = "1:1",
+        timeout: int = 60,
+        image_format: str = "png",
+        seed: Optional[int] = None,
+        **kwargs
+    ) -> ImageResponse:
+        """
+        image_format: "png" or "jpeg"
+        seed: Optional random seed for reproducibility. If not provided, a random seed is used.
+        """
+        if Image is None:
+            raise ImportError("Pillow (PIL) is required for image format conversion.")
 
-    This provider supports various models and image sizes, with built-in retry logic
-    and error handling to make sure you get your images no cap! 💯
+        images = []
+        urls = []
 
-    Examples:
-        >>> provider = PollinationsAI()
-        >>> # Generate one image with default model
-        >>> image = provider.generate("A futuristic city")
-        >>> provider.save(image, "city.jpg")
-        >>> 
-        >>> # Generate multiple with specific model
-        >>> images = provider.generate(
-        ...     prompt="Space station",
-        ...     amount=3,
-        ...     width=1024,
-        ...     height=1024,
-        ...     model="flux-3d"  # For 3D-style images
-        ... )
-        >>> provider.save(images, dir="space_pics")
-        >>>
-        >>> # Try different models
-        >>> anime_pics = provider.generate(
-        ...     prompt="Anime character",
-        ...     model="flux-anime"
-        ... )
-        >>> realistic_pics = provider.generate(
-        ...     prompt="Portrait photo",
-        ...     model="flux-realism"
-        ... )
+        def upload_file_with_retry(img_bytes, image_format, max_retries=3):
+            ext = "jpg" if image_format.lower() == "jpeg" else "png"
+            for attempt in range(max_retries):
+                tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                        tmp.write(img_bytes)
+                        tmp.flush()
+                        tmp_path = tmp.name
+                    with open(tmp_path, 'rb') as f:
+                        files = {
+                            'fileToUpload': (f'image.{ext}', f, f'image/{ext}')
+                        }
+                        data = {
+                            'reqtype': 'fileupload',
+                            'json': 'true'
+                        }
+                        headers = {'User-Agent': LitAgent().random()}
+                        if attempt > 0:
+                            headers['Connection'] = 'close'
+                        resp = requests.post("https://catbox.moe/user/api.php", files=files, data=data, headers=headers, timeout=timeout)
+                        if resp.status_code == 200 and resp.text.strip():
+                            text = resp.text.strip()
+                            if text.startswith('http'):
+                                return text
+                            try:
+                                result = resp.json()
+                                if "url" in result:
+                                    return result["url"]
+                            except json.JSONDecodeError:
+                                if 'http' in text:
+                                    return text
+                except Exception:
+                    if attempt < max_retries - 1:
+                        time.sleep(1 * (attempt + 1))
+                finally:
+                    if tmp_path and os.path.isfile(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+            return None
 
-    Attributes:
-        AVAILABLE_MODELS (list): Available models to use:
-            - "flux": Default model, good for general use
-            - "flux-realism": Enhanced realism
-            - "flux-cablyai": CablyAI style
-            - "flux-anime": Anime/manga style
-            - "flux-3d": 3D-style renders
-            - "any-dark": Dark/gothic style
-            - "flux-pro": Professional quality
-            - "turbo": Fast generation
-    """
+        def upload_file_alternative(img_bytes, image_format):
+            try:
+                ext = "jpg" if image_format.lower() == "jpeg" else "png"
+                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(img_bytes)
+                    tmp.flush()
+                    tmp_path = tmp.name
+                try:
+                    if not os.path.isfile(tmp_path):
+                        return None
+                    with open(tmp_path, 'rb') as img_file:
+                        files = {'file': img_file}
+                        response = requests.post('https://0x0.st', files=files)
+                        response.raise_for_status()
+                        image_url = response.text.strip()
+                        if not image_url.startswith('http'):
+                            return None
+                        return image_url
+                except Exception:
+                    return None
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+            except Exception:
+                return None
 
+        for i in range(n):
+            # Prepare parameters for Pollinations API
+            params = {
+                "model": model,
+                "width": int(size.split("x")[0]) if "x" in size else 1024,
+                "height": int(size.split("x")[1]) if "x" in size else 1024,
+                "seed": seed if seed is not None else random.randint(0, 2**32 - 1),
+            }
+            # Build the API URL
+            base_url = f"https://image.pollinations.ai/prompt/{prompt}"
+            # Compose query string
+            query = "&".join(f"{k}={v}" for k, v in params.items())
+            url = f"{base_url}?{query}"
+            try:
+                resp = self._client.session.get(url, timeout=timeout)
+                resp.raise_for_status()
+                img_bytes = resp.content
+            except RequestException as e:
+                raise RuntimeError(f"Failed to fetch image from Pollinations API: {e}")
+
+            # Convert to png or jpeg in memory
+            with BytesIO(img_bytes) as input_io:
+                with Image.open(input_io) as im:
+                    out_io = BytesIO()
+                    if image_format.lower() == "jpeg":
+                        im = im.convert("RGB")
+                        im.save(out_io, format="JPEG")
+                    else:
+                        im.save(out_io, format="PNG")
+                    img_bytes = out_io.getvalue()
+
+            images.append(img_bytes)
+
+            if response_format == "url":
+                uploaded_url = upload_file_with_retry(img_bytes, image_format)
+                if not uploaded_url:
+                    uploaded_url = upload_file_alternative(img_bytes, image_format)
+                if uploaded_url:
+                    urls.append(uploaded_url)
+                else:
+                    raise RuntimeError("Failed to upload image to catbox.moe using all available methods")
+
+        result_data = []
+        if response_format == "url":
+            for url in urls:
+                result_data.append(ImageData(url=url))
+        elif response_format == "b64_json":
+            import base64
+            for img in images:
+                b64 = base64.b64encode(img).decode("utf-8")
+                result_data.append(ImageData(b64_json=b64))
+        else:
+            raise ValueError("response_format must be 'url' or 'b64_json'")
+
+        from time import time as _time
+        return ImageResponse(
+            created=int(_time()),
+            data=result_data
+        )
+
+class PollinationsAI(TTICompatibleProvider):
     AVAILABLE_MODELS = [
         "flux",
-        "turbo"
+        "turbo",
+        "gptimage"
     ]
 
-
-    def __init__(
-        self, 
-        timeout: int = 60, 
-        proxies: Optional[dict] = None
-    ):
-        """Initialize your PollinationsAI provider with custom settings
-
-        Examples:
-            >>> provider = PollinationsAI(timeout=30)
-            >>> provider = PollinationsAI(proxies={"http": "http://proxy:8080"})
-
-        Args:
-            timeout (int): HTTP request timeout in seconds (default: 60)
-            proxies (dict, optional): Proxy configuration for requests
-        """
-        self.image_gen_endpoint = "https://image.pollinations.ai/prompt/{prompt}"
-        self.headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate",
-            "User-Agent": agent.random(),
-        }
+    def __init__(self):
+        self.api_endpoint = "https://image.pollinations.ai/prompt"
         self.session = requests.Session()
-        self.session.headers.update(self.headers)
-        if proxies:
-            self.session.proxies.update(proxies)
-            
-        self.timeout = timeout
-        self.prompt: str = "AI-generated image - webscout"
-        self.image_extension: str = "jpeg"
-
-    def generate(
-        self,
-        prompt: str,
-        amount: int = 1,
-        additives: bool = True,
-        width: int = 768,
-        height: int = 768,
-        model: str = "flux",
-        max_retries: int = 3,
-        retry_delay: int = 5,
-        negative_prompt: Optional[str] = None,
-        seed: Optional[int] = None,
-    ) -> List[bytes]:
-        """Generate some fire images from your prompt! 🎨
-
-        Args:
-            prompt (str): Your image description
-            amount (int): How many images you want (default: 1)
-            additives (bool): Make each prompt unique for variety (default: True)
-            width (int): Image width (default: 768)
-            height (int): Image height (default: 768)
-            model (str): Model to use - check AVAILABLE_MODELS (default: "flux")
-            max_retries (int): Max retry attempts if something fails (default: 3)
-            retry_delay (int): Seconds to wait between retries (default: 5)
-            negative_prompt (str, optional): What you don't want in the image
-            seed (int, optional): Seed for reproducible results
-
-        Returns:
-            List[bytes]: Your generated images as bytes
-
-        Raises:
-            ValueError: If the inputs ain't valid
-            RequestException: If the API calls fail after retries
-        """
-        # Input validation
-        if not prompt:
-            raise ValueError("Yo fam, the prompt can't be empty! 🤔")
-        if not isinstance(amount, int) or amount < 1:
-            raise ValueError("Amount needs to be a positive number! 📈")
-        if model not in self.AVAILABLE_MODELS:
-            raise ValueError(f"Model must be one of {self.AVAILABLE_MODELS}! 🎯")
-
-        # Function to add random characters for variety
-        def add_variety():
-            return "" if not additives else "".join(choice(punctuation) for _ in range(5))
-
-        self.prompt = prompt
-        response = []
-        
-        # Build base URL with parameters
-        base_params = {
-            "width": width,
-            "height": height,
-            "model": model
+        self.user_agent = LitAgent().random()
+        self.headers = {
+            "accept": "*/*",
+            "accept-language": "en-US,en;q=0.9",
+            "content-type": "application/json",
+            "origin": "https://image.pollinations.ai",
+            "referer": "https://image.pollinations.ai/",
+            "user-agent": self.user_agent,
         }
-        
-        if negative_prompt:
-            base_params["negative"] = negative_prompt
-        if seed is not None:
-            base_params["seed"] = seed
+        self.session.headers.update(self.headers)
+        self.images = Images(self)
 
-        for _ in range(amount):
-            current_prompt = f"{prompt}{add_variety()}"
-            params_str = "&".join(f"{k}={v}" for k, v in base_params.items())
-            url = f"{self.image_gen_endpoint.format(prompt=current_prompt)}?{params_str}"
-            
-            for attempt in range(max_retries):
-                try:
-                    resp = self.session.get(url, timeout=self.timeout)
-                    resp.raise_for_status()
-                    response.append(resp.content)
-                    break
-                except RequestException as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(retry_delay)
-
-        return response
-
-    def save(
-        self,
-        response: List[bytes],
-        name: Optional[str] = None,
-        dir: Optional[Union[str, Path]] = None,
-        filenames_prefix: str = "",
-    ) -> List[str]:
-        """Save your fire generated images! 💾
-
-        Examples:
-            >>> provider = PollinationsAI()
-            >>> images = provider.generate("Cool art")
-            >>> # Save with default settings
-            >>> paths = provider.save(images)
-            >>> # Save with custom name and directory
-            >>> paths = provider.save(
-            ...     images,
-            ...     name="my_art",
-            ...     dir="my_images",
-            ...     filenames_prefix="test_"
-            ... )
-
-        Args:
-            response (List[bytes]): Your generated images
-            name (Optional[str]): Custom name for your images
-            dir (Optional[Union[str, Path]]): Where to save the images (default: current directory)
-            filenames_prefix (str): Prefix for your image files
-
-        Returns:
-            List[str]: Paths to your saved images
-        """
-        save_dir = dir if dir else os.getcwd()
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-
-        saved_paths = []
-        timestamp = int(time.time())
-        
-        for i, image_bytes in enumerate(response):
-            if name:
-                filename = f"{filenames_prefix}{name}_{i}.{self.image_extension}"
-            else:
-                filename = f"{filenames_prefix}pollinations_{timestamp}_{i}.{self.image_extension}"
-            
-            filepath = os.path.join(save_dir, filename)
-            
-            with open(filepath, "wb") as f:
-                f.write(image_bytes)
-            
-            saved_paths.append(filepath)
-
-        return saved_paths
-
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
 
 if __name__ == "__main__":
-    # Example usage
-    provider = PollinationsAI()
-    try:
-        images = provider.generate(
-            prompt="A cyberpunk city at night with neon lights",
-            amount=2,
-            width=1024,
-            height=1024,
-            model="sdxl"
-        )
-        paths = provider.save(images, dir="generated_images")
-        print(f"Successfully saved images to: {paths}")
-    except Exception as e:
-        print(f"Oops, something went wrong: {e}")
+    from rich import print
+    client = PollinationsAI()
+    response = client.images.create(
+        model="flux",
+        prompt="a japanese waifu in short kimono clothes",
+        response_format="url",
+        n=4,
+        timeout=30,
+        seed=None  # You can set a specific seed for reproducibility
+    )
+    print(response)

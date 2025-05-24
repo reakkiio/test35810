@@ -1,62 +1,228 @@
-"""AIArtaImager Synchronous Provider - Generate stunning AI art with AI Arta! 🎨
+"""AIArtaImager TTI-Compatible Provider - Generate stunning AI art with AI Arta! 🎨
 
 Examples:
-    >>> from webscout import AIArtaImager
-    >>> provider = AIArtaImager()
-    >>> 
-    >>> # Generate a single image
-    >>> images = provider.generate("A cool cyberpunk city at night")
-    >>> paths = provider.save(images, dir="my_images")
-    >>> 
-    >>> # Generate multiple images with different settings
-    >>> images = provider.generate(
-    ...     prompt="Epic dragon breathing fire",
-    ...     amount=2, 
-    ...     model="flux"
+    >>> from webscout.Provider.TTI.aiarta import AIArta
+    >>> client = AIArta()
+    >>> response = client.images.create(
+    ...     model="flux",
+    ...     prompt="A cool cyberpunk city at night",
+    ...     n=1
     ... )
-    >>> provider.save(images, dir="dragon_pics")
+    >>> print(response)
 """
 
 import requests
-import json
+from typing import Optional, List, Dict, Any
+from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
+from io import BytesIO
 import os
-import time
-from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
-from requests.exceptions import RequestException
-
-from webscout.AIbase import ImageProvider
+import tempfile
 from webscout.litagent import LitAgent
+import time
+import json
 
-agent = LitAgent()
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
-class AIArtaImager(ImageProvider):
-    """Your go-to provider for generating fire images with AI Arta! 🎨
+class Images(BaseImages):
+    def __init__(self, client: 'AIArta'):
+        self._client = client
 
-    Examples:
-        >>> provider = AIArtaImager()
-        >>> # Generate one image
-        >>> image = provider.generate("A futuristic city")
-        >>> provider.save(image, "city.png")
-        >>> 
-        >>> # Generate multiple images with specific model
-        >>> images = provider.generate(
-        ...     prompt="Space station",
-        ...     amount=3,
-        ...     model="flux_black_ink"
-        ... )
-        >>> provider.save(images, dir="space_pics")
-    """
+    def create(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        n: int = 1,
+        size: str = "1024x1024",
+        response_format: str = "url",
+        user: Optional[str] = None,
+        style: str = "none",
+        aspect_ratio: str = "1:1",
+        timeout: int = 60,
+        image_format: str = "png",
+        **kwargs
+    ) -> ImageResponse:
+        """
+        image_format: "png" or "jpeg"
+        """
+        if Image is None:
+            raise ImportError("Pillow (PIL) is required for image format conversion.")
 
-    # API endpoints
-    url = "https://img-gen-prod.ai-arta.com"
-    auth_url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
-    token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
-    image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
-    status_check_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
+        images = []
+        urls = []
+        agent = LitAgent()
 
-    # Available models
-    AVAILABLE_MODELS = {
+        def upload_file_with_retry(img_bytes, image_format, max_retries=3):
+            ext = "jpg" if image_format.lower() == "jpeg" else "png"
+            for attempt in range(max_retries):
+                tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                        tmp.write(img_bytes)
+                        tmp.flush()
+                        tmp_path = tmp.name
+                    with open(tmp_path, 'rb') as f:
+                        files = {
+                            'fileToUpload': (f'image.{ext}', f, f'image/{ext}')
+                        }
+                        data = {
+                            'reqtype': 'fileupload',
+                            'json': 'true'
+                        }
+                        headers = {'User-Agent': agent.random()}
+                        if attempt > 0:
+                            headers['Connection'] = 'close'
+                        resp = requests.post("https://catbox.moe/user/api.php", files=files, data=data, headers=headers, timeout=timeout)
+                        if resp.status_code == 200 and resp.text.strip():
+                            text = resp.text.strip()
+                            if text.startswith('http'):
+                                return text
+                            try:
+                                result = resp.json()
+                                if "url" in result:
+                                    return result["url"]
+                            except json.JSONDecodeError:
+                                if 'http' in text:
+                                    return text
+                except Exception:
+                    if attempt < max_retries - 1:
+                        time.sleep(1 * (attempt + 1))
+                finally:
+                    if tmp_path and os.path.isfile(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+            return None
+
+        def upload_file_alternative(img_bytes, image_format):
+            try:
+                ext = "jpg" if image_format.lower() == "jpeg" else "png"
+                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(img_bytes)
+                    tmp.flush()
+                    tmp_path = tmp.name
+                try:
+                    if not os.path.isfile(tmp_path):
+                        return None
+                    with open(tmp_path, 'rb') as img_file:
+                        files = {'file': img_file}
+                        response = requests.post('https://0x0.st', files=files)
+                        response.raise_for_status()
+                        image_url = response.text.strip()
+                        if not image_url.startswith('http'):
+                            return None
+                        return image_url
+                except Exception:
+                    return None
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+            except Exception:
+                return None
+
+        for _ in range(n):
+            # Step 1: Get Authentication Token
+            auth_data = self._client.read_and_refresh_token()
+            gen_headers = {
+                "Authorization": auth_data.get("idToken"),
+            }
+            # Remove content-type header for form data
+            if "content-type" in self._client.session.headers:
+                del self._client.session.headers["content-type"]
+            # get_model now returns the proper style name from model_aliases
+            style_value = self._client.get_model(model)
+            image_payload = {
+                "prompt": str(prompt),
+                "negative_prompt": str(kwargs.get("negative_prompt", "blurry, deformed hands, ugly")),
+                "style": str(style_value),
+                "images_num": str(1),  # Generate one image at a time in the loop
+                "cfg_scale": str(kwargs.get("guidance_scale", 7)),
+                "steps": str(kwargs.get("num_inference_steps", 30)),
+                "aspect_ratio": str(aspect_ratio),
+            }
+            # Step 2: Generate Image (send as form data, not JSON)
+            image_response = self._client.session.post(
+                self._client.image_generation_url,
+                data=image_payload,  # Use form data instead of JSON
+                headers=gen_headers,
+                timeout=timeout
+            )
+            if image_response.status_code != 200:
+                raise RuntimeError(f"AIArta API error {image_response.status_code}: {image_response.text}\nPayload: {image_payload}")
+            image_data = image_response.json()
+            record_id = image_data.get("record_id")
+            if not record_id:
+                raise RuntimeError(f"Failed to initiate image generation: {image_data}")
+            # Step 3: Check Generation Status
+            status_url = self._client.status_check_url.format(record_id=record_id)
+            while True:
+                status_response = self._client.session.get(
+                    status_url,
+                    headers=gen_headers,
+                    timeout=timeout
+                )
+                status_data = status_response.json()
+                status = status_data.get("status")
+                if status == "DONE":
+                    image_urls = [image["url"] for image in status_data.get("response", [])]
+                    if not image_urls:
+                        raise RuntimeError("No image URLs returned from AIArta")
+                    img_resp = self._client.session.get(image_urls[0], timeout=timeout)
+                    img_resp.raise_for_status()
+                    img_bytes = img_resp.content
+                    # Convert to png or jpeg in memory
+                    with BytesIO(img_bytes) as input_io:
+                        with Image.open(input_io) as im:
+                            out_io = BytesIO()
+                            if image_format.lower() == "jpeg":
+                                im = im.convert("RGB")
+                                im.save(out_io, format="JPEG")
+                            else:
+                                im.save(out_io, format="PNG")
+                            img_bytes = out_io.getvalue()
+                    images.append(img_bytes)
+                    if response_format == "url":
+                        uploaded_url = upload_file_with_retry(img_bytes, image_format)
+                        if not uploaded_url:
+                            uploaded_url = upload_file_alternative(img_bytes, image_format)
+                        if uploaded_url:
+                            urls.append(uploaded_url)
+                        else:
+                            raise RuntimeError("Failed to upload image to catbox.moe using all available methods")
+                    break
+                elif status in ("IN_QUEUE", "IN_PROGRESS"):
+                    time.sleep(2)
+                else:
+                    raise RuntimeError(f"Image generation failed with status: {status}")
+
+        result_data = []
+        if response_format == "url":
+            for url in urls:
+                result_data.append(ImageData(url=url))
+        elif response_format == "b64_json":
+            import base64
+            for img in images:
+                b64 = base64.b64encode(img).decode("utf-8")
+                result_data.append(ImageData(b64_json=b64))
+        else:
+            raise ValueError("response_format must be 'url' or 'b64_json'")
+
+        from time import time as _time
+        return ImageResponse(
+            created=int(_time()),
+            data=result_data
+        )
+
+class AIArta(TTICompatibleProvider):
+    # Model aliases mapping from lowercase keys to proper API style names
+    model_aliases = {
         "flux": "Flux",
         "medieval": "Medieval",
         "vincent_van_gogh": "Vincent Van Gogh",
@@ -95,93 +261,73 @@ class AIArtaImager(ImageProvider):
         "surrealism": "Surrealism",
         "neo_traditional": "Neo-traditional",
         "on_limbs_black": "On limbs black",
-        # "yamers_realistic_xl": "Yamers-realistic-xl",
-        # "pony_xl": "Pony-xl",
-        # "playground_xl": "Playground-xl",
-        # "anything_xl": "Anything-xl",
-        # "flame_design": "Flame design",
-        # "kawaii": "Kawaii",
-        # "cinematic_art": "Cinematic Art",
-        # "professional": "Professional",
-        # "flux_black_ink": "Flux Black Ink"
+        "yamers_realistic_xl": "Yamers-realistic-xl",
+        "pony_xl": "Pony-xl",
+        "playground_xl": "Playground-xl",
+        "anything_xl": "Anything-xl",
+        "flame_design": "Flame design",
+        "kawaii": "Kawaii",
+        "cinematic_art": "Cinematic Art",
+        "professional": "Professional",
+        "black_ink": "Black Ink"
     }
-    models = list(AVAILABLE_MODELS.keys())
+    
+    AVAILABLE_MODELS = list(model_aliases.keys())
+    default_model = "Flux"
+    default_image_model = default_model
 
-    def __init__(self, timeout: int = 60, proxies: dict = None, logging: bool = True):
-        """Initialize your AIArtaImager provider with custom settings
-
-        Examples:
-            >>> provider = AIArtaImager(timeout=120)
-            >>> provider = AIArtaImager(proxies={"http": "http://proxy:8080"})
-
-        Args:
-            timeout (int): HTTP request timeout in seconds (default: 60)
-            proxies (dict, optional): Proxy configuration for requests
-            logging (bool): Enable/disable logging (default: True)
-        """
-        self.headers = {
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.5",
-            "User-Agent": agent.random()
-        }
+    def __init__(self):
+        self.image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
+        self.status_check_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
+        self.auth_url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
+        self.token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
         self.session = requests.Session()
+        self.user_agent = LitAgent().random()
+        self.headers = {
+            "accept": "application/json",
+            "accept-language": "en-US,en;q=0.9",
+            "origin": "https://img-gen-prod.ai-arta.com",
+            "referer": "https://img-gen-prod.ai-arta.com/",
+            "user-agent": self.user_agent,
+        }
         self.session.headers.update(self.headers)
-        if proxies:
-            self.session.proxies.update(proxies)
-        self.timeout = timeout
-        self.prompt: str = "AI-generated image - webscout"
-        self.image_extension: str = "png"
+        self.images = Images(self)
 
-
-    def get_auth_file(self) -> Path:
-        """Get path to authentication file"""
-        path = Path(os.path.join(os.path.expanduser("~"), ".ai_arta_cookies"))
-        path.mkdir(exist_ok=True)
+    def get_auth_file(self) -> str:
+        path = os.path.join(os.path.expanduser("~"), ".ai_arta_cookies")
+        if not os.path.exists(path):
+            os.makedirs(path)
         filename = f"auth_{self.__class__.__name__}.json"
-        return path / filename
+        return os.path.join(path, filename)
 
-    def create_token(self, path: Path) -> Dict[str, Any]:
-        """Create a new authentication token"""
-        # Step 1: Generate Authentication Token
+    def create_token(self, path: str) -> Dict[str, Any]:
         auth_payload = {"clientType": "CLIENT_TYPE_ANDROID"}
         proxies = self.session.proxies if self.session.proxies else None
-        
-        auth_response = self.session.post(self.auth_url, json=auth_payload, timeout=self.timeout, proxies=proxies)
+        auth_response = self.session.post(self.auth_url, json=auth_payload, timeout=60, proxies=proxies)
         auth_data = auth_response.json()
         auth_token = auth_data.get("idToken")
-        
         if not auth_token:
-
             raise Exception("Failed to obtain authentication token.")
-        
         with open(path, 'w') as f:
             json.dump(auth_data, f)
-        
         return auth_data
 
     def refresh_token(self, refresh_token: str) -> tuple[str, str]:
-        """Refresh authentication token"""
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
         }
-        
-        response = self.session.post(self.token_refresh_url, data=payload, timeout=self.timeout)
+        response = self.session.post(self.token_refresh_url, data=payload, timeout=60)
         response_data = response.json()
-        
         return response_data.get("id_token"), response_data.get("refresh_token")
 
     def read_and_refresh_token(self) -> Dict[str, Any]:
-        """Read token from file and refresh if needed"""
         path = self.get_auth_file()
-        
-        if path.is_file():
+        if os.path.isfile(path):
             with open(path, 'r') as f:
                 auth_data = json.load(f)
-            
             diff = time.time() - os.path.getmtime(path)
-            expires_in = int(auth_data.get("expiresIn"))
-            
+            expires_in = int(auth_data.get("expiresIn", 3600))
             if diff < expires_in:
                 if diff > expires_in / 2:
                     auth_data["idToken"], auth_data["refreshToken"] = self.refresh_token(
@@ -190,251 +336,30 @@ class AIArtaImager(ImageProvider):
                     with open(path, 'w') as f:
                         json.dump(auth_data, f)
                 return auth_data
-        
-        # Create new token if file doesn't exist or token expired
         return self.create_token(path)
 
     def get_model(self, model_name: str) -> str:
-        """Get actual model name from alias"""
-        if model_name.lower() in self.AVAILABLE_MODELS:
-            return self.AVAILABLE_MODELS[model_name.lower()]
-        return model_name
+        # Convert to lowercase for lookup
+        model_key = model_name.lower()
+        # Return the proper style name from model_aliases, or the original if not found
+        return self.model_aliases.get(model_key, model_name)
 
-    def generate(
-        self,
-        prompt: str,
-        amount: int = 1,
-        model: str = "Flux",
-        negative_prompt: str = "blurry, deformed hands, ugly",
-        guidance_scale: int = 7,
-        num_inference_steps: int = 30,
-        aspect_ratio: str = "1:1",
-        max_retries: int = 3,
-        retry_delay: int = 5,
-        **kwargs
-    ) -> List[bytes]:
-        """Generate some fire images from your prompt! 🎨
+    @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
 
-        Examples:
-            >>> provider = AIArtaImager()
-            >>> # Basic usage
-            >>> images = provider.generate("Cool art")
-            >>> # Advanced usage
-            >>> images = provider.generate(
-            ...     prompt="Epic dragon",
-            ...     amount=2,
-            ...     model="fantasy_art",
-            ...     negative_prompt="ugly, deformed"
-            ... )
-
-        Args:
-            prompt (str): Your image description
-            amount (int): How many images you want (default: 1)
-            model (str): Model to use - check AVAILABLE_MODELS (default: "flux")
-            negative_prompt (str): What you don't want in the image
-            guidance_scale (int): Controls how closely the model follows your prompt
-            num_inference_steps (int): More steps = better quality but slower
-            aspect_ratio (str): Image aspect ratio (default: "1:1")
-            max_retries (int): Max retry attempts if something fails
-            retry_delay (int): Seconds to wait between retries
-            **kwargs: Additional parameters for future compatibility
-
-        Returns:
-            List[bytes]: Your generated images
-
-        Raises:
-            ValueError: If the inputs ain't valid
-            RequestException: If the API calls fail after retries
-        """
-        if not prompt:
-            raise ValueError("Yo fam, the prompt can't be empty! 🤔")
-        if not isinstance(amount, int) or amount < 1:
-            raise ValueError("Amount needs to be a positive number! 📈")
-        
-        model_name = self.get_model(model)
-        self.prompt = prompt
-        response = []
-
-        # Step 1: Get Authentication Token
-        auth_data = self.read_and_refresh_token()
-        
-        # Headers for generation requests
-        gen_headers = {
-            "Authorization": auth_data.get("idToken"),
-        }
-
-        for i in range(amount):
-            # Step 2: Generate Image
-            image_payload = {
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "style": model_name,
-                "images_num": "1",  # Generate 1 at a time
-                "cfg_scale": str(guidance_scale),
-                "steps": str(num_inference_steps),
-                "aspect_ratio": aspect_ratio,
-            }
-
-            for attempt in range(max_retries):
-                try:
-                    
-                    # Submit generation request
-                    image_response = self.session.post(
-                        self.image_generation_url, 
-                        data=image_payload, 
-                        headers=gen_headers, 
-                        timeout=self.timeout
-                    )
-                    image_response.raise_for_status()
-                    image_data = image_response.json()
-                    record_id = image_data.get("record_id")
-
-                    if not record_id:
-                        raise RequestException(f"Failed to initiate image generation: {image_data}")
-
-                    # Step 3: Check Generation Status
-                    status_url = self.status_check_url.format(record_id=record_id)
-                    
-                    counter = 0
-                    dots = [".", "..", "...", "...."]
-                    
-                    while True:
-                        status_response = self.session.get(
-                            status_url, 
-                            headers=gen_headers, 
-                            timeout=self.timeout
-                        )
-                        status_data = status_response.json()
-                        status = status_data.get("status")
-
-                        if status == "DONE":
-                            image_urls = [image["url"] for image in status_data.get("response", [])]
-                            
-                            if not image_urls:
-                                raise RequestException("No image URLs in response")
-                            
-                            # Download the generated image
-                            image_response = self.session.get(image_urls[0], timeout=self.timeout)
-                            image_response.raise_for_status()
-                            response.append(image_response.content)
-                            break
-                            
-                        elif status in ("IN_QUEUE", "IN_PROGRESS"):
-                            # status_text = "Waiting" if status == "IN_QUEUE" else "Generating"
-                            time.sleep(3) 
-                            counter += 1
-                            
-                        else:
-                            raise RequestException(f"Image generation failed with status: {status}")
-                    
-                    # If we got here, we successfully generated an image
-                    break
-                    
-                except RequestException as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    else:
-                        time.sleep(retry_delay)
-
-        return response
-
-    def save(
-        self,
-        response: List[bytes],
-        name: Optional[str] = None,
-        dir: Optional[Union[str, Path]] = None,
-        filenames_prefix: str = "",
-    ) -> List[str]:
-        """Save your fire generated images! 💾
-
-        Examples:
-            >>> provider = AIArtaImager()
-            >>> images = provider.generate("Cool art")
-            >>> # Save with default settings
-            >>> paths = provider.save(images)
-            >>> # Save with custom name and directory
-            >>> paths = provider.save(
-            ...     images,
-            ...     name="my_art",
-            ...     dir="my_images",
-            ...     filenames_prefix="test_"
-            ... )
-
-        Args:
-            response (List[bytes]): Your generated images
-            name (Optional[str]): Custom name for your images
-            dir (Optional[Union[str, Path]]): Where to save the images (default: current directory)
-            filenames_prefix (str): Prefix for your image files
-
-        Returns:
-            List[str]: Paths to your saved images
-        """
-        save_dir = dir if dir else os.getcwd()
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-
-        name = self.prompt if name is None else name
-            
-        # Clean up name for filename use
-        safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in name)
-        safe_name = safe_name[:50]  # Truncate if too long
-            
-        filenames = []
-        count = 0
-
-        for image in response:
-            def complete_path():
-                count_value = "" if count == 0 else f"_{count}"
-                return os.path.join(save_dir, filenames_prefix + safe_name + count_value + "." + self.image_extension)
-
-            while os.path.isfile(complete_path()):
-                count += 1
-
-            filepath = complete_path()
-            filenames.append(os.path.basename(filepath))
-
-            with open(filepath, "wb") as fh:
-                fh.write(image)
-        return filenames
-
-
+# Example usage:
 if __name__ == "__main__":
-    # Example usage
-    bot = AIArtaImager()
-    test_prompt = "A shiny red sports car speeding down a scenic mountain road"
-    
-    print(f"Testing all available models with prompt: '{test_prompt}'")
-    print("-" * 50)
-    
-    # Create a directory for test images if it doesn't exist
-    test_dir = "model_test_images"
-    if not os.path.exists(test_dir):
-        os.makedirs(test_dir)
-        
-    for model in bot.AVAILABLE_MODELS:
-        print(f"Testing model: {model}")
-        try:
-            # Generate an image with the current model
-            resp = bot.generate(
-                prompt=test_prompt,
-                amount=1,
-                model=model,
-                width=768,
-                height=768
-            )
-            
-            # Save the image with model name as prefix
-            saved_paths = bot.save(
-                resp, 
-                name=f"{model}_test", 
-                dir=test_dir, 
-                filenames_prefix=f"{model}_"
-            )
-            
-            print(f"✓ Success! Saved image: {saved_paths[0]}")
-        except Exception as e:
-            print(f"✗ Failed with model {model}: {str(e)}")
-        
-        print("-" * 30)
-    
-    print("All model tests completed!")
+    from rich import print
+    client = AIArta()
+    response = client.images.create(
+        model="flux",
+        prompt="a white siamese cat",
+        response_format="url",
+        n=2,
+        timeout=30,
+    )
+    print(response)

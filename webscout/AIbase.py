@@ -5,7 +5,6 @@ from typing_extensions import TypeAlias
 
 # Type aliases for better readability
 Response: TypeAlias = dict[str, Union[str, bool, None]]
-ImageData: TypeAlias = Union[bytes, str, Generator[bytes, None, None]]
 AsyncImageData: TypeAlias = Union[bytes, str, AsyncGenerator[bytes, None]]
 
 class AIProviderError(Exception):
@@ -213,48 +212,3 @@ class AsyncTTSProvider(ABC):
         async with aiofiles.open(audio_file, 'rb') as f:
             while chunk := await f.read(chunk_size):
                 yield chunk
-
-class ImageProvider(ABC):
-
-    @abstractmethod
-    def generate(self, prompt: str, amount: int = 1) -> List[bytes]:
-        raise NotImplementedError("Method needs to be implemented in subclass")
-
-    @abstractmethod
-    def save(
-        self,
-        response: List[bytes],
-        name: Optional[str] = None,
-        dir: Optional[Union[str, Path]] = None
-    ) -> List[str]:
-        raise NotImplementedError("Method needs to be implemented in subclass")
-
-class AsyncImageProvider(ABC):
-
-    @abstractmethod
-    async def generate(
-        self,
-        prompt: str,
-        amount: int = 1
-    ) -> Union[AsyncGenerator[bytes, None], List[bytes]]:
-        raise NotImplementedError("Method needs to be implemented in subclass")
-
-    @abstractmethod
-    async def save(
-        self,
-        response: Union[AsyncGenerator[bytes, None], List[bytes]],
-        name: Optional[str] = None,
-        dir: Optional[Union[str, Path]] = None
-    ) -> List[str]:
-        raise NotImplementedError("Method needs to be implemented in subclass")
-
-class AISearch(ABC):
-
-    @abstractmethod
-    def search(
-        self,
-        prompt: str,
-        stream: bool = False,
-        raw: bool = False,
-    ) -> Response:
-        raise NotImplementedError("Method needs to be implemented in subclass")

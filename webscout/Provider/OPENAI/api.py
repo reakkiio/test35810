@@ -306,7 +306,10 @@ def create_app():
         }
 
         for name, model_cls in pydantic_models_to_register.items():
-            schema_data = getattr(model_cls, schema_method_name)()
+            if schema_method_name == "model_json_schema":
+                schema_data = model_cls.model_json_schema(ref_template="#/components/schemas/{model}")
+            else:
+                schema_data = model_cls.schema()
             # Pydantic might add a "title" to the schema, which is often not desired for component schemas
             if "title" in schema_data:
                 del schema_data["title"]

@@ -1,13 +1,24 @@
+"""
+Webscout OpenAI-Compatible API Server
+
+A FastAPI-based server that provides OpenAI-compatible endpoints for various LLM providers.
+Supports streaming and non-streaming chat completions with comprehensive error handling,
+authentication, and provider management.
+"""
+
 from __future__ import annotations
+
 import json
-import uvicorn
-import secrets
+import logging
 import os
-import uuid
-import time
+import secrets
 import sys
+import time
+import uuid
 import inspect
 from typing import List, Dict, Optional, Union, Any, Generator, Callable
+
+import uvicorn
 from fastapi import FastAPI, Response, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
@@ -17,15 +28,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.status import (
-    HTTP_422_UNPROCESSABLE_ENTITY, 
+    HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_404_NOT_FOUND,
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
-from webscout.Provider.OPENAI.pydantic_imports import * # Imports BaseModel, Field
-from typing import Literal
 
+from webscout.Provider.OPENAI.pydantic_imports import BaseModel, Field
+from typing import Literal
 
 # Import provider classes from the OPENAI directory
 from webscout.Provider.OPENAI import *
@@ -34,30 +45,94 @@ from webscout.Provider.OPENAI.utils import (
 )
 
 
+# Configuration constants
 DEFAULT_PORT = 8000
+DEFAULT_HOST = "0.0.0.0"
+API_VERSION = "v1"
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+logger = logging.getLogger("webscout.api")
+
+
+class ServerConfig:
+    """Centralized configuration management for the API server."""
+
+    def __init__(self):
+        self.api_key: Optional[str] = None
+        self.provider_map: Dict[str, Any] = {}
+        self.default_provider: str = "ChatGPT"
+        self.base_url: Optional[str] = None
+        self.host: str = DEFAULT_HOST
+        self.port: int = DEFAULT_PORT
+        self.debug: bool = False
+        self.cors_origins: List[str] = ["*"]
+        self.max_request_size: int = 10 * 1024 * 1024  # 10MB
+        self.request_timeout: int = 300  # 5 minutes
+
+    def update(self, **kwargs) -> None:
+        """Update configuration with provided values."""
+        for key, value in kwargs.items():
+            if hasattr(self, key) and value is not None:
+                setattr(self, key, value)
+                logger.info(f"Config updated: {key} = {value}")
+
+    def validate(self) -> None:
+        """Validate configuration settings."""
+        if self.port < 1 or self.port > 65535:
+            raise ValueError(f"Invalid port number: {self.port}")
+
+        if self.default_provider not in self.provider_map and self.provider_map:
+            available_providers = list(set(v.__name__ for v in self.provider_map.values()))
+            logger.warning(f"Default provider '{self.default_provider}' not found. Available: {available_providers}")
+
+
+# Global configuration instance
+config = ServerConfig()
+
 
 # Define Pydantic models for multimodal content parts, aligning with OpenAI's API
 class TextPart(BaseModel):
+    """Text content part for multimodal messages."""
     type: Literal["text"]
     text: str
 
+
 class ImageURL(BaseModel):
+    """Image URL configuration for multimodal messages."""
     url: str  # Can be http(s) or data URI
-    detail: Optional[Literal["auto", "low", "high"]] = Field("auto", description="Specifies the detail level of the image.")
+    detail: Optional[Literal["auto", "low", "high"]] = Field(
+        "auto",
+        description="Specifies the detail level of the image."
+    )
+
 
 class ImagePart(BaseModel):
+    """Image content part for multimodal messages."""
     type: Literal["image_url"]
     image_url: ImageURL
 
+
 MessageContentParts = Union[TextPart, ImagePart]
 
+
 class Message(BaseModel):
+    """Chat message model compatible with OpenAI API."""
     role: Literal["system", "user", "assistant", "function", "tool"]
-    content: Optional[Union[str, List[MessageContentParts]]] = Field(None, description="The content of the message. Can be a string, a list of content parts (for multimodal), or null.")
+    content: Optional[Union[str, List[MessageContentParts]]] = Field(
+        None,
+        description="The content of the message. Can be a string, a list of content parts (for multimodal), or null."
+    )
     name: Optional[str] = None
-    # To fully support OpenAI's spec, tool_calls and tool_call_id might be needed here
-    # tool_calls: Optional[List[Any]] = None # Replace Any with a Pydantic model for ToolCall
-    # tool_call_id: Optional[str] = None # For role="tool" messages responding to a tool_call
+    # Future: Add tool_calls and tool_call_id for function calling support
+    # tool_calls: Optional[List[ToolCall]] = None
+    # tool_call_id: Optional[str] = None
 
 class ChatCompletionRequest(BaseModel):
     model: str = Field(..., description="ID of the model to use. See the model endpoint for the available models.")
@@ -72,7 +147,7 @@ class ChatCompletionRequest(BaseModel):
     logit_bias: Optional[Dict[str, float]] = Field(None, description="Modify the likelihood of specified tokens appearing in the completion.")
     user: Optional[str] = Field(None, description="A unique identifier representing your end-user, which can help the API to monitor and detect abuse.")
     stop: Optional[Union[str, List[str]]] = Field(None, description="Up to 4 sequences where the API will stop generating further tokens.")
-    
+
     class Config:
         extra = "ignore"  # Ignore extra fields that aren't in the model
         schema_extra = {
@@ -88,25 +163,63 @@ class ChatCompletionRequest(BaseModel):
             }
         }
 
+class ModelInfo(BaseModel):
+    """Model information for the models endpoint."""
+    id: str
+    object: str = "model"
+    created: int
+    owned_by: str
+
+
 class ModelListResponse(BaseModel):
+    """Response model for the models list endpoint."""
     object: str = "list"
-    data: List[Dict[str, Any]]
+    data: List[ModelInfo]
 
-class ErrorResponse(Response):
-    media_type = "application/json"
 
-    @classmethod
-    def from_exception(cls, exception: Exception, status_code: int = HTTP_500_INTERNAL_SERVER_ERROR):
-        return cls(format_exception(exception), status_code)
+class ErrorDetail(BaseModel):
+    """Error detail structure compatible with OpenAI API."""
+    message: str
+    type: str = "server_error"
+    param: Optional[str] = None
+    code: Optional[str] = None
 
-    @classmethod
-    def from_message(cls, message: str, status_code: int = HTTP_500_INTERNAL_SERVER_ERROR, headers: dict = None):
-        return cls(format_exception(message), status_code, headers=headers)
 
-    def render(self, content) -> bytes:
-        return str(content).encode(errors="ignore")
+class ErrorResponse(BaseModel):
+    """Error response structure compatible with OpenAI API."""
+    error: ErrorDetail
+
+
+class APIError(Exception):
+    """Custom exception for API errors."""
+
+    def __init__(self, message: str, status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
+                 error_type: str = "server_error", param: Optional[str] = None,
+                 code: Optional[str] = None):
+        self.message = message
+        self.status_code = status_code
+        self.error_type = error_type
+        self.param = param
+        self.code = code
+        super().__init__(message)
+
+    def to_response(self) -> JSONResponse:
+        """Convert to FastAPI JSONResponse."""
+        error_detail = ErrorDetail(
+            message=self.message,
+            type=self.error_type,
+            param=self.param,
+            code=self.code
+        )
+        error_response = ErrorResponse(error=error_detail)
+        return JSONResponse(
+            status_code=self.status_code,
+            content=error_response.model_dump(exclude_none=True)
+        )
+
 
 class AppConfig:
+    """Legacy configuration class for backward compatibility."""
     api_key: Optional[str] = None
     provider_map = {}
     default_provider = "ChatGPT"
@@ -114,8 +227,11 @@ class AppConfig:
 
     @classmethod
     def set_config(cls, **data):
+        """Set configuration values."""
         for key, value in data.items():
             setattr(cls, key, value)
+        # Sync with new config system
+        config.update(**data)
 
 # Custom route class to handle dynamic base URLs
 # Note: The /docs 404 issue is likely related to server execution (Werkzeug logs vs. Uvicorn script).
@@ -162,14 +278,14 @@ def create_app():
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
-        
+
         openapi_schema = get_openapi(
             title=app.title,
             version=app.version,
             description=app.description,
             routes=app.routes,
         )
-        
+
         if "components" not in openapi_schema: openapi_schema["components"] = {}
         if "schemas" not in openapi_schema["components"]: openapi_schema["components"]["schemas"] = {}
 
@@ -187,14 +303,14 @@ def create_app():
             "Message": Message,
             "ChatCompletionRequest": ChatCompletionRequest,
         }
-        
+
         for name, model_cls in pydantic_models_to_register.items():
             schema_data = getattr(model_cls, schema_method_name)()
             # Pydantic might add a "title" to the schema, which is often not desired for component schemas
             if "title" in schema_data:
                 del schema_data["title"]
             openapi_schema["components"]["schemas"][name] = schema_data
-            
+
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
@@ -204,33 +320,67 @@ def create_app():
 def create_app_debug():
     return create_app()
 
-def initialize_provider_map():
-    from webscout.Provider.OPENAI.base import OpenAICompatibleProvider
-    module = sys.modules["webscout.Provider.OPENAI"]
-    for name, obj in inspect.getmembers(module):
-        if (
-            inspect.isclass(obj)
-            and issubclass(obj, OpenAICompatibleProvider)
-            and obj.__name__ != "OpenAICompatibleProvider"
-        ):
-            provider_name = obj.__name__
-            AppConfig.provider_map[provider_name] = obj
-            if hasattr(obj, "AVAILABLE_MODELS") and isinstance(
-                obj.AVAILABLE_MODELS, (list, tuple, set)
+def initialize_provider_map() -> None:
+    """Initialize the provider map by discovering available providers."""
+    logger.info("Initializing provider map...")
+
+    try:
+        from webscout.Provider.OPENAI.base import OpenAICompatibleProvider
+        module = sys.modules["webscout.Provider.OPENAI"]
+
+        provider_count = 0
+        model_count = 0
+
+        for name, obj in inspect.getmembers(module):
+            if (
+                inspect.isclass(obj)
+                and issubclass(obj, OpenAICompatibleProvider)
+                and obj.__name__ != "OpenAICompatibleProvider"
             ):
-                for model in obj.AVAILABLE_MODELS:
-                    if model and isinstance(model, str):
-                        AppConfig.provider_map[f"{provider_name}/{model}"] = obj
-    if not AppConfig.provider_map:
-        from webscout.Provider.OPENAI.chatgpt import ChatGPT
-        AppConfig.provider_map["ChatGPT"] = ChatGPT
-        AppConfig.provider_map["ChatGPT/gpt-4"] = ChatGPT
-        AppConfig.provider_map["ChatGPT/gpt-4o"] = ChatGPT
-        AppConfig.provider_map["ChatGPT/gpt-4o-mini"] = ChatGPT
-        AppConfig.default_provider = "ChatGPT"
-    provider_names = list(set(v.__name__ for v in AppConfig.provider_map.values()))
-    provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
-    model_names = [model for model in AppConfig.provider_map.keys() if model not in provider_class_names]
+                provider_name = obj.__name__
+                AppConfig.provider_map[provider_name] = obj
+                config.provider_map[provider_name] = obj
+                provider_count += 1
+
+                # Register available models for this provider
+                if hasattr(obj, "AVAILABLE_MODELS") and isinstance(
+                    obj.AVAILABLE_MODELS, (list, tuple, set)
+                ):
+                    for model in obj.AVAILABLE_MODELS:
+                        if model and isinstance(model, str):
+                            model_key = f"{provider_name}/{model}"
+                            AppConfig.provider_map[model_key] = obj
+                            config.provider_map[model_key] = obj
+                            model_count += 1
+
+        # Fallback to ChatGPT if no providers found
+        if not AppConfig.provider_map:
+            logger.warning("No providers found, using ChatGPT fallback")
+            try:
+                from webscout.Provider.OPENAI.chatgpt import ChatGPT
+                fallback_models = ["gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
+
+                AppConfig.provider_map["ChatGPT"] = ChatGPT
+                config.provider_map["ChatGPT"] = ChatGPT
+
+                for model in fallback_models:
+                    model_key = f"ChatGPT/{model}"
+                    AppConfig.provider_map[model_key] = ChatGPT
+                    config.provider_map[model_key] = ChatGPT
+
+                AppConfig.default_provider = "ChatGPT"
+                config.default_provider = "ChatGPT"
+                provider_count = 1
+                model_count = len(fallback_models)
+            except ImportError as e:
+                logger.error(f"Failed to import ChatGPT fallback: {e}")
+                raise APIError("No providers available", HTTP_500_INTERNAL_SERVER_ERROR)
+
+        logger.info(f"Initialized {provider_count} providers with {model_count} models")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize provider map: {e}")
+        raise APIError(f"Provider initialization failed: {e}", HTTP_500_INTERNAL_SERVER_ERROR)
 
 class Api:
     def __init__(self, app: FastAPI) -> None:
@@ -255,6 +405,14 @@ class Api:
             return await call_next(request)
 
     def register_validation_exception_handler(self):
+        """Register comprehensive exception handlers."""
+
+        @self.app.exception_handler(APIError)
+        async def api_error_handler(request: Request, exc: APIError):
+            """Handle custom API errors."""
+            logger.error(f"API Error: {exc.message} (Status: {exc.status_code})")
+            return exc.to_response()
+
         @self.app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, exc: RequestValidationError):
             errors = exc.errors()
@@ -267,10 +425,10 @@ class Api:
                 loc_str_parts = []
                 for item in loc:
                     if item == "body": # Skip "body" part if it's the first element of a longer path
-                        if len(loc) > 1: continue 
+                        if len(loc) > 1: continue
                     loc_str_parts.append(str(item))
                 loc_str = " -> ".join(loc_str_parts)
-                
+
                 msg = error.get("msg", "Validation error")
 
                 # Check if this error is for the 'content' field specifically due to multimodal input
@@ -359,7 +517,7 @@ class Api:
             # Werkzeug logs suggest possible execution of a Flask app or WSGI misconfiguration.
             # This api.py file is intended for Uvicorn.
             return RedirectResponse(url="/docs")
-        
+
         @self.app.get("/v1/models", response_model=ModelListResponse)
         async def list_models():
             models = []
@@ -378,9 +536,9 @@ class Api:
                 "object": "list",
                 "data": models
             }
-        
+
         @self.app.post(
-            "/v1/chat/completions", 
+            "/v1/chat/completions",
             response_model_exclude_none=True,
             response_model_exclude_unset=True,
             openapi_extra={ # This ensures the example is shown in docs
@@ -397,145 +555,239 @@ class Api:
             }
         )
         async def chat_completions(
-            request: Request, # Keep request for raw body or other request properties if needed
             chat_request: ChatCompletionRequest = Body(...)
         ):
-            # raw_body = await request.body() # Already read by validation_exception_handler if error
+            """Handle chat completion requests with comprehensive error handling."""
+            start_time = time.time()
+            request_id = f"chatcmpl-{uuid.uuid4()}"
+
             try:
-                start_time = time.time()
-                provider_class = None
-                model_identifier = chat_request.model
-                model_name = None
+                logger.info(f"Processing chat completion request {request_id} for model: {chat_request.model}")
 
-                # Check for explicit provider/model syntax
-                if model_identifier in AppConfig.provider_map and "/" in model_identifier:
-                    provider_class = AppConfig.provider_map[model_identifier]
-                    _, model_name = model_identifier.split("/", 1)
-                elif "/" in model_identifier:
-                    provider_name, model_name = model_identifier.split("/", 1)
-                    provider_class = AppConfig.provider_map.get(provider_name)
-                else:
-                    provider_class = AppConfig.provider_map.get(AppConfig.default_provider)
-                    model_name = model_identifier
+                # Resolve provider and model
+                provider_class, model_name = resolve_provider_and_model(chat_request.model)
 
-                if not provider_class:
-                    return ErrorResponse.from_message(
-                        f"Provider for model '{model_identifier}' not found.",
-                        HTTP_404_NOT_FOUND
-                    )
-
-                if hasattr(provider_class, "AVAILABLE_MODELS") and model_name is not None:
-                    available = getattr(provider_class, "AVAILABLE_MODELS", [])
-                    if available and model_name not in available:
-                        return ErrorResponse.from_message(
-                            f"Model '{model_name}' not supported by provider '{provider_class.__name__}'.",
-                            HTTP_404_NOT_FOUND,
-                        )
+                # Initialize provider with error handling
                 try:
                     provider = provider_class()
+                    logger.debug(f"Initialized provider: {provider_class.__name__}")
                 except Exception as e:
-                    return ErrorResponse.from_message(
+                    logger.error(f"Failed to initialize provider {provider_class.__name__}: {e}")
+                    raise APIError(
                         f"Failed to initialize provider {provider_class.__name__}: {e}",
-                        HTTP_500_INTERNAL_SERVER_ERROR
+                        HTTP_500_INTERNAL_SERVER_ERROR,
+                        "provider_error"
                     )
 
-                processed_messages = []
-                for msg_in in chat_request.messages:
-                    message_dict_out = {"role": msg_in.role}
-                    
-                    if msg_in.content is None:
-                        message_dict_out["content"] = None
-                    elif isinstance(msg_in.content, str):
-                        message_dict_out["content"] = msg_in.content
-                    else:  # It's List[MessageContentParts]
-                        message_dict_out["content"] = [part.model_dump(exclude_none=True) for part in msg_in.content]
-                    
-                    if msg_in.name:
-                        message_dict_out["name"] = msg_in.name
-                    
-                    # Add tool_calls processing if/when Message model supports it
-                    # if hasattr(msg_in, 'tool_calls') and msg_in.tool_calls:
-                    #    message_dict_out["tool_calls"] = [tc.model_dump(exclude_none=True) for tc in msg_in.tool_calls]
-                    # if hasattr(msg_in, 'tool_call_id') and msg_in.tool_call_id:
-                    #    message_dict_out["tool_call_id"] = msg_in.tool_call_id
-                        
-                    processed_messages.append(message_dict_out)
+                # Process and validate messages
+                processed_messages = process_messages(chat_request.messages)
 
-                params = {
-                    "model": model_name,
-                    "messages": processed_messages, # Use processed messages
-                    "stream": chat_request.stream,
-                }
-                # Add other optional parameters if present
-                if chat_request.temperature is not None: params["temperature"] = chat_request.temperature
-                if chat_request.max_tokens is not None: params["max_tokens"] = chat_request.max_tokens
-                if chat_request.top_p is not None: params["top_p"] = chat_request.top_p
+                # Prepare parameters for provider
+                params = prepare_provider_params(chat_request, model_name, processed_messages)
 
+                # Handle streaming vs non-streaming
                 if chat_request.stream:
-                    async def streaming():
-                        try:
-                            completion_stream = provider.chat.completions.create(**params)
-                            
-                            if isinstance(completion_stream, Generator):
-                                for chunk in completion_stream:
-                                    # Standardize chunk format before sending
-                                    if hasattr(chunk, 'model_dump'): # Pydantic v2
-                                        chunk_data = chunk.model_dump(exclude_none=True)
-                                    elif hasattr(chunk, 'dict'): # Pydantic v1
-                                        chunk_data = chunk.dict(exclude_none=True)
-                                    elif isinstance(chunk, dict):
-                                        chunk_data = chunk
-                                    else: # Fallback for unknown chunk types
-                                        chunk_data = chunk 
-                                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                            else: # Non-generator, might be a full response or an async iterable
-                                # This branch might need more robust handling for different async iterable types or full responses
-                                if hasattr(completion_stream, 'model_dump'):
-                                    yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
-                                elif hasattr(completion_stream, 'dict'):
-                                     yield f"data: {json.dumps(completion_stream.dict(exclude_none=True))}\n\n"
-                                else:
-                                    yield f"data: {json.dumps(completion_stream)}\n\n"
+                    return await handle_streaming_response(provider, params, request_id)
+                else:
+                    return await handle_non_streaming_response(provider, params, request_id, start_time)
 
-                        except Exception as e:
-                            yield f"data: {format_exception(e)}\n\n"
-                        yield "data: [DONE]\n\n"
-                    return StreamingResponse(streaming(), media_type="text/event-stream")
-                else: # Non-streaming
-                    try:
-                        completion = provider.chat.completions.create(**params)
-                        if completion is None:
-                            # Return a valid OpenAI-compatible error or empty response
-                            return ChatCompletion( # Assuming ChatCompletion is a Pydantic model for the response
-                                id=f"chatcmpl-{uuid.uuid4()}",
-                                created=int(time.time()),
-                                model=model_name,
-                                choices=[Choice( # Assuming Choice model
-                                    index=0,
-                                    message=ChatCompletionMessage(role="assistant", content="Apology: No response generated."), # Assuming ChatCompletionMessage
-                                    finish_reason="error"
-                                )],
-                                usage=CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0) # Assuming CompletionUsage
-                            ).model_dump(exclude_none=True)
-
-                        # Standardize response format
-                        if hasattr(completion, "model_dump"): # Pydantic v2
-                            response_data = completion.model_dump(exclude_none=True)
-                        elif hasattr(completion, "dict"): # Pydantic v1
-                            response_data = completion.dict(exclude_none=True)
-                        elif isinstance(completion, dict):
-                            response_data = completion
-                        else:
-                            return ErrorResponse.from_message("Invalid response format from provider", HTTP_500_INTERNAL_SERVER_ERROR)
-                        
-                        return response_data
-                    except Exception as e:
-                        return ErrorResponse.from_exception(e, HTTP_500_INTERNAL_SERVER_ERROR)
-                
-                elapsed = time.time() - start_time
-
+            except APIError:
+                # Re-raise API errors as-is
+                raise
             except Exception as e:
-                return ErrorResponse.from_exception(e, HTTP_500_INTERNAL_SERVER_ERROR)
+                logger.error(f"Unexpected error in chat completion {request_id}: {e}")
+                raise APIError(
+                    f"Internal server error: {str(e)}",
+                    HTTP_500_INTERNAL_SERVER_ERROR,
+                    "internal_error"
+                )
+
+
+def resolve_provider_and_model(model_identifier: str) -> tuple[Any, str]:
+    """Resolve provider class and model name from model identifier."""
+    provider_class = None
+    model_name = None
+
+    # Check for explicit provider/model syntax
+    if model_identifier in AppConfig.provider_map and "/" in model_identifier:
+        provider_class = AppConfig.provider_map[model_identifier]
+        _, model_name = model_identifier.split("/", 1)
+    elif "/" in model_identifier:
+        provider_name, model_name = model_identifier.split("/", 1)
+        provider_class = AppConfig.provider_map.get(provider_name)
+    else:
+        provider_class = AppConfig.provider_map.get(AppConfig.default_provider)
+        model_name = model_identifier
+
+    if not provider_class:
+        available_providers = list(set(v.__name__ for v in AppConfig.provider_map.values()))
+        raise APIError(
+            f"Provider for model '{model_identifier}' not found. Available providers: {available_providers}",
+            HTTP_404_NOT_FOUND,
+            "model_not_found",
+            param="model"
+        )
+
+    # Validate model availability
+    if hasattr(provider_class, "AVAILABLE_MODELS") and model_name is not None:
+        available = getattr(provider_class, "AVAILABLE_MODELS", [])
+        if available and model_name not in available:
+            raise APIError(
+                f"Model '{model_name}' not supported by provider '{provider_class.__name__}'. Available models: {available}",
+                HTTP_404_NOT_FOUND,
+                "model_not_found",
+                param="model"
+            )
+
+    return provider_class, model_name
+
+
+def process_messages(messages: List[Message]) -> List[Dict[str, Any]]:
+    """Process and validate chat messages."""
+    processed_messages = []
+
+    for i, msg_in in enumerate(messages):
+        try:
+            message_dict_out = {"role": msg_in.role}
+
+            if msg_in.content is None:
+                message_dict_out["content"] = None
+            elif isinstance(msg_in.content, str):
+                message_dict_out["content"] = msg_in.content
+            else:  # List[MessageContentParts]
+                message_dict_out["content"] = [
+                    part.model_dump(exclude_none=True) for part in msg_in.content
+                ]
+
+            if msg_in.name:
+                message_dict_out["name"] = msg_in.name
+
+            processed_messages.append(message_dict_out)
+
+        except Exception as e:
+            raise APIError(
+                f"Invalid message at index {i}: {str(e)}",
+                HTTP_422_UNPROCESSABLE_ENTITY,
+                "invalid_request_error",
+                param=f"messages[{i}]"
+            )
+
+    return processed_messages
+
+
+def prepare_provider_params(chat_request: ChatCompletionRequest, model_name: str,
+                          processed_messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Prepare parameters for the provider."""
+    params = {
+        "model": model_name,
+        "messages": processed_messages,
+        "stream": chat_request.stream,
+    }
+
+    # Add optional parameters if present
+    optional_params = [
+        "temperature", "max_tokens", "top_p", "presence_penalty",
+        "frequency_penalty", "stop", "user"
+    ]
+
+    for param in optional_params:
+        value = getattr(chat_request, param, None)
+        if value is not None:
+            params[param] = value
+
+    return params
+
+
+async def handle_streaming_response(provider: Any, params: Dict[str, Any], request_id: str) -> StreamingResponse:
+    """Handle streaming chat completion response."""
+    async def streaming():
+        try:
+            logger.debug(f"Starting streaming response for request {request_id}")
+            completion_stream = provider.chat.completions.create(**params)
+
+            if isinstance(completion_stream, Generator):
+                for chunk in completion_stream:
+                    # Standardize chunk format before sending
+                    if hasattr(chunk, 'model_dump'):  # Pydantic v2
+                        chunk_data = chunk.model_dump(exclude_none=True)
+                    elif hasattr(chunk, 'dict'):  # Pydantic v1
+                        chunk_data = chunk.dict(exclude_none=True)
+                    elif isinstance(chunk, dict):
+                        chunk_data = chunk
+                    else:  # Fallback for unknown chunk types
+                        chunk_data = chunk
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+            else:  # Non-generator response
+                if hasattr(completion_stream, 'model_dump'):
+                    yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
+                elif hasattr(completion_stream, 'dict'):
+                    yield f"data: {json.dumps(completion_stream.dict(exclude_none=True))}\n\n"
+                else:
+                    yield f"data: {json.dumps(completion_stream)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in streaming response for request {request_id}: {e}")
+            error_data = {
+                "error": {
+                    "message": str(e),
+                    "type": "server_error",
+                    "code": "streaming_error"
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(streaming(), media_type="text/event-stream")
+
+
+async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
+                                      request_id: str, start_time: float) -> Dict[str, Any]:
+    """Handle non-streaming chat completion response."""
+    try:
+        logger.debug(f"Starting non-streaming response for request {request_id}")
+        completion = provider.chat.completions.create(**params)
+
+        if completion is None:
+            # Return a valid OpenAI-compatible error response
+            return ChatCompletion(
+                id=request_id,
+                created=int(time.time()),
+                model=params.get("model", "unknown"),
+                choices=[Choice(
+                    index=0,
+                    message=ChatCompletionMessage(role="assistant", content="No response generated."),
+                    finish_reason="error"
+                )],
+                usage=CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+            ).model_dump(exclude_none=True)
+
+        # Standardize response format
+        if hasattr(completion, "model_dump"):  # Pydantic v2
+            response_data = completion.model_dump(exclude_none=True)
+        elif hasattr(completion, "dict"):  # Pydantic v1
+            response_data = completion.dict(exclude_none=True)
+        elif isinstance(completion, dict):
+            response_data = completion
+        else:
+            raise APIError(
+                "Invalid response format from provider",
+                HTTP_500_INTERNAL_SERVER_ERROR,
+                "provider_error"
+            )
+
+        elapsed = time.time() - start_time
+        logger.info(f"Completed non-streaming request {request_id} in {elapsed:.2f}s")
+
+        return response_data
+
+    except Exception as e:
+        logger.error(f"Error in non-streaming response for request {request_id}: {e}")
+        raise APIError(
+            f"Provider error: {str(e)}",
+            HTTP_500_INTERNAL_SERVER_ERROR,
+            "provider_error"
+        )
 
 def format_exception(e: Union[Exception, str]) -> str:
     if isinstance(e, str):
@@ -551,14 +803,26 @@ def format_exception(e: Union[Exception, str]) -> str:
         }
     })
 
-def start_server(port: int = DEFAULT_PORT, api_key: str = None, default_provider: str = None, base_url: str = None):
+def start_server(
+    port: int = DEFAULT_PORT,
+    host: str = DEFAULT_HOST,
+    api_key: str = None,
+    default_provider: str = None,
+    base_url: str = None,
+    workers: int = 1,
+    log_level: str = 'info',
+    debug: bool = False
+):
+    """Start the API server with the given configuration."""
     run_api(
-        host="0.0.0.0",
+        host=host,
         port=port,
         api_key=api_key,
         default_provider=default_provider,
         base_url=base_url,
-        debug=False,
+        workers=workers,
+        log_level=log_level,
+        debug=debug,
     )
 
 def run_api(
@@ -568,6 +832,8 @@ def run_api(
     default_provider: str = None,
     base_url: str = None,
     debug: bool = False,
+    workers: int = 1,
+    log_level: str = 'info',
     show_available_providers: bool = True,
 ) -> None:
     print("Starting Webscout OpenAI API server...")
@@ -592,17 +858,20 @@ def run_api(
             api_endpoint_base = f"http://{host if host != '0.0.0.0' else 'localhost'}:{port}{AppConfig.base_url}"
         else:
             api_endpoint_base = f"http://{host if host != '0.0.0.0' else 'localhost'}:{port}"
-        
+
         print(f"API Endpoint: {api_endpoint_base}/v1/chat/completions")
         print(f"Docs URL: {api_endpoint_base}/docs") # Adjusted for potential base_url in display
         print(f"API Authentication: {'Enabled' if api_key else 'Disabled'}")
         print(f"Default Provider: {AppConfig.default_provider}")
+        print(f"Workers: {workers}")
+        print(f"Log Level: {log_level}")
+        print(f"Debug Mode: {'Enabled' if debug else 'Disabled'}")
 
         providers = list(set(v.__name__ for v in AppConfig.provider_map.values()))
         print(f"\n--- Available Providers ({len(providers)}) ---")
         for i, provider_name in enumerate(sorted(providers), 1):
             print(f"{i}. {provider_name}")
-        
+
         provider_class_names = set(v.__name__ for v in AppConfig.provider_map.values())
         models = sorted([model for model in AppConfig.provider_map.keys() if model not in provider_class_names])
         if models:
@@ -611,37 +880,74 @@ def run_api(
                 print(f"{i}. {model_name} (via {AppConfig.provider_map[model_name].__name__})")
         else:
             print("\nNo specific models registered. Use provider names as models.")
-        
+
         print("\nUse Ctrl+C to stop the server.")
         print("=" * 40 + "\n")
 
     uvicorn_app_str = "webscout.Provider.OPENAI.api:create_app_debug" if debug else "webscout.Provider.OPENAI.api:create_app"
-    
+
+    # Configure uvicorn settings
+    uvicorn_config = {
+        "app": uvicorn_app_str,
+        "host": host,
+        "port": int(port),
+        "factory": True,
+        "reload": debug,  # Enable reload only in debug mode for stability
+        "log_level": log_level.lower() if log_level else ("debug" if debug else "info"),
+    }
+
+    # Add workers only if not in debug mode (reload and workers are incompatible)
+    if not debug and workers > 1:
+        uvicorn_config["workers"] = workers
+        print(f"Starting with {workers} workers...")
+    elif debug:
+        print("Debug mode enabled - using single worker with reload...")
+
     # Note: Logs show "werkzeug". If /docs 404s persist, ensure Uvicorn is the actual server running.
     # The script uses uvicorn.run, so "werkzeug" logs are unexpected for this file.
-    uvicorn.run(
-        uvicorn_app_str,
-        host=host,
-        port=int(port),
-        factory=True,
-        reload=debug, # Enable reload only in debug mode for stability
-        # log_level="debug" if debug else "info"
-    )
+    uvicorn.run(**uvicorn_config)
 
 if __name__ == "__main__":
     import argparse
+
+    # Read environment variables with fallbacks
+    default_port = int(os.getenv('WEBSCOUT_PORT', os.getenv('PORT', DEFAULT_PORT)))
+    default_host = os.getenv('WEBSCOUT_HOST', DEFAULT_HOST)
+    default_workers = int(os.getenv('WEBSCOUT_WORKERS', '1'))
+    default_log_level = os.getenv('WEBSCOUT_LOG_LEVEL', 'info')
+    default_api_key = os.getenv('WEBSCOUT_API_KEY', os.getenv('API_KEY'))
+    default_provider = os.getenv('WEBSCOUT_DEFAULT_PROVIDER', os.getenv('DEFAULT_PROVIDER'))
+    default_base_url = os.getenv('WEBSCOUT_BASE_URL', os.getenv('BASE_URL'))
+    default_debug = os.getenv('WEBSCOUT_DEBUG', os.getenv('DEBUG', 'false')).lower() == 'true'
+
     parser = argparse.ArgumentParser(description='Start Webscout OpenAI-compatible API server')
-    parser.add_argument('--port', type=int, default=os.getenv('PORT', DEFAULT_PORT), help=f'Port to run the server on (default: {DEFAULT_PORT})')
-    parser.add_argument('--api-key', type=str, default=os.getenv('API_KEY'), help='API key for authentication (optional)')
-    parser.add_argument('--default-provider', type=str, default=os.getenv('DEFAULT_PROVIDER'), help='Default provider to use (optional)')
-    parser.add_argument('--base-url', type=str, default=os.getenv('BASE_URL'), help='Base URL for the API (optional, e.g., /api/v1)')
-    parser.add_argument('--debug', action='store_true', default=os.getenv('DEBUG', 'false').lower() == 'true', help='Run in debug mode')
+    parser.add_argument('--port', type=int, default=default_port, help=f'Port to run the server on (default: {default_port})')
+    parser.add_argument('--host', type=str, default=default_host, help=f'Host to bind the server to (default: {default_host})')
+    parser.add_argument('--workers', type=int, default=default_workers, help=f'Number of worker processes (default: {default_workers})')
+    parser.add_argument('--log-level', type=str, default=default_log_level, choices=['debug', 'info', 'warning', 'error', 'critical'], help=f'Log level (default: {default_log_level})')
+    parser.add_argument('--api-key', type=str, default=default_api_key, help='API key for authentication (optional)')
+    parser.add_argument('--default-provider', type=str, default=default_provider, help='Default provider to use (optional)')
+    parser.add_argument('--base-url', type=str, default=default_base_url, help='Base URL for the API (optional, e.g., /api/v1)')
+    parser.add_argument('--debug', action='store_true', default=default_debug, help='Run in debug mode')
     args = parser.parse_args()
-    
+
+    # Print configuration summary
+    print(f"Configuration:")
+    print(f"  Host: {args.host}")
+    print(f"  Port: {args.port}")
+    print(f"  Workers: {args.workers}")
+    print(f"  Log Level: {args.log_level}")
+    print(f"  Debug Mode: {args.debug}")
+    print(f"  API Key: {'Set' if args.api_key else 'Not set'}")
+    print(f"  Default Provider: {args.default_provider or 'Not set'}")
+    print(f"  Base URL: {args.base_url or 'Not set'}")
+    print()
 
     run_api(
-        host="0.0.0.0", # Host configurable via env if needed
+        host=args.host,
         port=args.port,
+        workers=args.workers,
+        log_level=args.log_level,
         api_key=args.api_key,
         default_provider=args.default_provider,
         base_url=args.base_url,

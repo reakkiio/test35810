@@ -119,45 +119,154 @@
 
 ## ⚙️ Installation
 
-Install Webscout using pip:
+Webscout supports multiple installation methods to fit your workflow:
+
+### 📦 Standard Installation
 
 ```bash
+# Install from PyPI
 pip install -U webscout
+
+# Install with API server dependencies
+pip install -U "webscout[api]"
+
+# Install with development dependencies
+pip install -U "webscout[dev]"
 ```
-</div>
+
+### ⚡ UV Package Manager (Recommended)
+
+[UV](https://github.com/astral-sh/uv) is a fast Python package manager. Webscout has full UV support:
+
+```bash
+# Install UV first (if not already installed)
+pip install uv
+
+# Install Webscout with UV
+uv add webscout
+
+# Install with API dependencies
+uv add "webscout[api]"
+
+# Run Webscout directly with UV (no installation needed)
+uv run webscout --help
+
+# Run with API dependencies
+uv run --extra api webscout-server
+
+# Install as a UV tool for global access
+uv tool install webscout
+
+# Use UV tool commands
+webscout --help
+webscout-server --help
+```
+
+### 🔧 Development Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/OEvortex/Webscout.git
+cd Webscout
+
+# Install in development mode with UV
+uv sync --extra dev --extra api
+
+# Or with pip
+pip install -e ".[dev,api]"
+```
+
+### 🐳 Docker Installation
+
+```bash
+# Pull and run the Docker image
+docker pull oevortex/webscout:latest
+docker run -it oevortex/webscout:latest
+```
+
+### 📱 Quick Start Commands
+
+After installation, you can immediately start using Webscout:
+
+```bash
+# Check version
+webscout version
+
+# Search the web
+webscout text -k "python programming"
+
+# Start API server
+webscout-server
+
+# Get help
+webscout --help
+```
 
 <hr/>
 
 ## 🖥️ Command Line Interface
 
-Webscout provides a powerful command-line interface for quick access to its features:
+Webscout provides a powerful command-line interface for quick access to its features. You can use it in multiple ways:
+
+### 🚀 Direct Commands (Recommended)
+
+After installing with `uv tool install webscout` or `pip install webscout`:
 
 ```bash
+# Get help
+webscout --help
+
+# Start API server
+webscout-server
+```
+
+### 🔧 UV Run Commands (No Installation Required)
+
+```bash
+# Run directly with UV (downloads and runs automatically)
+uv run webscout --help
+uv run --extra api webscout-server
+```
+
+### 📦 Python Module Commands
+
+```bash
+# Traditional Python module execution
 python -m webscout --help
+python -m webscout.client  # Start API server
 ```
 
 <details open>
-<summary><b>Web Search Commands</b></summary>
+<summary><b>🔍 Web Search Commands</b></summary>
 <p>
 
-| Command | Description |
-|---------|-------------|
-| `python -m webscout answers -k "query"` | Perform an answers search |
-| `python -m webscout images -k "query"` | Search for images |
-| `python -m webscout maps -k "query"` | Perform a maps search |
-| `python -m webscout news -k "query"` | Search for news articles |
-| `python -m webscout suggestions -k "query"` | Get search suggestions |
-| `python -m webscout text -k "query"` | Perform a text search |
-| `python -m webscout translate -k "text"` | Translate text |
-| `python -m webscout version` | Display the current version |
-| `python -m webscout videos -k "query"` | Search for videos |
-| `python -m webscout weather -l "location"` | Get weather information |
-| `python -m webscout google_text -k "query"` | Perform a text search using Google |
-| `python -m webscout google_news -k "query"` | Search for news using Google |
-| `python -m webscout google_suggestions -q "query"` | Get search suggestions from Google |
-| `python -m webscout yep_text -k "query"` | Perform a text search using Yep |
-| `python -m webscout yep_images -k "query"` | Search for images using Yep |
-| `python -m webscout yep_suggestions -q "query"` | Get search suggestions from Yep |
+| Command | Description | Example |
+|---------|-------------|---------|
+| `webscout text -k "query"` | Perform a text search | `webscout text -k "python programming"` |
+| `webscout answers -k "query"` | Get instant answers | `webscout answers -k "what is AI"` |
+| `webscout images -k "query"` | Search for images | `webscout images -k "nature photography"` |
+| `webscout videos -k "query"` | Search for videos | `webscout videos -k "python tutorials"` |
+| `webscout news -k "query"` | Search for news articles | `webscout news -k "technology trends"` |
+| `webscout maps -k "query"` | Perform a maps search | `webscout maps -k "restaurants near me"` |
+| `webscout translate -k "text"` | Translate text | `webscout translate -k "hello world"` |
+| `webscout suggestions -k "query"` | Get search suggestions | `webscout suggestions -k "how to"` |
+| `webscout weather -l "location"` | Get weather information | `webscout weather -l "New York"` |
+| `webscout version` | Display the current version | `webscout version` |
+
+**Google Search Commands:**
+| Command | Description | Example |
+|---------|-------------|---------|
+| `webscout google_text -k "query"` | Google text search | `webscout google_text -k "machine learning"` |
+| `webscout google_news -k "query"` | Google news search | `webscout google_news -k "AI breakthrough"` |
+| `webscout google_suggestions -q "query"` | Google suggestions | `webscout google_suggestions -q "python"` |
+
+**Yep Search Commands:**
+| Command | Description | Example |
+|---------|-------------|---------|
+| `webscout yep_text -k "query"` | Yep text search | `webscout yep_text -k "web development"` |
+| `webscout yep_images -k "query"` | Yep image search | `webscout yep_images -k "landscapes"` |
+| `webscout yep_suggestions -q "query"` | Yep suggestions | `webscout yep_suggestions -q "javascript"` |
+
 </p>
 </details>
 
@@ -207,30 +316,46 @@ Webscout includes an OpenAI-compatible API server that allows you to use any sup
 
 ### Starting the API Server
 
-#### From Command Line
+#### From Command Line (Recommended)
 
 ```bash
 # Start with default settings (port 8000)
-python -m webscout.Provider.OPENAI.api
+webscout-server
 
 # Start with custom port
-python -m webscout.Provider.OPENAI.api --port 8080
+webscout-server --port 8080
 
 # Start with API key authentication
-python -m webscout.Provider.OPENAI.api --api-key "your-secret-key"
+webscout-server --api-key "your-secret-key"
 
 # Specify a default provider
-python -m webscout.Provider.OPENAI.api --default-provider "Claude"
+webscout-server --default-provider "Claude"
 
 # Run in debug mode
-python -m webscout.Provider.OPENAI.api --debug
+webscout-server --debug
+
+# Get help for all options
+webscout-server --help
+```
+
+#### Alternative Methods
+
+```bash
+# Using UV (no installation required)
+uv run --extra api webscout-server
+
+# Using Python module
+python -m webscout.client
+
+# Legacy method (still supported)
+python -m webscout.Provider.OPENAI.api
 ```
 
 #### From Python Code
 
 ```python
 # Method 1: Using the helper function
-from webscout.Provider.OPENAI.api import start_server
+from webscout.client import start_server  # <--- Now recommended
 
 # Start with default settings
 start_server()
@@ -239,13 +364,10 @@ start_server()
 start_server(port=8080, api_key="your-secret-key", default_provider="Claude")
 
 # Method 2: Using the run_api function for more control
-from webscout.Provider.OPENAI.api import run_api
+from webscout.client import run_api
 
 run_api(
     host="0.0.0.0",
-    port=8080,
-    api_key="your-secret-key",
-    default_provider="Claude",
     debug=True
 )
 ```

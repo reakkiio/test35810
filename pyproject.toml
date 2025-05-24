@@ -39,9 +39,9 @@ classifiers = [
     "Topic :: Utilities",
 ]
 keywords = [
-    "search", "ai", "chatbot", "llm", "language-model", "gpt", "openai", 
-    "gemini", "claude", "llama", "search-engine", "text-to-speech", "tts", 
-    "text-to-image", "tti", "weather", "youtube", "toolkit", "utilities", 
+    "search", "ai", "chatbot", "llm", "language-model", "gpt", "openai",
+    "gemini", "claude", "llama", "search-engine", "text-to-speech", "tts",
+    "text-to-image", "tti", "weather", "youtube", "toolkit", "utilities",
     "web-search", "duckduckgo", "google", "yep"
 ]
 dependencies = [
@@ -77,6 +77,7 @@ dependencies = [
 [project.scripts]
 WEBS = "webscout.cli:main"
 webscout = "webscout.cli:main"
+webscout-server = "webscout.client:start_server"  # Instantly start the OpenAI-compatible API server
 
 [project.urls]
 Source = "https://github.com/OE-LUCIFER/Webscout"
@@ -93,6 +94,7 @@ api = [
     "uvicorn[standard]",
     "pydantic",
     "python-multipart",
+    "tiktoken",  # Added tiktoken for token counting support
 ]
 
 [tool.setuptools]
@@ -117,7 +119,3 @@ line-length = 100
 target-version = "py39"
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
-
-[tool.pytest]
-testpaths = ["tests"]
-python_files = "test_*.py"

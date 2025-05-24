@@ -706,18 +706,29 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
             logger.debug(f"Starting streaming response for request {request_id}")
             completion_stream = provider.chat.completions.create(**params)
 
-            if isinstance(completion_stream, types.GeneratorType):
-                for chunk in completion_stream:
-                    # Standardize chunk format before sending
-                    if hasattr(chunk, 'model_dump'):  # Pydantic v2
-                        chunk_data = chunk.model_dump(exclude_none=True)
-                    elif hasattr(chunk, 'dict'):  # Pydantic v1
-                        chunk_data = chunk.dict(exclude_none=True)
-                    elif isinstance(chunk, dict):
-                        chunk_data = chunk
-                    else:  # Fallback for unknown chunk types
-                        chunk_data = chunk
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
+            # Check if it's iterable (generator, iterator, or other iterable types)
+            if hasattr(completion_stream, '__iter__') and not isinstance(completion_stream, (str, bytes, dict)):
+                try:
+                    for chunk in completion_stream:
+                        # Standardize chunk format before sending
+                        if hasattr(chunk, 'model_dump'):  # Pydantic v2
+                            chunk_data = chunk.model_dump(exclude_none=True)
+                        elif hasattr(chunk, 'dict'):  # Pydantic v1
+                            chunk_data = chunk.dict(exclude_none=True)
+                        elif isinstance(chunk, dict):
+                            chunk_data = chunk
+                        else:  # Fallback for unknown chunk types
+                            chunk_data = chunk
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                except TypeError as te:
+                    logger.error(f"Error iterating over completion_stream: {te}")
+                    # Fall back to treating as non-generator response
+                    if hasattr(completion_stream, 'model_dump'):
+                        yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
+                    elif hasattr(completion_stream, 'dict'):
+                        yield f"data: {json.dumps(completion_stream.dict(exclude_none=True))}\n\n"
+                    else:
+                        yield f"data: {json.dumps(completion_stream)}\n\n"
             else:  # Non-generator response
                 if hasattr(completion_stream, 'model_dump'):
                     yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"

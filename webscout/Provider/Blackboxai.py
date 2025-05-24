@@ -327,10 +327,10 @@ class BLACKBOXAI(Provider):
             '__cf_bm': self.generate_id(32),
         }
 
-        self.__available_optimizers = (
+        self.__available_optimizers = [
             method for method in dir(Optimizers)
             if callable(getattr(Optimizers, method)) and not method.startswith("__")
-        )
+        ]
 
         Conversation.intro = (
             AwesomePrompts().get_act(

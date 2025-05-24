@@ -3,8 +3,8 @@ import random
 import string
 import base64
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
-import json
+from typing import Generator, List, Dict, Optional, Any, Union
+import json # Not used directly in this snippet, but often useful
 import uuid
 import time
 
@@ -12,7 +12,8 @@ import time
 from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
-    ChatCompletionMessage, CompletionUsage, count_tokens
+    ChatCompletionMessage, CompletionUsage, count_tokens,
+    ChatCompletionChunk, ChoiceDelta # Added for streaming return type
 )
 from webscout.litagent import LitAgent, agent
 agent = LitAgent()
@@ -52,7 +53,7 @@ class Completions(BaseCompletions):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         **kwargs: Any
-    ) -> ChatCompletion:
+    ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
         Create a chat completion with BlackboxAI API.
 
@@ -167,7 +168,7 @@ class Completions(BaseCompletions):
                     "imagesData": [
                         {
                             "filePath": f"/",
-                            "contents": to_data_uri(image)
+                            "contents": to_data_uri(image[0])
                         } for image in media
                     ],
                     "fileText": "",
@@ -292,7 +293,7 @@ class Completions(BaseCompletions):
                 "imagesData": [
                     {
                         "filePath": f"/",
-                        "contents": to_data_uri(image)
+                        "contents": to_data_uri(image[0])
                     } for image in media
                 ],
                 "fileText": "",
@@ -620,7 +621,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         """Return the model name, removing BLACKBOXAI/ prefix if present, or default_model."""
         if model.startswith("BLACKBOXAI/"):
             model = model[len("BLACKBOXAI/"):]
-        if model in cls.models:
+        if model in cls.AVAILABLE_MODELS:
             return model
         return cls.default_model
 

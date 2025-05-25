@@ -85,10 +85,13 @@ class ScoutCrawler:
             title_result = scout.find("title")
             title = title_result[0].get_text() if title_result else ""
 
-            for tag in scout._soup(self.tags_to_remove):
-                tag.extract()
+            # Correct tag removal logic
+            for tag_name in self.tags_to_remove:
+                for tag in scout._soup.find_all(tag_name):
+                    tag.extract()
 
-            visible_text = scout._soup.get_text(strip=True)
+            # Improved visible text extraction
+            visible_text = scout._soup.get_text(separator=" ", strip=True)
 
             page_info = {
                 'url': url,
@@ -110,14 +113,13 @@ class ScoutCrawler:
             print(f"Error crawling {url}: {e}")
             return {}
 
-    def crawl(self) -> List[Dict[str, Union[str, List[str]]]]:
+    def crawl(self):
         """
-        Start web crawling from base URL.
+        Start web crawling from base URL and yield each crawled page in real time.
 
-        Returns:
-            List[Dict[str, Union[str, List[str]]]]: List of crawled pages
+        Yields:
+            Dict[str, Union[str, List[str]]]: Crawled page information
         """
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(self._crawl_page, self.base_url, 0)}
             submitted_links: set[str] = set()
@@ -130,8 +132,11 @@ class ScoutCrawler:
                 for future in done:
                     page_info = future.result()
 
+                    if page_info:
+                        yield page_info
+
                     if len(self.visited_urls) >= self.max_pages:
-                        break
+                        return
 
                     for link in page_info.get("links", []):
                         if (
@@ -148,6 +153,4 @@ class ScoutCrawler:
                                 )
                             )
                     if len(self.visited_urls) >= self.max_pages:
-                        break
-
-        return self.crawled_pages
+                        return

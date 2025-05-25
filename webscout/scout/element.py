@@ -210,8 +210,11 @@ class Tag:
                 else:
                     # Regex or exact match for other attributes
                     tag_attr = tag.attrs.get(k)
-                    if isinstance(v, re.Pattern):
-                        if not v.search(str(tag_attr)):
+                    if v is True:
+                        if tag_attr is None:
+                            return False
+                    elif isinstance(v, re.Pattern):
+                        if tag_attr is None or not v.search(str(tag_attr)):
                             return False
                     elif tag_attr != v:
                         return False

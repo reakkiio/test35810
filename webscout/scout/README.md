@@ -148,6 +148,7 @@ Scout provides powerful tools for navigating and manipulating HTML/XML documents
 - **Tree Traversal**: Navigate parent-child relationships and sibling elements
 - **Content Extraction**: Extract text, attributes, and structured data
 - **Document Manipulation**: Modify, replace, or remove elements
+- **Dynamic Building**: Easily append or insert new nodes
 
 ```python
 # CSS selector support
@@ -159,6 +160,7 @@ results = scout.find_all('a', attrs={'class': 'external', 'rel': 'nofollow'})
 # Tree traversal
 parent = element.find_parent('div')
 siblings = element.find_next_siblings('p')
+prev_sibling = element.find_previous_sibling('p')
 ```
 
 ### 🧠 Intelligent Analysis
@@ -363,7 +365,7 @@ For detailed API documentation, please refer to the [documentation](https://gith
 
 ## 🔧 Dependencies
 
-- `requests`: HTTP library for making web requests
+- `curl_cffi`: HTTP library used for web requests
 - `lxml`: XML and HTML processing library (optional, recommended)
 - `html5lib`: Standards-compliant HTML parser (optional)
 - `markdownify`: HTML to Markdown conversion

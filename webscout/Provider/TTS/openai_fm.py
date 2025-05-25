@@ -71,11 +71,18 @@ class OpenAIFMTTS(BaseTTSProvider):
         Raises:
             exceptions.FailedToGenerateResponseError: If there is an error generating or saving the audio.
         """
+        # Validate input parameters
+        if not text or not isinstance(text, str):
+            raise ValueError("Text input must be a non-empty string")
+        if len(text) > 10000:  # Add reasonable length limit
+            raise ValueError("Text input exceeds maximum allowed length")
+            
         assert (
             voice in self.all_voices
         ), f"Voice '{voice}' not one of [{', '.join(self.all_voices.keys())}]"
 
-        filename = pathlib.Path(tempfile.mktemp(suffix=".mp3", dir=self.temp_dir))
+        with tempfile.NamedTemporaryFile(suffix=".mp3", dir=self.temp_dir, delete=False) as temp_file:
+            filename = pathlib.Path(temp_file.name)
         voice_id = self.all_voices[voice]
         
         if instructions is None:

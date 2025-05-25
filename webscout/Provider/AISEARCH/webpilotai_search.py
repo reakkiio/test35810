@@ -19,8 +19,8 @@ class webpilotai(AISearch):
         >>> from webscout import webpilotai
         >>> ai = webpilotai()
         >>> # Non-streaming example
-        >>> SearchResponse = ai.search("What is Python?")
-        >>> print(SearchResponse)
+        >>> response = ai.search("What is Python?")
+        >>> print(response)
         Python is a high-level programming language...
         
         >>> # Streaming example
@@ -102,8 +102,8 @@ class webpilotai(AISearch):
         Examples:
             Basic search:
             >>> ai = webpilotai()
-            >>> SearchResponse = ai.search("What is Python?")
-            >>> print(SearchResponse)
+            >>> response = ai.search("What is Python?")
+            >>> print(response)
             Python is a programming language...
             
             Streaming SearchResponse:
@@ -134,14 +134,14 @@ class webpilotai(AISearch):
                     stream=True,
                     timeout=self.timeout,
                     proxies=self.proxies
-                ) as SearchResponse:
-                    if not SearchResponse.ok:
+                ) as response:
+                    if not response.ok:
                         raise exceptions.APIConnectionError(
-                            f"Failed to generate SearchResponse - ({SearchResponse.status_code}, {SearchResponse.reason}) - {SearchResponse.text}"
+                            f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                         )
                     
                     # Process the stream line by line
-                    for line in SearchResponse.iter_lines(decode_unicode=True):
+                    for line in response.iter_lines(decode_unicode=True):
                         if not line:  # Empty line indicates end of an event
                             if current_data_buffer:
                                 # Process the completed event
@@ -215,7 +215,7 @@ class webpilotai(AISearch):
             if not raw:
                 # Format the SearchResponse for better readability
                 formatted_SearchResponse = self.format_SearchResponse(full_SearchResponse)
-                self.last_SearchResponse = SearchResponse(formatted_SearchResponse)
+                self.last_response = SearchResponse(formatted_SearchResponse)
                 return self.last_SearchResponse
 
         return for_stream() if stream else for_non_stream()

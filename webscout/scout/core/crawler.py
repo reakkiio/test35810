@@ -4,8 +4,13 @@ Scout Crawler Module
 
 import concurrent.futures
 import urllib.parse
+import time
+import hashlib
+import re
+from urllib import robotparser
+from datetime import datetime
 from typing import Dict, List, Optional, Union
-
+from webscout.litagent import LitAgent
 from curl_cffi.requests import Session
 
 from .scout import Scout
@@ -15,7 +20,7 @@ class ScoutCrawler:
     """
     Advanced web crawling utility for Scout library.
     """
-    def __init__(self, base_url: str, max_pages: int = 50, tags_to_remove: List[str] = None, session: Optional[Session] = None):
+    def __init__(self, base_url: str, max_pages: int = 50, tags_to_remove: List[str] = None, session: Optional[Session] = None, delay: float = 0.5, obey_robots: bool = True, allowed_domains: Optional[List[str]] = None):
         """
         Initialize the web crawler.
 
@@ -39,7 +44,30 @@ class ScoutCrawler:
         self.visited_urls = set()
         self.crawled_pages = []
         self.session = session or Session()
-        self.session.headers.setdefault("User-Agent", "ScoutCrawler/1.0")
+        self.agent = LitAgent()
+        # Use all headers and generate fingerprint
+        self.session.headers = self.agent.generate_fingerprint()
+        self.session.headers.setdefault("User-Agent", self.agent.chrome())
+        self.delay = delay
+        self.obey_robots = obey_robots
+        self.allowed_domains = allowed_domains or [urllib.parse.urlparse(base_url).netloc]
+        self.last_request_time = 0
+        self.url_hashes = set()
+        if obey_robots:
+            self.robots = robotparser.RobotFileParser()
+            robots_url = urllib.parse.urljoin(base_url, '/robots.txt')
+            try:
+                self.robots.set_url(robots_url)
+                self.robots.read()
+            except Exception:
+                self.robots = None
+        else:
+            self.robots = None
+
+    def _normalize_url(self, url: str) -> str:
+        url = url.split('#')[0]
+        url = re.sub(r'\?.*$', '', url)  # Remove query params
+        return url.rstrip('/')
 
     def _is_valid_url(self, url: str) -> bool:
         """
@@ -54,13 +82,37 @@ class ScoutCrawler:
         try:
             parsed_base = urllib.parse.urlparse(self.base_url)
             parsed_url = urllib.parse.urlparse(url)
-
-            return (
-                parsed_url.scheme in ["http", "https"]
-                and parsed_base.netloc == parsed_url.netloc
-            )
+            if parsed_url.scheme not in ["http", "https"]:
+                return False
+            if parsed_url.netloc not in self.allowed_domains:
+                return False
+            if self.obey_robots and self.robots:
+                return self.robots.can_fetch("*", url)
+            return True
         except Exception:
             return False
+
+    def _is_duplicate(self, url: str) -> bool:
+        norm = self._normalize_url(url)
+        url_hash = hashlib.md5(norm.encode()).hexdigest()
+        if url_hash in self.url_hashes:
+            return True
+        self.url_hashes.add(url_hash)
+        return False
+
+    def _extract_main_text(self, soup):
+        # Try to extract main content (simple heuristic)
+        main = soup.find('main')
+        if main:
+            return main.get_text(separator=" ", strip=True)
+        article = soup.find('article')
+        if article:
+            return article.get_text(separator=" ", strip=True)
+        # fallback to body
+        body = soup.find('body')
+        if body:
+            return body.get_text(separator=" ", strip=True)
+        return soup.get_text(separator=" ", strip=True)
 
     def _crawl_page(self, url: str, depth: int = 0) -> Dict[str, Union[str, List[str]]]:
         """
@@ -73,26 +125,27 @@ class ScoutCrawler:
         Returns:
             Dict[str, Union[str, List[str]]]: Crawled page information
         """
-        if url in self.visited_urls:
+        if url in self.visited_urls or self._is_duplicate(url):
             return {}
-
+        # Throttle requests
+        now = time.time()
+        if self.last_request_time:
+            elapsed = now - self.last_request_time
+            if elapsed < self.delay:
+                time.sleep(self.delay - elapsed)
+        self.last_request_time = time.time()
         try:
             response = self.session.get(url, timeout=10)
             response.raise_for_status()
-
+            if not response.headers.get('Content-Type', '').startswith('text/html'):
+                return {}
             scout = Scout(response.content, features="lxml")
-
             title_result = scout.find("title")
             title = title_result[0].get_text() if title_result else ""
-
-            # Correct tag removal logic
             for tag_name in self.tags_to_remove:
                 for tag in scout._soup.find_all(tag_name):
                     tag.extract()
-
-            # Improved visible text extraction
-            visible_text = scout._soup.get_text(separator=" ", strip=True)
-
+            visible_text = self._extract_main_text(scout._soup)
             page_info = {
                 'url': url,
                 'title': title,
@@ -102,12 +155,12 @@ class ScoutCrawler:
                     if self._is_valid_url(urllib.parse.urljoin(url, link.get('href')))
                 ],
                 'text': visible_text,
-                'depth': depth
+                'depth': depth,
+                'timestamp': datetime.utcnow().isoformat(),
+                'headers': dict(response.headers),
             }
-
             self.visited_urls.add(url)
             self.crawled_pages.append(page_info)
-
             return page_info
         except Exception as e:
             print(f"Error crawling {url}: {e}")
@@ -125,9 +178,12 @@ class ScoutCrawler:
             submitted_links: set[str] = set()
 
             while futures:
-                done, futures = concurrent.futures.wait(
+                if len(self.visited_urls) >= self.max_pages:
+                    break
+                done, not_done = concurrent.futures.wait(
                     futures, return_when=concurrent.futures.FIRST_COMPLETED
                 )
+                futures = not_done
 
                 for future in done:
                     page_info = future.result()
@@ -152,5 +208,3 @@ class ScoutCrawler:
                                     page_info.get("depth", 0) + 1,
                                 )
                             )
-                    if len(self.visited_urls) >= self.max_pages:
-                        return

@@ -3,35 +3,9 @@ from uuid import uuid4
 import json
 from typing import Any, Dict, Generator, Optional, Union
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for API responses.
-    
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-    
-    Attributes:
-        text (str): The text content of the response
-        
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class Felo(AISearch):
@@ -115,7 +89,7 @@ class Felo(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
         """Search using the Felo API and get AI-generated responses.
         
         This method sends a search query to Felo and returns the AI-generated response.
@@ -126,13 +100,13 @@ class Felo(AISearch):
             stream (bool, optional): If True, yields response chunks as they arrive.
                                    If False, returns complete response. Defaults to False.
             raw (bool, optional): If True, returns raw response dictionaries with 'text' key.
-                                If False, returns Response objects that convert to text automatically.
+                                If False, returns SearchResponse objects that convert to text automatically.
                                 Defaults to False.
         
         Returns:
-            Union[Response, Generator[Union[Dict[str, str], Response], None, None]]: 
-                - If stream=False: Returns complete response as Response object
-                - If stream=True: Yields response chunks as either Dict or Response objects
+            Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]: 
+                - If stream=False: Returns complete response as SearchResponse object
+                - If stream=True: Yields response chunks as either Dict or SearchResponse objects
         
         Raises:
             APIConnectionError: If the API request fails
@@ -199,10 +173,10 @@ class Felo(AISearch):
                                         if raw:
                                             yield {"text": delta}
                                         else:
-                                            yield Response(delta)
+                                            yield SearchResponse(delta)
                             except json.JSONDecodeError:
                                 pass
-                    self.last_response = Response(streaming_text)
+                    self.last_response = SearchResponse(streaming_text)
             except requests.exceptions.RequestException as e:
                 raise exceptions.APIConnectionError(f"Request failed: {e}")
 
@@ -214,7 +188,7 @@ class Felo(AISearch):
                 else:
                     full_response += str(chunk)
             if not raw:
-                self.last_response = Response(full_response)
+                self.last_response = SearchResponse(full_response)
                 return self.last_response
         
         return for_stream() if stream else for_non_stream()

@@ -4,35 +4,9 @@ import re
 import uuid
 from typing import Dict, Optional, Generator, Union, Any
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for Monica API responses.
-    
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-    
-    Attributes:
-        text (str): The text content of the response
-        
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class Monica(AISearch):
@@ -121,7 +95,7 @@ class Monica(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
         """Search using the Monica API and get AI-generated responses.
         
         This method sends a search query to Monica and returns the AI-generated response.
@@ -185,7 +159,7 @@ class Monica(AISearch):
                                     if raw:
                                         yield {"text": text_chunk}
                                     else:
-                                        yield Response(text_chunk)
+                                        yield SearchResponse(text_chunk)
                                         
                                 # Check if stream is finished
                                 if "finished" in data and data["finished"]:
@@ -210,7 +184,7 @@ class Monica(AISearch):
             if not raw:
                 # Process the full response to clean up formatting
                 formatted_response = self.format_response(full_response)
-                self.last_response = Response(formatted_response)
+                self.last_response = SearchResponse(formatted_response)
                 return self.last_response
 
         return for_stream() if stream else for_non_stream()

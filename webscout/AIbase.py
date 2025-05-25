@@ -1,11 +1,36 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import AsyncGenerator, List, Union, Generator, Optional
+from typing import AsyncGenerator, Dict, List, Union, Generator, Optional
 from typing_extensions import TypeAlias
 
 # Type aliases for better readability
 Response: TypeAlias = dict[str, Union[str, bool, None]]
 AsyncImageData: TypeAlias = Union[bytes, str, AsyncGenerator[bytes, None]]
+
+class SearchResponse:
+    """A wrapper class for search API responses.
+    
+    This class automatically converts response objects to their text representation
+    when printed or converted to string.
+    
+    Attributes:
+        text (str): The text content of the response
+        
+    Example:
+        >>> response = SearchResponse("Hello, world!")
+        >>> print(response)
+        Hello, world!
+        >>> str(response)
+        'Hello, world!'
+    """
+    def __init__(self, text: str):
+        self.text = text
+    
+    def __str__(self):
+        return self.text
+    
+    def __repr__(self):
+        return self.text
 
 class AIProviderError(Exception):
     pass
@@ -212,3 +237,83 @@ class AsyncTTSProvider(ABC):
         async with aiofiles.open(audio_file, 'rb') as f:
             while chunk := await f.read(chunk_size):
                 yield chunk
+                
+class AISearch(ABC):
+    """Abstract base class for AI-powered search providers.
+    
+    This class defines the interface for AI search providers that can perform
+    web searches and return AI-generated responses based on search results.
+    
+    All search providers should inherit from this class and implement the
+    required methods.
+    """
+    
+    @abstractmethod
+    def search(
+        self,
+        prompt: str,
+        stream: bool = False,
+        raw: bool = False,
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
+        """Search using the provider's API and get AI-generated responses.
+        
+        This method sends a search query to the provider and returns the AI-generated response.
+        It supports both streaming and non-streaming modes, as well as raw response format.
+        
+        Args:
+            prompt (str): The search query or prompt to send to the API.
+            stream (bool, optional): If True, yields response chunks as they arrive.
+                                   If False, returns complete response. Defaults to False.
+            raw (bool, optional): If True, returns raw response dictionaries.
+                                If False, returns SearchResponse objects that convert to text automatically.
+                                Defaults to False.
+        
+        Returns:
+            Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]: 
+                - If stream=False: Returns complete response as SearchResponse object
+                - If stream=True: Yields response chunks as either Dict or SearchResponse objects
+        
+        Raises:
+            APIConnectionError: If the API request fails
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")
+
+class AsyncAISearch(ABC):
+    """Abstract base class for asynchronous AI-powered search providers.
+    
+    This class defines the interface for asynchronous AI search providers that can perform
+    web searches and return AI-generated responses based on search results.
+    
+    All asynchronous search providers should inherit from this class and implement the
+    required methods.
+    """
+    
+    @abstractmethod
+    async def search(
+        self,
+        prompt: str,
+        stream: bool = False,
+        raw: bool = False,
+    ) -> Union[SearchResponse, AsyncGenerator[Union[Dict[str, str], SearchResponse], None]]:
+        """Search using the provider's API and get AI-generated responses asynchronously.
+        
+        This method sends a search query to the provider and returns the AI-generated response.
+        It supports both streaming and non-streaming modes, as well as raw response format.
+        
+        Args:
+            prompt (str): The search query or prompt to send to the API.
+            stream (bool, optional): If True, yields response chunks as they arrive.
+                                   If False, returns complete response. Defaults to False.
+            raw (bool, optional): If True, returns raw response dictionaries.
+                                If False, returns SearchResponse objects that convert to text automatically.
+                                Defaults to False.
+        
+        Returns:
+            Union[SearchResponse, AsyncGenerator[Union[Dict[str, str], SearchResponse], None]]: 
+                - If stream=False: Returns complete response as SearchResponse object
+                - If stream=True: Yields response chunks as either Dict or SearchResponse objects
+        
+        Raises:
+            APIConnectionError: If the API request fails
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")

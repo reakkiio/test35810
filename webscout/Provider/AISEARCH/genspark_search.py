@@ -5,35 +5,9 @@ import re
 from typing import TypedDict, List, Iterator, cast, Dict, Optional, Generator, Union, Any
 import requests
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for Genspark API responses.
-    
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-    
-    Attributes:
-        text (str): The text content of the response
-        
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class SourceDict(TypedDict, total=False):
@@ -67,8 +41,8 @@ class Genspark(AISearch):
     """
     Strongly typed Genspark AI search API client.
     
-    Genspark provides a powerful search interface that returns AI-generated responses
-    based on web content. It supports both streaming and non-streaming responses.
+    Genspark provides a powerful search interface that returns AI-generated SearchResponses
+    based on web content. It supports both streaming and non-streaming SearchResponses.
 
     After a search, several attributes are populated with extracted data:
     - `search_query_details` (dict): Information about the classified search query.
@@ -83,16 +57,16 @@ class Genspark(AISearch):
     Basic Usage:
         >>> from webscout import Genspark
         >>> ai = Genspark()
-        >>> # Non-streaming example (text response)
-        >>> response_text = ai.search("What is Python?")
-        >>> print(response_text)
+        >>> # Non-streaming example (text SearchResponse)
+        >>> SearchResponse_text = ai.search("What is Python?")
+        >>> print(SearchResponse_text)
         Python is a high-level programming language...
         >>> # Access additional data:
         >>> # print(ai.sources_used)
         
-        >>> # Streaming example (mixed content: text Response objects and event dicts)
+        >>> # Streaming example (mixed content: text SearchResponse objects and event dicts)
         >>> for item in ai.search("Tell me about AI", stream=True):
-        ...     if isinstance(item, Response):
+        ...     if isinstance(item, SearchResponse):
         ...         print(item, end="", flush=True)
         ...     else:
         ...         print(f"\n[EVENT: {item.get('event')}]") 
@@ -100,7 +74,7 @@ class Genspark(AISearch):
         [EVENT: status_update]
         ...
         
-        >>> # Raw streaming response format
+        >>> # Raw streaming SearchResponse format
         >>> for raw_event_dict in ai.search("Hello", stream=True, raw=True):
         ...     print(raw_event_dict)
         {'type': 'result_start', ...}
@@ -121,7 +95,7 @@ class Genspark(AISearch):
     log_raw_events: bool
     headers: Dict[str, str]
     cookies: Dict[str, str]
-    last_response: Union[Response, Dict[str, Any], List[Any], None]
+    last_SearchResponse: Union[SearchResponse, Dict[str, Any], List[Any], None] # type: ignore[assignment]
     search_query_details: Dict[str, Any]
     status_updates: List[StatusUpdateDict]
     final_search_results: Optional[List[Any]]
@@ -177,7 +151,7 @@ class Genspark(AISearch):
         }
         self.session.headers.update(self.headers)
         self.session.proxies = proxies or {}
-        self.last_response = None
+        self.last_SearchResponse = None
         self._reset_search_data()
 
     def _reset_search_data(self) -> None:
@@ -199,10 +173,10 @@ class Genspark(AISearch):
         stream: bool = False,
         raw: bool = False,
     ) -> Union[
-        Response,
+        SearchResponse, #type: ignore
         Dict[str, Any],
         List[dict],
-        Iterator[Union[dict, Response]],
+        Iterator[Union[dict, SearchResponse]], #type: ignore
     ]:
         """
         Strongly typed search method for Genspark API.
@@ -212,13 +186,13 @@ class Genspark(AISearch):
             raw: If True, yields/returns raw event dicts.
         Returns:
             - If stream=True, raw=True: Iterator[dict]
-            - If stream=True, raw=False: Iterator[Response | dict]
+            - If stream=True, raw=False: Iterator[SearchResponse | dict]
             - If stream=False, raw=True: List[dict]
-            - If stream=False, raw=False: Response
+            - If stream=False, raw=False: SearchResponse
         """
         self._reset_search_data()
         url = f"{self.chat_endpoint}?query={requests.utils.quote(prompt)}"
-        def _process_stream() -> Iterator[Union[dict, Response]]:
+        def _process_stream() -> Iterator[Union[dict, SearchResponse]]: #type: ignore
             try:
                 with self.session.post(
                     url,
@@ -227,12 +201,12 @@ class Genspark(AISearch):
                     json={},
                     stream=True,
                     timeout=self.timeout,
-                ) as response:
-                    if not response.ok:
+                ) as SearchResponse:
+                    if not SearchResponse.ok:
                         raise exceptions.APIConnectionError(
-                            f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                            f"Failed to generate SearchResponse - ({SearchResponse.status_code}, {SearchResponse.reason}) - {SearchResponse.text}"
                         )
-                    for line in response.iter_lines(decode_unicode=True):
+                    for line in SearchResponse.iter_lines(decode_unicode=True):
                         if not line or not line.startswith("data: "):
                             continue
                         try:
@@ -292,7 +266,7 @@ class Genspark(AISearch):
                                 if event_type == "result_field_delta" and field_name and field_name.startswith("streaming_detail_answer"):
                                     delta_text = data.get("delta", "")
                                     delta_text = re.sub(r"\[.*?\]\(.*?\)", "", delta_text)
-                                    yield Response(delta_text)
+                                    yield SearchResponse(delta_text)
                                 elif event_type == "result_start":
                                     processed_event_payload = {"event": "result_start", "data": {"id": result_id, "source": data.get("result_source"), "score": data.get("result_score")}}
                                 elif event_type == "classify_query_result":
@@ -321,28 +295,28 @@ class Genspark(AISearch):
         if stream:
             return processed_stream_gen
         else:
-            full_response_text = ""
+            full_SearchResponse_text = ""
             all_raw_events_for_this_search: List[dict] = []
             for item in processed_stream_gen:
                 if raw:
                     all_raw_events_for_this_search.append(cast(dict, item))
                 else:
-                    if isinstance(item, Response):
-                        full_response_text += str(item)
+                    if isinstance(item, SearchResponse):
+                        full_SearchResponse_text += str(item)
             if raw:
-                self.last_response = {"raw_events": all_raw_events_for_this_search}
+                self.last_SearchResponse = {"raw_events": all_raw_events_for_this_search}
                 return all_raw_events_for_this_search
             else:
-                final_text_response = Response(full_response_text)
-                self.last_response = final_text_response
-                return final_text_response
+                final_text_SearchResponse = SearchResponse(full_SearchResponse_text)
+                self.last_SearchResponse = final_text_SearchResponse
+                return final_text_SearchResponse
 
 if __name__ == "__main__":
     from rich import print
     ai = Genspark()
     try:
-        response = ai.search(input(">>> "), stream=True, raw=False)
-        for chunk in response:
+        SearchResponse = ai.search(input(">>> "), stream=True, raw=False)
+        for chunk in SearchResponse:
             print(chunk, end="", flush=True)
     except KeyboardInterrupt:
         print("\nSearch interrupted by user.")

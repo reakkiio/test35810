@@ -6,21 +6,9 @@ import time
 import re
 from typing import Dict, Optional, Generator, Union, Any
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for Hika API responses."""
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class Hika(AISearch):
@@ -88,7 +76,7 @@ class Hika(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
         """Search using the Hika API and get AI-generated responses."""
         if not prompt or len(prompt) < 2:
             raise exceptions.APIConnectionError("Search query must be at least 2 characters long")
@@ -141,7 +129,7 @@ class Hika(AISearch):
                                         if raw:
                                             yield {"text": clean_chunk}
                                         else:
-                                            yield Response(clean_chunk)
+                                            yield SearchResponse(clean_chunk)
                                 elif "references" in data:
                                     # Optionally yield references if raw requested
                                     if raw:
@@ -163,7 +151,7 @@ class Hika(AISearch):
             if not raw:
                 # Clean up the response text one final time
                 cleaned_response = self.format_response(full_response)
-                self.last_response = Response(cleaned_response)
+                self.last_response = SearchResponse(cleaned_response)
                 return self.last_response
 
         return for_stream() if stream else for_non_stream()

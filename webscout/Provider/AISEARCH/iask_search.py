@@ -6,35 +6,9 @@ import urllib.parse
 from markdownify import markdownify as md
 from typing import Dict, Optional, Generator, Union, AsyncIterator, Literal
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.scout import Scout
-
-
-class Response:
-    """A wrapper class for IAsk API responses.
-
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-
-    Attributes:
-        text (str): The text content of the response
-
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-
-    def __str__(self):
-        return self.text
-
-    def __repr__(self):
-        return self.text
 
 
 def cache_find(diff: Union[dict, list]) -> Optional[str]:
@@ -189,7 +163,7 @@ class IAsk(AISearch):
         raw: bool = False,
         mode: Optional[ModeType] = None,
         detail_level: Optional[DetailLevelType] = None,
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
         """Search using the IAsk API and get AI-generated responses.
 
         This method sends a search query to IAsk and returns the AI-generated response.
@@ -278,7 +252,7 @@ class IAsk(AISearch):
                         # Update buffer and yield the chunk
                         if isinstance(chunk, dict) and 'text' in chunk:
                             buffer += chunk['text']
-                        elif isinstance(chunk, Response):
+                        elif isinstance(chunk, SearchResponse):
                             buffer += chunk.text
                         else:
                             buffer += str(chunk)
@@ -303,7 +277,7 @@ class IAsk(AISearch):
         raw: bool = False,
         mode: ModeType = "question",
         detail_level: Optional[DetailLevelType] = None,
-    ) -> Union[Response, AsyncIterator[Union[Dict[str, str], Response]]]:
+    ) -> Union[SearchResponse, AsyncIterator[Union[Dict[str, str], SearchResponse]]]:
         """Internal async implementation of the search method."""
 
         async def stream_generator() -> AsyncIterator[str]:
@@ -386,7 +360,7 @@ class IAsk(AISearch):
             async for chunk in stream_generator():
                 buffer += chunk
             self.last_response = {"text": buffer}
-            return Response(buffer) if not raw else {"text": buffer}
+            return SearchResponse(buffer) if not raw else {"text": buffer}
 
         # For streaming, create an async generator that yields chunks
         async def process_stream():
@@ -396,7 +370,7 @@ class IAsk(AISearch):
                 if raw:
                     yield {"text": chunk}
                 else:
-                    yield Response(chunk)
+                    yield SearchResponse(chunk)
             self.last_response = {"text": buffer}
 
         # Return the async generator

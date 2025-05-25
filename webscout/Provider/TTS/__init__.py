@@ -7,3 +7,4 @@ from .murfai import *
 from .gesserit import *
 from .speechma import *
 from .sthir import *
+from .openai_fm import *

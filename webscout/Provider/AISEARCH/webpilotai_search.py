@@ -3,50 +3,24 @@ import json
 import re
 from typing import Dict, Optional, Generator, Union, Any
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for webpilotai API responses.
-    
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-    
-    Attributes:
-        text (str): The text content of the response
-        
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class webpilotai(AISearch):
     """A class to interact with the webpilotai (WebPilot) AI search API.
     
-    webpilotai provides a web-based comprehensive search response interface that returns AI-generated 
-    responses with source references and related questions. It supports both streaming and
-    non-streaming responses.
+    webpilotai provides a web-based comprehensive search SearchResponse interface that returns AI-generated 
+    SearchResponses with source references and related questions. It supports both streaming and
+    non-streaming SearchResponses.
     
     Basic Usage:
         >>> from webscout import webpilotai
         >>> ai = webpilotai()
         >>> # Non-streaming example
-        >>> response = ai.search("What is Python?")
-        >>> print(response)
+        >>> SearchResponse = ai.search("What is Python?")
+        >>> print(SearchResponse)
         Python is a high-level programming language...
         
         >>> # Streaming example
@@ -54,7 +28,7 @@ class webpilotai(AISearch):
         ...     print(chunk, end="", flush=True)
         Artificial Intelligence is...
         
-        >>> # Raw response format
+        >>> # Raw SearchResponse format
         >>> for chunk in ai.search("Hello", stream=True, raw=True):
         ...     print(chunk)
         {'text': 'Hello'}
@@ -83,7 +57,7 @@ class webpilotai(AISearch):
         self.session = requests.Session()
         self.api_endpoint = "https://api.webpilotai.com/rupee/v1/search"
         self.timeout = timeout
-        self.last_response = {}
+        self.last_SearchResponse = {}
         
         # The 'Bearer null' is part of the API's expected headers
         self.headers = {
@@ -103,24 +77,24 @@ class webpilotai(AISearch):
         prompt: str,
         stream: bool = False,
         raw: bool = False,
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
-        """Search using the webpilotai API and get AI-generated responses.
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
+        """Search using the webpilotai API and get AI-generated SearchResponses.
         
-        This method sends a search query to webpilotai and returns the AI-generated response.
-        It supports both streaming and non-streaming modes, as well as raw response format.
+        This method sends a search query to webpilotai and returns the AI-generated SearchResponse.
+        It supports both streaming and non-streaming modes, as well as raw SearchResponse format.
         
         Args:
             prompt (str): The search query or prompt to send to the API.
-            stream (bool, optional): If True, yields response chunks as they arrive.
-                                   If False, returns complete response. Defaults to False.
-            raw (bool, optional): If True, returns raw response dictionaries with 'text' key.
-                                If False, returns Response objects that convert to text automatically.
+            stream (bool, optional): If True, yields SearchResponse chunks as they arrive.
+                                   If False, returns complete SearchResponse. Defaults to False.
+            raw (bool, optional): If True, returns raw SearchResponse dictionaries with 'text' key.
+                                If False, returns SearchResponse objects that convert to text automatically.
                                 Defaults to False.
         
         Returns:
-            Union[Response, Generator[Union[Dict[str, str], Response], None, None]]: 
-                - If stream=False: Returns complete response as Response object
-                - If stream=True: Yields response chunks as either Dict or Response objects
+            Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]: 
+                - If stream=False: Returns complete SearchResponse as SearchResponse object
+                - If stream=True: Yields SearchResponse chunks as either Dict or SearchResponse objects
         
         Raises:
             APIConnectionError: If the API request fails
@@ -128,16 +102,16 @@ class webpilotai(AISearch):
         Examples:
             Basic search:
             >>> ai = webpilotai()
-            >>> response = ai.search("What is Python?")
-            >>> print(response)
+            >>> SearchResponse = ai.search("What is Python?")
+            >>> print(SearchResponse)
             Python is a programming language...
             
-            Streaming response:
+            Streaming SearchResponse:
             >>> for chunk in ai.search("Tell me about AI", stream=True):
             ...     print(chunk, end="")
             Artificial Intelligence...
             
-            Raw response format:
+            Raw SearchResponse format:
             >>> for chunk in ai.search("Hello", stream=True, raw=True):
             ...     print(chunk)
             {'text': 'Hello'}
@@ -149,7 +123,7 @@ class webpilotai(AISearch):
         }
         
         def for_stream():
-            full_response_content = ""
+            full_SearchResponse_content = ""
             current_event_name = None
             current_data_buffer = []
             
@@ -160,14 +134,14 @@ class webpilotai(AISearch):
                     stream=True,
                     timeout=self.timeout,
                     proxies=self.proxies
-                ) as response:
-                    if not response.ok:
+                ) as SearchResponse:
+                    if not SearchResponse.ok:
                         raise exceptions.APIConnectionError(
-                            f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
+                            f"Failed to generate SearchResponse - ({SearchResponse.status_code}, {SearchResponse.reason}) - {SearchResponse.text}"
                         )
                     
                     # Process the stream line by line
-                    for line in response.iter_lines(decode_unicode=True):
+                    for line in SearchResponse.iter_lines(decode_unicode=True):
                         if not line:  # Empty line indicates end of an event
                             if current_data_buffer:
                                 # Process the completed event
@@ -175,17 +149,17 @@ class webpilotai(AISearch):
                                 if current_event_name == "message":
                                     try:
                                         data_payload = json.loads(full_data)
-                                        # Check structure based on the API response
+                                        # Check structure based on the API SearchResponse
                                         if data_payload.get('type') == 'data':
                                             content_chunk = data_payload.get('data', {}).get('content', "")
                                             if content_chunk:
-                                                full_response_content += content_chunk
+                                                full_SearchResponse_content += content_chunk
                                                 
                                                 # Yield the new content chunk
                                                 if raw:
                                                     yield {"text": content_chunk}
                                                 else:
-                                                    yield Response(content_chunk)
+                                                    yield SearchResponse(content_chunk)
                                     except json.JSONDecodeError:
                                         pass
                                     except Exception as e:
@@ -214,14 +188,14 @@ class webpilotai(AISearch):
                             data_payload = json.loads(full_data)
                             if data_payload.get('type') == 'data':
                                 content_chunk = data_payload.get('data', {}).get('content', "")
-                                if content_chunk and len(content_chunk) > len(full_response_content):
-                                    delta = content_chunk[len(full_response_content):]
-                                    full_response_content += delta
+                                if content_chunk and len(content_chunk) > len(full_SearchResponse_content):
+                                    delta = content_chunk[len(full_SearchResponse_content):]
+                                    full_SearchResponse_content += delta
                                     
                                     if raw:
                                         yield {"text": delta}
                                     else:
-                                        yield Response(delta)
+                                        yield SearchResponse(delta)
                         except (json.JSONDecodeError, Exception):
                             pass
                 
@@ -231,27 +205,27 @@ class webpilotai(AISearch):
                 raise exceptions.APIConnectionError(f"Request failed: {e}")
 
         def for_non_stream():
-            full_response = ""
+            full_SearchResponse = ""
             for chunk in for_stream():
                 if raw:
                     yield chunk
                 else:
-                    full_response += str(chunk)
+                    full_SearchResponse += str(chunk)
             
             if not raw:
-                # Format the response for better readability
-                formatted_response = self.format_response(full_response)
-                self.last_response = Response(formatted_response)
-                return self.last_response
+                # Format the SearchResponse for better readability
+                formatted_SearchResponse = self.format_SearchResponse(full_SearchResponse)
+                self.last_SearchResponse = SearchResponse(formatted_SearchResponse)
+                return self.last_SearchResponse
 
         return for_stream() if stream else for_non_stream()
     
     @staticmethod
-    def format_response(text: str) -> str:
-        """Format the response text for better readability.
+    def format_SearchResponse(text: str) -> str:
+        """Format the SearchResponse text for better readability.
         
         Args:
-            text (str): The raw response text
+            text (str): The raw SearchResponse text
         
         Returns:
             str: Formatted text with improved structure
@@ -276,6 +250,6 @@ if __name__ == "__main__":
     from rich import print
     
     ai = webpilotai()
-    response = ai.search(input(">>> "), stream=True, raw=False)
-    for chunk in response:
+    r = ai.search(input(">>> "), stream=True, raw=False)
+    for chunk in r:
         print(chunk, end="", flush=True)

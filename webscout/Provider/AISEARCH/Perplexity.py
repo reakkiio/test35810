@@ -4,35 +4,9 @@ from uuid import uuid4
 from typing import Dict, Optional, Generator, Union, Any
 from curl_cffi import requests
 
-from webscout.AIbase import AISearch
+from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-
-
-class Response:
-    """A wrapper class for Perplexity API responses.
-    
-    This class automatically converts response objects to their text representation
-    when printed or converted to string.
-    
-    Attributes:
-        text (str): The text content of the response
-        
-    Example:
-        >>> response = Response("Hello, world!")
-        >>> print(response)
-        Hello, world!
-        >>> str(response)
-        'Hello, world!'
-    """
-    def __init__(self, text: str):
-        self.text = text
-    
-    def __str__(self):
-        return self.text
-    
-    def __repr__(self):
-        return self.text
 
 
 class Perplexity(AISearch):
@@ -178,7 +152,7 @@ class Perplexity(AISearch):
         language: str = 'en-US',
         follow_up: Optional[Dict[str, Any]] = None,
         incognito: bool = False
-    ) -> Union[Response, Generator[Union[Dict[str, str], Response], None, None]]:
+    ) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse], None, None]]:
         """Search using the Perplexity API and get AI-generated responses.
         
         This method sends a search query to Perplexity and returns the AI-generated response.
@@ -303,9 +277,9 @@ class Perplexity(AISearch):
                             if 'text' in content_json and isinstance(content_json['text'], list):
                                 for step in content_json['text']:
                                     if step.get('type') == 'answer' and 'value' in step:
-                                        yield Response(step['value'])
+                                        yield SearchResponse(step['value'])
                                     elif step.get('type') == 'thinking' and 'value' in step:
-                                        yield Response(step['value'])
+                                        yield SearchResponse(step['value'])
                     elif content.startswith('event: end_of_stream\r\n'):
                         return
             
@@ -333,12 +307,12 @@ class Perplexity(AISearch):
                         # Process the final response to extract the answer
                         if final_response:
                             answer_text = self._extract_answer(final_response)
-                            return Response(answer_text) if not raw else final_response
+                            return SearchResponse(answer_text) if not raw else final_response
                         elif chunks:
                             answer_text = self._extract_answer(chunks[-1])
-                            return Response(answer_text) if not raw else chunks[-1]
+                            return SearchResponse(answer_text) if not raw else chunks[-1]
                         else:
-                            return Response("") if not raw else {}
+                            return SearchResponse("") if not raw else {}
                 
                 # If we get here, something went wrong
                 raise exceptions.FailedToGenerateResponseError("Failed to get complete response")

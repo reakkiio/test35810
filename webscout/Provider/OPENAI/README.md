@@ -64,6 +64,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - Copilot
 - TwoAI
 - oivscode
+- Qwen3
 ---
 
 

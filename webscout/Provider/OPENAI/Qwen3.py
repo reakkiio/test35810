@@ -8,11 +8,12 @@ from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, Ba
 from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage,
-    get_last_user_message, get_system_prompt
+    get_last_user_message, get_system_prompt,
+    count_tokens
 )
 
 class Completions(BaseCompletions):
-    def __init__(self, client: 'QwenQwen3'):
+    def __init__(self, client: 'Qwen3'):
         self._client = client
 
     def create(
@@ -67,8 +68,8 @@ class Completions(BaseCompletions):
         stream_resp.raise_for_status()
 
         # --- New logic to yield all content, tool reasoning, and status, similar to Reasoning class ---
-        is_thinking = False
-        label = None
+        is_thinking_tag_open = False # True if <think> has been yielded and not yet </think>
+
         for line in stream_resp.iter_lines():
             if line:
                 decoded_line = line.decode('utf-8')
@@ -77,81 +78,82 @@ class Completions(BaseCompletions):
                         json_data = json.loads(decoded_line[6:])
                         if json_data.get('msg') == 'process_generating':
                             if 'output' in json_data and 'data' in json_data['output'] and len(json_data['output']['data']) > 5:
-                                updates = json_data['output']['data'][5]
-                                for update in updates:
-                                    # Tool reasoning as dict
-                                    if isinstance(update[2], dict):
-                                        if update[2].get('type') == 'tool':
-                                            content = update[2].get('content')
-                                            status = update[2].get('options', {}).get('title')
-                                            label = status
-                                            is_thinking = True
-                                            delta = ChoiceDelta(content=content, role="tool")
-                                            choice = Choice(index=0, delta=delta)
-                                            chunk = ChatCompletionChunk(
-                                                id=request_id,
-                                                choices=[choice],
-                                                created=created_time,
-                                                model=model
-                                            )
-                                            yield chunk
-                                        elif update[2].get('type') == 'text':
-                                            content = update[2].get('content')
-                                            is_thinking = False
-                                            delta = ChoiceDelta(content=content, role="assistant")
-                                            choice = Choice(index=0, delta=delta)
-                                            chunk = ChatCompletionChunk(
-                                                id=request_id,
-                                                choices=[choice],
-                                                created=created_time,
-                                                model=model
-                                            )
-                                            yield chunk
-                                    # Plain text content
-                                    elif isinstance(update, list) and isinstance(update[1], list) and len(update[1]) > 4:
-                                        if update[1][4] == "content":
-                                            content = update[2]
-                                            delta = ChoiceDelta(content=content, role="assistant")
-                                            choice = Choice(index=0, delta=delta)
-                                            chunk = ChatCompletionChunk(
-                                                id=request_id,
-                                                choices=[choice],
-                                                created=created_time,
-                                                model=model
-                                            )
-                                            yield chunk
-                                        elif update[1][4] == "options":
-                                            if update[2] != "done":
-                                                status = update[2]
-                                                delta = ChoiceDelta(content=None, role="tool")
-                                                choice = Choice(index=0, delta=delta)
-                                                chunk = ChatCompletionChunk(
-                                                    id=request_id,
-                                                    choices=[choice],
-                                                    created=created_time,
-                                                    model=model
-                                                )
-                                                yield chunk
-                                            is_thinking = False
+                                updates_list = json_data['output']['data'][5] # This is a list of operations
+                                for op_details in updates_list:
+                                    action = op_details[0]
+                                    path = op_details[1]
+                                    value = op_details[2]
+
+                                    content_to_yield = None
+                                    is_current_op_tool = False
+                                    is_current_op_text = False
+
+                                    # Case 1: Adding a new content block (tool or text object)
+                                    if action == "add" and isinstance(value, dict) and "type" in value:
+                                        if len(path) == 4 and path[0] == "value" and path[2] == "content":
+                                            block_type = value.get("type")
+                                            content_to_yield = value.get("content")
+                                            if block_type == "tool":
+                                                is_current_op_tool = True
+                                            elif block_type == "text":
+                                                is_current_op_text = True
+                                    
+                                    # Case 2: Appending content string to an existing block
+                                    elif action == "append" and isinstance(value, str):
+                                        if len(path) == 5 and path[0] == "value" and path[2] == "content" and path[4] == "content":
+                                            block_index = path[3] # 0 for tool's content, 1 for text's content
+                                            content_to_yield = value
+                                            if block_index == 0: # Appending to tool's content
+                                                is_current_op_tool = True
+                                            elif block_index == 1: # Appending to text's content
+                                                is_current_op_text = True
+                                    
+                                    # Case 3: Tool status update (e.g., "End of Thought")
+                                    elif action == "replace" and len(path) == 6 and \
+                                         path[0] == "value" and path[2] == "content" and \
+                                         path[3] == 0 and path[4] == "options" and path[5] == "status": # path[3]==0 ensures it's the tool block
+                                        if value == "done": # Tool block processing is complete
+                                            if is_thinking_tag_open:
+                                                delta = ChoiceDelta(content="</think>\n\n", role="assistant")
+                                                yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+                                                is_thinking_tag_open = False
+                                        continue # This operation itself doesn't yield visible content
+
+                                    # Yielding logic
+                                    if is_current_op_tool and content_to_yield:
+                                        if not is_thinking_tag_open:
+                                            delta = ChoiceDelta(content="<think>", role="assistant")
+                                            yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+                                            is_thinking_tag_open = True
+                                        
+                                        delta = ChoiceDelta(content=content_to_yield, role="assistant")
+                                        yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+
+                                    elif is_current_op_text and content_to_yield:
+                                        if is_thinking_tag_open: # If text starts, close any open thinking tag
+                                            delta = ChoiceDelta(content="</think>", role="assistant")
+                                            yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+                                            is_thinking_tag_open = False
+                                        
+                                        delta = ChoiceDelta(content=content_to_yield, role="assistant")
+                                        yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+
                         if json_data.get('msg') == 'process_completed':
+                            if is_thinking_tag_open: # Ensure </think> is yielded if process completes mid-thought
+                                delta = ChoiceDelta(content="</think>", role="assistant")
+                                yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+                                is_thinking_tag_open = False
                             break
                     except json.JSONDecodeError:
                         continue
                     except Exception as e:
                         # Log or handle other potential exceptions
                         continue
-
-    def _extract_content(self, json_data):
-        # Extracts the text content from the Qwen Qwen-3 streaming response
-        try:
-            if 'output' in json_data and 'data' in json_data['output'] and len(json_data['output']['data']) > 5:
-                updates = json_data['output']['data'][5]
-                for update in updates:
-                    if isinstance(update, list) and len(update) > 2 and isinstance(update[2], str):
-                        return update[2]
-        except Exception:
-            pass
-        return None
+        
+        # After the loop, ensure the tag is closed if the stream broke for reasons other than 'process_completed'
+        if is_thinking_tag_open:
+            delta = ChoiceDelta(content="</think>", role="assistant")
+            yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
 
     def _create_non_stream(
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
@@ -185,7 +187,14 @@ class Completions(BaseCompletions):
             output = data.get('output', {}).get('data', ["", "", "", "", "", [["", "", ""]]])[5][0][2]
         message = ChatCompletionMessage(role="assistant", content=output)
         choice = Choice(index=0, message=message, finish_reason="stop")
-        usage = CompletionUsage(prompt_tokens=0, completion_tokens=len(output), total_tokens=len(output))
+        # Use count_tokens to compute usage
+        prompt_tokens = count_tokens([m.get('content', '') for m in payload['data'] if isinstance(m, dict) and 'content' in m or isinstance(m, str)])
+        completion_tokens = count_tokens(output)
+        usage = CompletionUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens
+        )
         completion = ChatCompletion(
             id=request_id,
             choices=[choice],
@@ -196,10 +205,10 @@ class Completions(BaseCompletions):
         return completion
 
 class Chat(BaseChat):
-    def __init__(self, client: 'QwenQwen3'):
+    def __init__(self, client: 'Qwen3'):
         self.completions = Completions(client)
 
-class QwenQwen3(OpenAICompatibleProvider):
+class Qwen3(OpenAICompatibleProvider):
     url = "https://qwen-qwen3-demo.hf.space"
     api_endpoint = "https://qwen-qwen3-demo.hf.space/gradio_api/queue/join?__theme=system"
     AVAILABLE_MODELS = [
@@ -260,7 +269,8 @@ class QwenQwen3(OpenAICompatibleProvider):
         return _ModelList()
 
 if __name__ == "__main__":
-    client = QwenQwen3()
+    client = Qwen3()
+    from rich import print
     resp = client.chat.completions.create(
         model="qwen3-14b",
         messages=[
@@ -270,4 +280,4 @@ if __name__ == "__main__":
         stream=True
     )
     for chunk in resp:
-        print(chunk.choices[0].delta.content, end="", flush=True)
+        print(chunk, end="", flush=True)

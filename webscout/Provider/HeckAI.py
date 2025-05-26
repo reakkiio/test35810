@@ -37,7 +37,7 @@ class HeckAI(Provider):
     """
 
     AVAILABLE_MODELS = [
-        "google/gemini-2.0-flash-001",
+        "google/gemini-2.5-flash-preview",
         "deepseek/deepseek-chat",
         "deepseek/deepseek-r1",
         "openai/gpt-4o-mini",

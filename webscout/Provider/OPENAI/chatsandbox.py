@@ -33,6 +33,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -70,13 +72,15 @@ class Completions(BaseCompletions):
         }
         session = requests.Session()
         session.headers.update(headers)
+        session.proxies = proxies if proxies is not None else {}
+        
         def for_stream():
             try:
                 response = session.post(
                     url,
                     json=payload,
                     stream=True,
-                    timeout=30
+                    timeout=timeout if timeout is not None else 30
                 )
                 response.raise_for_status()
                 streaming_text = ""
@@ -116,7 +120,7 @@ class Completions(BaseCompletions):
                 response = session.post(
                     url,
                     json=payload,
-                    timeout=30
+                    timeout=timeout if timeout is not None else 30
                 )
                 response.raise_for_status()
                 text = response.text

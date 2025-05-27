@@ -49,6 +49,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -88,14 +90,21 @@ class Completions(BaseCompletions):
 
         # Pass the formatted conversation prompt
         if stream:
-            return self._create_stream(request_id, created_time, model, conversation_id, conversation_prompt, system_prompt)
+            return self._create_stream(request_id, created_time, model, conversation_id, conversation_prompt, system_prompt, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, conversation_id, conversation_prompt, system_prompt)
+            return self._create_non_stream(request_id, created_time, model, conversation_id, conversation_prompt, system_prompt, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, conversation_id: str, prompt: str, system_prompt: str
+        self, request_id: str, created_time: int, model: str, conversation_id: str, prompt: str, system_prompt: str,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
+            timeout_val = timeout if timeout is not None else self._client.timeout
             message_id = self._client._conversation_data[model]["messageId"]
             url = f"{self._client.url}/api/chat/message"
             payload = {
@@ -117,7 +126,7 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout_val
             )
             response.raise_for_status()
 
@@ -160,11 +169,20 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"Error during C4AI stream request: {e}")
             raise IOError(f"C4AI request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, conversation_id: str, prompt: str, system_prompt: str
+        self, request_id: str, created_time: int, model: str, conversation_id: str, prompt: str, system_prompt: str,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
+            timeout_val = timeout if timeout is not None else self._client.timeout
             message_id = self._client._conversation_data[model]["messageId"]
             url = f"{self._client.url}/api/chat/message"
             payload = {
@@ -185,7 +203,7 @@ class Completions(BaseCompletions):
                 url,
                 headers=self._client.headers,
                 json=payload,
-                timeout=self._client.timeout
+                timeout=timeout_val
             )
             response.raise_for_status()
 
@@ -213,6 +231,8 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"Error during C4AI non-stream request: {e}")
             raise IOError(f"C4AI request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
 class Chat(BaseChat):
     def __init__(self, client: 'C4AI'):
@@ -242,19 +262,18 @@ class C4AI(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: Optional[int] = None,
         browser: str = "chrome"
     ):
         """
         Initialize the C4AI client.
 
         Args:
-            timeout: Request timeout in seconds.
             browser: Browser name for LitAgent to generate User-Agent.
         """
-        self.timeout = timeout
+        self.timeout = 30
         self.url = "https://cohereforai-c4ai-command.hf.space"
         self.session = requests.Session()
+        self.session.proxies = {}
         self.max_tokens_to_sample = 2000
 
         agent = LitAgent()

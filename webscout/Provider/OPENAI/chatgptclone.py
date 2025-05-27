@@ -46,6 +46,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -75,21 +77,28 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_non_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
+            timeout_val = timeout if timeout is not None else self._client.timeout
             response = self._client.session.post(
                 f"{self._client.url}/api/chat",
                 headers=self._client.headers,
                 cookies=self._client.cookies,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout_val
             )
 
             # Handle non-200 responses
@@ -104,7 +113,7 @@ class Completions(BaseCompletions):
                         cookies=self._client.cookies,
                         json=payload,
                         stream=True,
-                        timeout=self._client.timeout
+                        timeout=timeout_val
                     )
                     if not response.ok:
                         raise IOError(
@@ -230,11 +239,20 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"Error during ChatGPTClone stream request: {e}")
             raise IOError(f"ChatGPTClone request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
+            timeout_val = timeout if timeout is not None else self._client.timeout
             # For non-streaming, we still use streaming internally to collect the full response
             response = self._client.session.post(
                 f"{self._client.url}/api/chat",
@@ -242,7 +260,7 @@ class Completions(BaseCompletions):
                 cookies=self._client.cookies,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout_val
             )
 
             # Handle non-200 responses
@@ -257,7 +275,7 @@ class Completions(BaseCompletions):
                         cookies=self._client.cookies,
                         json=payload,
                         stream=True,
-                        timeout=self._client.timeout
+                        timeout=timeout_val
                     )
                     if not response.ok:
                         raise IOError(
@@ -330,6 +348,8 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"Error during ChatGPTClone non-stream request: {e}")
             raise IOError(f"ChatGPTClone request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
 class Chat(BaseChat):
     def __init__(self, client: 'ChatGPTClone'):
@@ -352,7 +372,6 @@ class ChatGPTClone(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: Optional[int] = None,
         browser: str = "chrome",
         impersonate: str = "chrome120"
     ):
@@ -360,16 +379,16 @@ class ChatGPTClone(OpenAICompatibleProvider):
         Initialize the ChatGPTClone client.
 
         Args:
-            timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent (for LitAgent fallback)
             impersonate: Browser impersonation for curl_cffi (default: chrome120)
         """
-        self.timeout = timeout
+        self.timeout = 30
         self.temperature = 0.6  # Default temperature
         self.top_p = 0.7  # Default top_p
 
         # Use curl_cffi for Cloudflare bypass and browser impersonation
-        self.session = Session(impersonate=impersonate, timeout=timeout)
+        self.session = Session(impersonate=impersonate)
+        self.session.proxies = {}
 
         # Use LitAgent for fingerprint if available, else fallback
         agent = LitAgent()
@@ -405,7 +424,7 @@ class ChatGPTClone(OpenAICompatibleProvider):
         browser = browser or self.fingerprint.get("browser_type", "chrome")
         impersonate = impersonate or "chrome120"
         self.fingerprint = LitAgent().generate_fingerprint(browser)
-        self.session = Session(impersonate=impersonate, timeout=self.timeout)
+        self.session = Session(impersonate=impersonate)
         # Update headers with new fingerprint
         self.headers.update({
             "Accept": self.fingerprint["accept"],

@@ -332,6 +332,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -362,6 +364,8 @@ class Completions(BaseCompletions):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                timeout=timeout,
+                proxies=proxies,
                 **kwargs
             )
         
@@ -372,6 +376,8 @@ class Completions(BaseCompletions):
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            timeout=timeout,
+            proxies=proxies,
             **kwargs
         )
 
@@ -383,6 +389,8 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Implementation for streaming chat completions."""
@@ -448,6 +456,8 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
@@ -531,20 +541,11 @@ class ChatGPT(OpenAICompatibleProvider):
     ]
 
     def __init__(
-        self,
-        timeout: int = 60,
-        proxies: dict = {}
+        self
     ):
         """
         Initialize the ChatGPT client.
-
-        Args:
-            timeout: Request timeout in seconds
-            proxies: Optional proxy configuration
         """
-        self.timeout = timeout
-        self.proxies = proxies
-        
         # Initialize chat interface
         self.chat = Chat(self)
 

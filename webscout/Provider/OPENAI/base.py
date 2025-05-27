@@ -78,6 +78,8 @@ class BaseCompletions(ABC):
         top_p: Optional[float] = None,
         tools: Optional[List[Union[Tool, Dict[str, Any]]]] = None,  # Support for tool definitions
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,  # Support for tool_choice parameter
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """

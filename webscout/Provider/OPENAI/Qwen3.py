@@ -25,6 +25,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         payload = {
@@ -47,24 +49,31 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_non_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
-        session = self._client.session
-        headers = self._client.headers
-        # Step 1: Join the queue
-        join_resp = session.post(self._client.api_endpoint, headers=headers, json=payload, timeout=self._client.timeout)
+        original_proxies = self._client.session.proxies.copy()
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
+        try:
+            session = self._client.session
+            headers = self._client.headers
+            # Step 1: Join the queue
+            join_resp = session.post(self._client.api_endpoint, headers=headers, json=payload, timeout=timeout if timeout is not None else self._client.timeout)
         join_resp.raise_for_status()
         event_id = join_resp.json().get('event_id')
         session_hash = payload["session_hash"]
 
         # Step 2: Stream data
         params = {'session_hash': session_hash}
-        stream_resp = session.get(self._client.url + "/gradio_api/queue/data", headers=self._client.stream_headers, params=params, stream=True, timeout=self._client.timeout)
+        stream_resp = session.get(self._client.url + "/gradio_api/queue/data", headers=self._client.stream_headers, params=params, stream=True, timeout=timeout if timeout is not None else self._client.timeout)
         stream_resp.raise_for_status()
 
         # --- New logic to yield all content, tool reasoning, and status, similar to Reasoning class ---
@@ -154,14 +163,23 @@ class Completions(BaseCompletions):
         if is_thinking_tag_open:
             delta = ChoiceDelta(content="</think>", role="assistant")
             yield ChatCompletionChunk(id=request_id, choices=[Choice(index=0, delta=delta)], created=created_time, model=model)
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
-        # For non-streaming, just call the join endpoint and parse the result
-        session = self._client.session
-        headers = self._client.headers
-        resp = session.post(self._client.api_endpoint, headers=headers, json=payload, timeout=self._client.timeout)
+        original_proxies = self._client.session.proxies.copy()
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
+        try:
+            # For non-streaming, just call the join endpoint and parse the result
+            session = self._client.session
+            headers = self._client.headers
+            resp = session.post(self._client.api_endpoint, headers=headers, json=payload, timeout=timeout if timeout is not None else self._client.timeout)
         resp.raise_for_status()
         data = resp.json()
         # Return the full content as a single message, including all tool and text reasoning if present
@@ -203,6 +221,8 @@ class Completions(BaseCompletions):
             usage=usage,
         )
         return completion
+        finally:
+            self._client.session.proxies = original_proxies
 
 class Chat(BaseChat):
     def __init__(self, client: 'Qwen3'):
@@ -231,9 +251,10 @@ class Qwen3(OpenAICompatibleProvider):
         "qwen-3-0.6b": "qwen3-0.6b"
     }
 
-    def __init__(self, timeout: Optional[int] = None):
-        self.timeout = timeout
+    def __init__(self):
+        self.timeout = 30
         self.session = requests.Session()
+        self.session.proxies = {}
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0',
             'Accept': '*/*',

@@ -31,6 +31,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -68,7 +70,9 @@ class Completions(BaseCompletions):
                 request_id=request_id,
                 created_time=created_time,
                 model=model,
-                payload=payload
+                payload=payload,
+                timeout=timeout,
+                proxies=proxies
             )
         
         # Otherwise use non-streaming implementation
@@ -76,7 +80,9 @@ class Completions(BaseCompletions):
             request_id=request_id,
             created_time=created_time,
             model=model,
-            payload=payload
+            payload=payload,
+            timeout=timeout,
+            proxies=proxies
         )
     
     def _create_streaming(
@@ -85,9 +91,14 @@ class Completions(BaseCompletions):
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Implementation for streaming chat completions."""
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
         try:
             response = self._client.session.post(
                 self._client.chat_endpoint,
@@ -95,7 +106,7 @@ class Completions(BaseCompletions):
                 cookies=self._client.cookies,
                 data=json.dumps(payload),
                 stream=True,
-                timeout=self._client.timeout,
+                timeout=timeout if timeout is not None else self._client.timeout,
                 impersonate="chrome120"
             )
             response.raise_for_status()
@@ -152,6 +163,9 @@ class Completions(BaseCompletions):
             raise IOError(f"Cloudflare streaming request failed (CurlError): {e}") from e
         except Exception as e:
             raise IOError(f"Cloudflare streaming request failed: {e}") from e
+        finally:
+            if proxies is not None:
+                self._client.session.proxies = original_proxies
     
     def _create_non_streaming(
         self,
@@ -159,9 +173,14 @@ class Completions(BaseCompletions):
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
         try:
             response = self._client.session.post(
                 self._client.chat_endpoint,
@@ -169,7 +188,7 @@ class Completions(BaseCompletions):
                 cookies=self._client.cookies,
                 data=json.dumps(payload),
                 stream=True,  # Still use streaming API but collect all chunks
-                timeout=self._client.timeout,
+                timeout=timeout if timeout is not None else self._client.timeout,
                 impersonate="chrome120"
             )
             response.raise_for_status()
@@ -226,6 +245,9 @@ class Completions(BaseCompletions):
             raise IOError(f"Cloudflare request failed (CurlError): {e}") from e
         except Exception as e:
             raise IOError(f"Cloudflare request failed: {e}") from e
+        finally:
+            if proxies is not None:
+                self._client.session.proxies = original_proxies
     
     @staticmethod
     def _cloudflare_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
@@ -315,23 +337,19 @@ class Cloudflare(OpenAICompatibleProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,  # Not used but included for compatibility
-        timeout: int = 30,
-        proxies: dict = {},
     ):
         """
         Initialize the Cloudflare client.
         
         Args:
             api_key: Not used but included for compatibility with OpenAI interface
-            timeout: Request timeout in seconds
-            proxies: Optional proxy configuration
         """
-        self.timeout = timeout
-        self.proxies = proxies
+        self.timeout = 30
         self.chat_endpoint = "https://playground.ai.cloudflare.com/api/inference"
         
         # Initialize session
         self.session = Session()
+        self.session.proxies = {}
         
         # Set headers
         self.headers = {
@@ -358,9 +376,8 @@ class Cloudflare(OpenAICompatibleProvider):
             '__cf_bm': uuid4().hex,
         }
         
-        # Apply headers and proxies to session
+        # Apply headers to session
         self.session.headers.update(self.headers)
-        self.session.proxies = proxies
         
         # Initialize chat interface
         self.chat = Chat(self)

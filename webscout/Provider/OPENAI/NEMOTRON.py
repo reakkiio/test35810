@@ -34,6 +34,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> ChatCompletion:
         nemotron_model_name = self._client.convert_model_name(model)
@@ -48,13 +50,14 @@ class Completions(BaseCompletions):
         request_id = f"chatcmpl-{uuid.uuid4()}"
         created_time = int(time.time())
         # Always use non-stream mode, ignore 'stream' argument
-        return self._create_non_stream(request_id, created_time, model, payload)
+        return self._create_non_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model_name: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model_name: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
-            response_generator = self._client._internal_make_request(payload, stream=True)
+            response_generator = self._client._internal_make_request(payload, stream=True, request_timeout=timeout, request_proxies=proxies)
             for text_chunk in response_generator:
                 if text_chunk:
                     delta = ChoiceDelta(content=text_chunk, role="assistant")
@@ -79,11 +82,12 @@ class Completions(BaseCompletions):
             raise IOError(f"NEMOTRON request failed: {e}") from e
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model_name: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model_name: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
         full_response_content = ""
         try:
-            response_generator = self._client._internal_make_request(payload, stream=False)
+            response_generator = self._client._internal_make_request(payload, stream=False, request_timeout=timeout, request_proxies=proxies)
             full_response_content = next(response_generator, "")
         except Exception as e:
             pass
@@ -117,12 +121,11 @@ class NEMOTRON(OpenAICompatibleProvider):
     
     API_BASE_URL = "https://nemotron.one/api/chat"
     def __init__(
-        self,
-        timeout: int = 30,
-        proxies: dict = {}
+        self
     ):
         self.session = requests.Session()
-        self.timeout = timeout
+        self.timeout = 30
+        self.session.proxies = {}
         agent = LitAgent()
         user_agent = agent.random()
         self.base_headers = {
@@ -137,8 +140,6 @@ class NEMOTRON(OpenAICompatibleProvider):
             "user-agent": user_agent
         }
         self.session.headers.update(self.base_headers)
-        if proxies:
-            self.session.proxies.update(proxies)
         self.chat = Chat(self)
 
     def _generate_random_email(self) -> str:
@@ -193,10 +194,19 @@ class NEMOTRON(OpenAICompatibleProvider):
     def _internal_make_request(
         self,
         payload: Dict[str, Any],
-        stream: bool = False
+        stream: bool = False,
+        request_timeout: Optional[int] = None,
+        request_proxies: Optional[dict] = None
     ) -> Generator[str, None, None]:
         request_headers = self.base_headers.copy()
         request_headers["referer"] = f"https://nemotron.one/chat/{payload['model']}"
+        original_proxies = self.session.proxies.copy()
+        if request_proxies is not None:
+            self.session.proxies.update(request_proxies)
+        elif not self.session.proxies:
+            pass
+        else:
+            self.session.proxies = {}
         try:
             if stream:
                 with self.session.post(
@@ -204,7 +214,7 @@ class NEMOTRON(OpenAICompatibleProvider):
                     headers=request_headers,
                     json=payload,
                     stream=True,
-                    timeout=self.timeout
+                    timeout=request_timeout if request_timeout is not None else self.timeout
                 ) as response:
                     response.raise_for_status()
                     yield from sanitize_stream(
@@ -216,7 +226,7 @@ class NEMOTRON(OpenAICompatibleProvider):
                     self.API_BASE_URL,
                     headers=request_headers,
                     json=payload,
-                    timeout=self.timeout
+                    timeout=request_timeout if request_timeout is not None else self.timeout
                 )
                 response.raise_for_status()
                 yield response.text
@@ -224,6 +234,8 @@ class NEMOTRON(OpenAICompatibleProvider):
             raise exceptions.ProviderConnectionError(f"NEMOTRON API Connection error: {str(e)}")
         except Exception as e:
             raise RuntimeError(f"NEMOTRON API request unexpected error: {str(e)}")
+        finally:
+            self.session.proxies = original_proxies
     @property
     def models(self):
         class _ModelList:

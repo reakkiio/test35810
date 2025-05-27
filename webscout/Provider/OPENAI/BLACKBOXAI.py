@@ -52,6 +52,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -117,7 +119,9 @@ class Completions(BaseCompletions):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
-                media=media
+                media=media,
+                timeout=timeout,
+                proxies=proxies
             )
 
         # Use non-streaming implementation
@@ -130,7 +134,9 @@ class Completions(BaseCompletions):
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
-            media=media
+            media=media,
+            timeout=timeout,
+            proxies=proxies
         )
 
 
@@ -145,9 +151,14 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
-        media: List = None
+        media: List = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
         try:
             # Prepare user messages for BlackboxAI API format
             blackbox_messages = []
@@ -197,7 +208,7 @@ class Completions(BaseCompletions):
                 json=payload,
                 headers=self._client.headers,
                 cookies=self._client.cookies,
-                timeout=self._client.timeout
+                timeout=timeout if timeout is not None else self._client.timeout
             )
 
             # Process the response
@@ -261,6 +272,9 @@ class Completions(BaseCompletions):
 
         except Exception as e:
             raise IOError(f"BlackboxAI request failed: {str(e)}") from e
+        finally:
+            if proxies is not None:
+                self._client.session.proxies = original_proxies
 
     def _create_streaming(
         self,
@@ -273,9 +287,15 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
-        media: List = None
+        media: List = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None
     ):
         """Implementation for streaming chat completions (OpenAI-compatible chunks)."""
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        try:
         # Prepare user messages for BlackboxAI API format
         blackbox_messages = []
         for i, msg in enumerate(messages):
@@ -313,51 +333,54 @@ class Completions(BaseCompletions):
             model=model
         )
         # Make the API request with cookies, stream=True
-        response = self._client.session.post(
-            self._client.api_endpoint,
-            json=payload,
-            headers=self._client.headers,
-            cookies=self._client.cookies,
-            stream=True,
-            timeout=self._client.timeout
-        )
-        # Blackbox streams as raw text, no line breaks, so chunk manually
-        buffer = ""
-        chunk_size = 32  # Tune as needed for smoothness
-        from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
-        for chunk in response.iter_content(chunk_size=chunk_size):
-            if not chunk:
-                continue
-            text = chunk.decode(errors="ignore")
-            buffer += text
-            # Yield in small pieces, but only non-empty
-            while len(buffer) >= chunk_size:
-                out = buffer[:chunk_size]
-                buffer = buffer[chunk_size:]
-                if out.strip():
-                    # Wrap the chunk in OpenAI-compatible structure
-                    delta = ChoiceDelta(content=out, role="assistant")
-                    choice = Choice(index=0, delta=delta, finish_reason=None)
-                    chunk_obj = ChatCompletionChunk(
-                        id=request_id,
-                        choices=[choice],
-                        created=created_time,
-                        model=model,
-                        system_fingerprint=None
-                    )
-                    yield chunk_obj
-        # Yield any remaining buffer
-        if buffer.strip():
-            delta = ChoiceDelta(content=buffer, role="assistant")
-            choice = Choice(index=0, delta=delta, finish_reason=None)
-            chunk_obj = ChatCompletionChunk(
-                id=request_id,
-                choices=[choice],
-                created=created_time,
-                model=model,
-                system_fingerprint=None
+            response = self._client.session.post(
+                self._client.api_endpoint,
+                json=payload,
+                headers=self._client.headers,
+                cookies=self._client.cookies,
+                stream=True,
+                timeout=timeout if timeout is not None else self._client.timeout
             )
-            yield chunk_obj
+            # Blackbox streams as raw text, no line breaks, so chunk manually
+            buffer = ""
+            chunk_size = 32  # Tune as needed for smoothness
+            from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                text = chunk.decode(errors="ignore")
+                buffer += text
+                # Yield in small pieces, but only non-empty
+                while len(buffer) >= chunk_size:
+                    out = buffer[:chunk_size]
+                    buffer = buffer[chunk_size:]
+                    if out.strip():
+                        # Wrap the chunk in OpenAI-compatible structure
+                        delta = ChoiceDelta(content=out, role="assistant")
+                        choice = Choice(index=0, delta=delta, finish_reason=None)
+                        chunk_obj = ChatCompletionChunk(
+                            id=request_id,
+                            choices=[choice],
+                            created=created_time,
+                            model=model,
+                            system_fingerprint=None
+                        )
+                        yield chunk_obj
+            # Yield any remaining buffer
+            if buffer.strip():
+                delta = ChoiceDelta(content=buffer, role="assistant")
+                choice = Choice(index=0, delta=delta, finish_reason=None)
+                chunk_obj = ChatCompletionChunk(
+                    id=request_id,
+                    choices=[choice],
+                    created=created_time,
+                    model=model,
+                    system_fingerprint=None
+                )
+                yield chunk_obj
+        finally:
+            if proxies is not None:
+                self._client.session.proxies = original_proxies
 
 
 class Chat(BaseChat):
@@ -567,17 +590,14 @@ class BLACKBOXAI(OpenAICompatibleProvider):
 
 
     def __init__(
-        self,
-        proxies: dict = {}
+        self
     ):
         """
         Initialize the BlackboxAI provider with OpenAI compatibility.
-
-        Args:
-            proxies: Optional proxy configuration
         """
         # Initialize session
         self.session = requests.Session()
+        self.session.proxies = {}
 
         # Set headers based on GitHub reference
         self.headers = {
@@ -603,9 +623,6 @@ class BLACKBOXAI(OpenAICompatibleProvider):
             'cfz_amplitude': self.generate_id(32),
             '__cf_bm': self.generate_id(32),
         }
-
-        # Set proxies if provided
-        self.session.proxies = proxies
 
         # Initialize chat interface with completions
         self.chat = Chat(self)

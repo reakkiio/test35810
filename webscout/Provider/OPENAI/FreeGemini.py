@@ -44,6 +44,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -69,20 +71,27 @@ class Completions(BaseCompletions):
         }
         
         if stream:
-            return self._create_stream(request_id, created_time, model, api_payload)
+            return self._create_stream(request_id, created_time, model, api_payload, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, api_payload)
+            return self._create_non_stream(request_id, created_time, model, api_payload, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            # Ensure session proxies are reset if no specific proxies are passed for this call
+            self._client.session.proxies = {}
         try:
             response = self._client.session.post(
                 self._client.api_endpoint,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout,
-                impersonate="chrome120" 
+                timeout=timeout if timeout is not None else self._client.timeout,
+                impersonate="chrome120"
             )
             response.raise_for_status()
 
@@ -127,18 +136,26 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"{RED}Error during FreeGemini stream request: {e}{RESET}")
             raise IOError(f"FreeGemini stream request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
             # For non-streaming, we'll still use streaming since the API returns data in chunks
             response = self._client.session.post(
                 self._client.api_endpoint,
                 json=payload,
                 stream=True,  # API always returns streaming format
-                timeout=self._client.timeout,
-                impersonate="chrome120" 
+                timeout=timeout if timeout is not None else self._client.timeout,
+                impersonate="chrome120"
             )
             response.raise_for_status()
             
@@ -197,6 +214,8 @@ class Completions(BaseCompletions):
         except Exception as e:
             print(f"{RED}Error during FreeGemini non-stream request: {e}{RESET}")
             raise IOError(f"FreeGemini request failed: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     @staticmethod
     def _gemini_extractor(data: Dict) -> Optional[str]:
@@ -234,20 +253,17 @@ class FreeGemini(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: int = 30,
     ):
         """
         Initialize the FreeGemini client.
-
-        Args:
-            timeout: Request timeout in seconds
         """
-        self.timeout = timeout
+        self.timeout = 30
         # Update the API endpoint to match the working implementation
         self.api_endpoint = "https://free-gemini.vercel.app/api/google/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"
         
         # Initialize session with curl_cffi for better Cloudflare handling
         self.session = Session()
+        self.session.proxies = {}
         
         # Use LitAgent for fingerprinting
         self.agent = LitAgent()

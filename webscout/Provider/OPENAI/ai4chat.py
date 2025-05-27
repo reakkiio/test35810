@@ -26,6 +26,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -48,18 +50,19 @@ class Completions(BaseCompletions):
 
         # AI4Chat doesn't support streaming, so we'll simulate it if requested
         if stream:
-            return self._create_stream(request_id, created_time, model, conversation_prompt, country_param, user_id_param)
+            return self._create_stream(request_id, created_time, model, conversation_prompt, country_param, user_id_param, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, conversation_prompt, country_param, user_id_param)
+            return self._create_non_stream(request_id, created_time, model, conversation_prompt, country_param, user_id_param, timeout=timeout, proxies=proxies)
 
     def _create_stream(
         self, request_id: str, created_time: int, model: str,
-        conversation_prompt: str, country: str, user_id: str
+        conversation_prompt: str, country: str, user_id: str,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Simulate streaming by breaking up the full response into fixed-size character chunks."""
         try:
             # Get the full response first
-            full_response = self._get_ai4chat_response(conversation_prompt, country, user_id)
+            full_response = self._get_ai4chat_response(conversation_prompt, country, user_id, timeout=timeout, proxies=proxies)
 
             # Track token usage
             prompt_tokens = count_tokens(conversation_prompt)
@@ -133,12 +136,13 @@ class Completions(BaseCompletions):
 
     def _create_non_stream(
         self, request_id: str, created_time: int, model: str,
-        conversation_prompt: str, country: str, user_id: str
+        conversation_prompt: str, country: str, user_id: str,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
         """Get a complete response from AI4Chat."""
         try:
             # Get the full response
-            full_response = self._get_ai4chat_response(conversation_prompt, country, user_id)
+            full_response = self._get_ai4chat_response(conversation_prompt, country, user_id, timeout=timeout, proxies=proxies)
 
             # Estimate token counts
             prompt_tokens = count_tokens(conversation_prompt)
@@ -183,22 +187,31 @@ class Completions(BaseCompletions):
             print(f"Unexpected error during AI4Chat non-stream request: {e}")
             raise IOError(f"AI4Chat request failed: {e}") from e
 
-    def _get_ai4chat_response(self, prompt: str, country: str, user_id: str) -> str:
+    def _get_ai4chat_response(self, prompt: str, country: str, user_id: str,
+                               timeout: Optional[int] = None, proxies: Optional[dict] = None) -> str:
         """Make the actual API request to AI4Chat."""
-        # URL encode parameters
-        encoded_text = urllib.parse.quote(prompt)
-        encoded_country = urllib.parse.quote(country)
-        encoded_user_id = urllib.parse.quote(user_id)
-
-        # Construct the API URL
-        url = f"{self._client.api_endpoint}?text={encoded_text}&country={encoded_country}&user_id={encoded_user_id}"
-
-        # Make the request
+        timeout_val = timeout if timeout is not None else self._client.timeout
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        
         try:
-            response = self._client.session.get(url, headers=self._client.headers, timeout=self._client.timeout)
+            # URL encode parameters
+            encoded_text = urllib.parse.quote(prompt)
+            encoded_country = urllib.parse.quote(country)
+            encoded_user_id = urllib.parse.quote(user_id)
+
+            # Construct the API URL
+            url = f"{self._client.api_endpoint}?text={encoded_text}&country={encoded_country}&user_id={encoded_user_id}"
+
+            # Make the request
+            response = self._client.session.get(url, headers=self._client.headers, timeout=timeout_val)
             response.raise_for_status()
         except RequestsError as e:
             raise IOError(f"Failed to generate response: {e}")
+        finally:
+            if proxies is not None:
+                self._client.session.proxies = original_proxies
 
         # Process the response text
         response_text = response.text
@@ -235,8 +248,6 @@ class AI4Chat(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: int = 30,
-        proxies: dict = {},
         system_prompt: str = "You are a helpful and informative AI assistant.",
         country: str = "Asia",
         user_id: str = "usersmjb2oaz7y"
@@ -245,14 +256,11 @@ class AI4Chat(OpenAICompatibleProvider):
         Initialize the AI4Chat client.
 
         Args:
-            timeout: Request timeout in seconds
-            proxies: Optional proxy configuration
             system_prompt: System prompt to guide the AI's behavior
             country: Country parameter for API
             user_id: User ID for API
         """
-        self.timeout = timeout
-        self.proxies = proxies
+        self.timeout = 30
         self.system_prompt = system_prompt
         self.country = country
         self.user_id = user_id
@@ -261,7 +269,9 @@ class AI4Chat(OpenAICompatibleProvider):
         self.api_endpoint = "https://yw85opafq6.execute-api.us-east-1.amazonaws.com/default/boss_mode_15aug"
 
         # Initialize session
-        self.session = Session(timeout=timeout, proxies=proxies)
+        self.session = Session()
+        self.session.proxies = {}
+        # self.session.timeout = self.timeout # Timeout is per-request for curl_cffi
 
         # Set headers
         self.headers = {

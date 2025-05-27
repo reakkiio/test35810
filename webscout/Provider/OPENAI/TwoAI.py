@@ -39,6 +39,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """Create a chat completion using TwoAI."""
@@ -59,19 +61,25 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
-        return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
+        return self._create_non_stream(request_id, created_time, model, payload, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
+        original_proxies = self._client.session.proxies.copy()
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {} # Reset if no specific proxies for this call
         try:
             response = self._client.session.post(
                 self._client.base_url,
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout,
+                timeout=timeout if timeout is not None else self._client.timeout,
             )
             response.raise_for_status()
 
@@ -129,18 +137,24 @@ class Completions(BaseCompletions):
                 yield chunk
         except Exception as e:
             raise IOError(f"TwoAI request failed: {e}") from e
-        except Exception as e:
-            raise IOError(f"Error processing TwoAI stream: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
+        original_proxies = self._client.session.proxies.copy()
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
             response = self._client.session.post(
                 self._client.base_url,
                 headers=self._client.headers,
                 json=payload,
-                timeout=self._client.timeout,
+                timeout=timeout if timeout is not None else self._client.timeout,
             )
             response.raise_for_status()
             data = response.json()
@@ -179,8 +193,8 @@ class Completions(BaseCompletions):
             return completion
         except Exception as e:
             raise IOError(f"TwoAI request failed: {e}") from e
-        except Exception as e:
-            raise IOError(f"Error processing TwoAI response: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
 
 class Chat(BaseChat):
@@ -285,12 +299,13 @@ class TwoAI(OpenAICompatibleProvider):
             raise RuntimeError("Failed to get API key from confirmation email")
         return api_key
 
-    def __init__(self, timeout: Optional[int] = None, browser: str = "chrome"):
+    def __init__(self, browser: str = "chrome"):
         api_key = self.generate_api_key()
-        self.timeout = timeout
+        self.timeout = 30
         self.base_url = "https://api.two.ai/v2/chat/completions"
         self.api_key = api_key
         self.session = Session()
+        self.session.proxies = {}
 
         headers: Dict[str, str] = {
             "Content-Type": "application/json",

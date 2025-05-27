@@ -33,6 +33,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -49,17 +51,24 @@ class Completions(BaseCompletions):
         image = kwargs.get("image")
 
         if stream:
-            return self._create_stream(request_id, created_time, model, formatted_prompt, image)
+            return self._create_stream(request_id, created_time, model, formatted_prompt, image, timeout=timeout, proxies=proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, formatted_prompt, image)
+            return self._create_non_stream(request_id, created_time, model, formatted_prompt, image, timeout=timeout, proxies=proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, prompt_text: str, image: Optional[bytes] = None
+        self, request_id: str, created_time: int, model: str, prompt_text: str, image: Optional[bytes] = None,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
+        original_proxies = self._client.session.proxies
+        if proxies is not None:
+            self._client.session.proxies = proxies
+        else:
+            self._client.session.proxies = {}
         try:
+            timeout_val = timeout if timeout is not None else self._client.timeout
             s = self._client.session
             # Create a new conversation if needed
-            r = s.post(self._client.conversation_url)
+            r = s.post(self._client.conversation_url, timeout=timeout_val)
             if r.status_code != 200:
                 raise RuntimeError(f"Failed to create conversation: {r.text}")
             conv_id = r.json().get("id")
@@ -70,13 +79,15 @@ class Completions(BaseCompletions):
                 r = s.post(
                     f"{self._client.url}/c/api/attachments",
                     headers={"content-type": "image/jpeg"},
-                    data=image
+                    data=image,
+                    timeout=timeout_val
                 )
                 if r.status_code != 200:
                     raise RuntimeError(f"Image upload failed: {r.text}")
                 images.append({"type": "image", "url": r.json().get("url")})
 
             # Connect to websocket
+            # Note: ws_connect might not use timeout in the same way as POST/GET
             ws = s.ws_connect(self._client.websocket_url)
 
             # Use model to set mode ("reasoning" for Think Deeper)
@@ -165,12 +176,16 @@ class Completions(BaseCompletions):
 
         except Exception as e:
             raise RuntimeError(f"Stream error: {e}") from e
+        finally:
+            self._client.session.proxies = original_proxies
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, prompt_text: str, image: Optional[bytes] = None
+        self, request_id: str, created_time: int, model: str, prompt_text: str, image: Optional[bytes] = None,
+        timeout: Optional[int] = None, proxies: Optional[dict] = None
     ) -> ChatCompletion:
         result = ""
-        for chunk in self._create_stream(request_id, created_time, model, prompt_text, image):
+        # Pass timeout and proxies to the underlying _create_stream call
+        for chunk in self._create_stream(request_id, created_time, model, prompt_text, image, timeout=timeout, proxies=proxies):
             if hasattr(chunk, 'choices') and chunk.choices and hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta.content:
                 result += chunk.choices[0].delta.content
 
@@ -222,9 +237,10 @@ class Copilot(OpenAICompatibleProvider):
     
     AVAILABLE_MODELS = ["Copilot", "Think Deeper"]
 
-    def __init__(self, timeout: int = 900, browser: str = "chrome", tools: Optional[List] = None, **kwargs):
-        self.timeout = timeout
-        self.session = Session(timeout=timeout, impersonate=browser)
+    def __init__(self, browser: str = "chrome", tools: Optional[List] = None, **kwargs):
+        self.timeout = 900
+        self.session = Session(impersonate=browser)
+        self.session.proxies = {}
 
         # Initialize tools
         self.available_tools = {}

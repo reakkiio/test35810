@@ -437,6 +437,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
 
     # New base models list
     models = [
+        "gpt-4.1-mini", # Added new model
         default_model,
         "o3-mini",
         "gpt-4.1-nano",
@@ -525,6 +526,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         default_model: {'mode': True, 'id': "openai/gpt-4.1", 'name': default_model}, # Assuming GPT-4.1 is agent-compatible
         'o3-mini': {'mode': True, 'id': "o3-mini", 'name': "o3-mini"}, # Assuming o3-mini is agent-compatible
         'gpt-4.1-nano': {'mode': True, 'id': "gpt-4.1-nano", 'name': "gpt-4.1-nano"}, # Assuming gpt-4.1-nano is agent-compatible
+        'gpt-4.1-mini': {'mode': True, 'id': "gpt-4.1-mini", 'name': "gpt-4.1-mini"}, # Added agent mode for gpt-4.1-mini
     }
 
     # Trending agent modes

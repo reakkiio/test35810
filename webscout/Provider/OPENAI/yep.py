@@ -49,6 +49,8 @@ class Completions(BaseCompletions):
         temperature: Optional[float] = 0.6,
         top_p: Optional[float] = 0.7,
         system_prompt: Optional[str] = None,  # Added for consistency, but will be ignored
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -99,12 +101,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_non_stream(request_id, created_time, model, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
             response = self._client.session.post(
@@ -113,7 +115,8 @@ class Completions(BaseCompletions):
                 cookies=self._client.cookies,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             if not response.ok:
@@ -191,7 +194,7 @@ class Completions(BaseCompletions):
             pass
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         full_response_content = ""
         finish_reason = "stop"
@@ -204,7 +207,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 cookies=self._client.cookies,
                 json=payload_copy,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             if not response.ok:
                 raise IOError(
@@ -271,17 +275,15 @@ class YEPCHAT(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: int = 30,
         browser: str = "chrome"
     ):
         """
         Initialize the YEPCHAT client.
 
         Args:
-            timeout: Request timeout in seconds.
             browser: Browser name for LitAgent to generate User-Agent.
         """
-        self.timeout = timeout
+        self.timeout = None
         self.api_endpoint = "https://api.yep.com/v1/chat/completions"
         self.session = cloudscraper.create_scraper()  # Use cloudscraper
 

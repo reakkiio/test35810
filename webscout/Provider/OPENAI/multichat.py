@@ -94,6 +94,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -132,7 +134,7 @@ class Completions(BaseCompletions):
             created_time = int(time.time())
 
             # Make the API request
-            response_text = self._client._make_api_request(user_message)
+            response_text = self._client._make_api_request(user_message, timeout=timeout, proxies=proxies)
 
             # If streaming is requested, simulate streaming with the full response
             if stream:

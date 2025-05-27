@@ -38,6 +38,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -90,12 +92,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_non_stream(request_id, created_time, model, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
             response = self._client.session.post(
@@ -103,7 +105,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             # Handle non-200 responses
@@ -217,7 +220,7 @@ class Completions(BaseCompletions):
             raise IOError(f"ExaAI request failed: {e}") from e
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
             # For non-streaming, we still use streaming internally to collect the full response
@@ -226,7 +229,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             # Handle non-200 responses
@@ -313,17 +317,16 @@ class ExaAI(OpenAICompatibleProvider):
 
     def __init__(
         self,
-        timeout: Optional[int] = None,
         browser: str = "chrome"
     ):
         """
         Initialize the ExaAI client.
 
         Args:
-            timeout: Request timeout in seconds (None for no timeout)
             browser: Browser to emulate in user agent
         """
-        self.timeout = timeout
+        self.timeout = 60  # Default timeout in seconds
+        self.proxies = None  # Default proxies
         self.api_endpoint = "https://o3minichat.exa.ai/api/chat"
         self.session = requests.Session()
 

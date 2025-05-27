@@ -973,6 +973,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None, # Not directly used by API
         top_p: Optional[float] = None, # Not directly used by API
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -1008,11 +1010,11 @@ class Completions(BaseCompletions):
         # The `send_chat_request` method fetches the full response.
         # We will simulate streaming if stream=True by yielding the full response in one chunk.
         if stream:
-            return self._create_stream_simulation(request_id, created_time, model_id, request_body)
+            return self._create_stream_simulation(request_id, created_time, model_id, request_body, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model_id, request_body)
+            return self._create_non_stream(request_id, created_time, model_id, request_body, timeout, proxies)
 
-    def _send_request(self, request_body: dict, model_config: dict, retries: int = 3) -> str:
+    def _send_request(self, request_body: dict, model_config: dict, timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None, retries: int = 3) -> str:
         """Sends the chat request using cloudscraper and handles retries."""
         url = model_config["apiUrl"]
         target_origin = "https://fragments.e2b.dev"
@@ -1044,7 +1046,8 @@ class Completions(BaseCompletions):
                     url=url,
                     headers=headers,
                     data=json_data,
-                    timeout=self._client.timeout
+                    timeout=timeout or self._client.timeout,
+                    proxies=proxies or getattr(self._client, "proxies", None)
                 )
 
                 if response.status_code == 429:
@@ -1091,11 +1094,11 @@ class Completions(BaseCompletions):
 
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model_id: str, request_body: Dict[str, Any]
+        self, request_id: str, created_time: int, model_id: str, request_body: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
             model_config = self._client.MODEL_PROMPT[model_id]
-            full_response_text = self._send_request(request_body, model_config)
+            full_response_text = self._send_request(request_body, model_config, timeout=timeout, proxies=proxies)
 
             # Estimate token counts using count_tokens
             prompt_tokens = count_tokens([msg.get("content", [{"text": ""}])[0].get("text", "") for msg in request_body.get("messages", [])])
@@ -1123,12 +1126,12 @@ class Completions(BaseCompletions):
             raise IOError(f"E2B request failed: {e}") from e
 
     def _create_stream_simulation(
-        self, request_id: str, created_time: int, model_id: str, request_body: Dict[str, Any]
+        self, request_id: str, created_time: int, model_id: str, request_body: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Simulates streaming by fetching the full response and yielding it."""
         try:
             model_config = self._client.MODEL_PROMPT[model_id]
-            full_response_text = self._send_request(request_body, model_config)
+            full_response_text = self._send_request(request_body, model_config, timeout=timeout, proxies=proxies)
 
             # Yield the content in one chunk
             delta = ChoiceDelta(content=full_response_text)
@@ -1193,15 +1196,15 @@ class E2B(OpenAICompatibleProvider):
     }
 
 
-    def __init__(self, timeout: int = 60, retries: int = 3):
+    def __init__(self, retries: int = 3):
         """
         Initialize the E2B client.
 
         Args:
-            timeout: Request timeout in seconds.
             retries: Number of retries for failed requests.
         """
-        self.timeout = timeout
+        self.timeout = 60  # Default timeout in seconds
+        self.proxies = None  # Default proxies
         self.retries = retries
         self.session = cloudscraper.create_scraper() # Use cloudscraper session
 

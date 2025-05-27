@@ -38,6 +38,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -103,7 +105,9 @@ class Completions(BaseCompletions):
                 payload=payload,
                 model=model,
                 request_id=request_id,
-                created_time=created_time
+                created_time=created_time,
+                timeout=timeout,
+                proxies=proxies
             )
 
         # Handle non-streaming response
@@ -111,7 +115,9 @@ class Completions(BaseCompletions):
             payload=payload,
             model=model,
             request_id=request_id,
-            created_time=created_time
+            created_time=created_time,
+            timeout=timeout,
+            proxies=proxies
         )
 
     def _handle_streaming_response(
@@ -120,7 +126,9 @@ class Completions(BaseCompletions):
         payload: Dict[str, Any],
         model: str,
         request_id: str,
-        created_time: int
+        created_time: int,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Handle streaming response from UncovrAI API."""
         try:
@@ -128,7 +136,8 @@ class Completions(BaseCompletions):
                 self._client.url,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             ) as response:
                 if response.status_code != 200:
                     # If we get a non-200 response, try refreshing our identity once
@@ -139,7 +148,8 @@ class Completions(BaseCompletions):
                             self._client.url,
                             json=payload,
                             stream=True,
-                            timeout=self._client.timeout
+                            timeout=timeout or self._client.timeout,
+                            proxies=proxies or getattr(self._client, "proxies", None)
                         ) as retry_response:
                             if not retry_response.ok:
                                 raise IOError(
@@ -216,14 +226,17 @@ class Completions(BaseCompletions):
         payload: Dict[str, Any],
         model: str,
         request_id: str,
-        created_time: int
+        created_time: int,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         """Handle non-streaming response from UncovrAI API."""
         try:
             response = self._client.session.post(
                 self._client.url,
                 json=payload,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             if response.status_code != 200:
@@ -232,7 +245,8 @@ class Completions(BaseCompletions):
                     response = self._client.session.post(
                         self._client.url,
                         json=payload,
-                        timeout=self._client.timeout
+                        timeout=timeout or self._client.timeout,
+                        proxies=proxies or getattr(self._client, "proxies", None)
                     )
                     if not response.ok:
                         raise IOError(

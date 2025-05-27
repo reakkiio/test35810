@@ -126,7 +126,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=timeout_val
+                timeout=timeout_val,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -203,7 +204,8 @@ class Completions(BaseCompletions):
                 url,
                 headers=self._client.headers,
                 json=payload,
-                timeout=timeout_val
+                timeout=timeout_val,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 

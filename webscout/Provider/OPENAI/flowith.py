@@ -37,6 +37,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -76,7 +78,8 @@ class Completions(BaseCompletions):
                     url,
                     json=payload,
                     stream=True,
-                    timeout=30
+                    timeout=timeout or 30,
+                    proxies=proxies
                 )
                 print(f"[DEBUG] Response status: {response.status_code}")
                 response.raise_for_status()
@@ -105,7 +108,8 @@ class Completions(BaseCompletions):
                 response = session.post(
                     url,
                     json=payload,
-                    timeout=30
+                    timeout=timeout or 30,
+                    proxies=proxies
                 )
                 print(f"[DEBUG] Response status: {response.status_code}")
                 response.raise_for_status()

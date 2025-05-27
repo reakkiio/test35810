@@ -37,6 +37,8 @@ class Completions(BaseCompletions):
         top_p: Optional[float] = None, # Note: LLMChatCo doesn't seem to use top_p directly in payload
         web_search: bool = False, # LLMChatCo specific parameter
         system_prompt: Optional[str] = "You are a helpful assistant.", # Default system prompt if not provided
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -88,12 +90,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, actual_model, payload)
+            return self._create_stream(request_id, created_time, actual_model, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, actual_model, payload)
+            return self._create_non_stream(request_id, created_time, actual_model, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
             response = self._client.session.post(
@@ -101,7 +103,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             if not response.ok:
@@ -197,14 +200,14 @@ class Completions(BaseCompletions):
 
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         # Non-streaming requires accumulating stream chunks
         full_response_content = ""
         finish_reason = "stop" # Assume stop unless error occurs
 
         try:
-            stream_generator = self._create_stream(request_id, created_time, model, payload)
+            stream_generator = self._create_stream(request_id, created_time, model, payload, timeout, proxies)
             for chunk in stream_generator:
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                     full_response_content += chunk.choices[0].delta.content
@@ -332,4 +335,3 @@ class LLMChatCo(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
-

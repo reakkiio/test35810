@@ -35,6 +35,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,  # Not used by SonusAI but kept for compatibility
         top_p: Optional[float] = None,  # Not used by SonusAI but kept for compatibility
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any  # Not used by SonusAI but kept for compatibility
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -61,12 +63,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, files)
+            return self._create_stream(request_id, created_time, model, files, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, files)
+            return self._create_non_stream(request_id, created_time, model, files, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, files: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, files: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
             response = requests.post(
@@ -74,7 +76,8 @@ class Completions(BaseCompletions):
                 files=files,
                 headers=self._client.headers,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -131,14 +134,15 @@ class Completions(BaseCompletions):
             raise IOError(f"SonusAI request failed: {e}") from e
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, files: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, files: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
             response = requests.post(
                 self._client.url,
                 files=files,
                 headers=self._client.headers,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 

@@ -40,6 +40,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -68,16 +70,18 @@ class Completions(BaseCompletions):
 
         # Handle streaming response
         if stream:
-            return self._handle_streaming_response(request_id, created_time, model, data)
+            return self._handle_streaming_response(request_id, created_time, model, data, timeout, proxies)
         else:
-            return self._handle_non_streaming_response(request_id, created_time, model, data)
+            return self._handle_non_streaming_response(request_id, created_time, model, data, timeout, proxies)
 
     def _handle_streaming_response(
         self,
         request_id: str,
         created_time: int,
         model: str,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Handle streaming response from Toolbaz API"""
         try:
@@ -85,8 +89,8 @@ class Completions(BaseCompletions):
                 "https://data.toolbaz.com/writing.php",
                 data=data,
                 stream=True,
-                proxies=self._client.proxies,
-                timeout=self._client.timeout
+                proxies=proxies or getattr(self._client, "proxies", None),
+                timeout=timeout or self._client.timeout
             )
             resp.raise_for_status()
 
@@ -219,15 +223,17 @@ class Completions(BaseCompletions):
         request_id: str,
         created_time: int,
         model: str,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         """Handle non-streaming response from Toolbaz API"""
         try:
             resp = self._client.session.post(
                 "https://data.toolbaz.com/writing.php",
                 data=data,
-                proxies=self._client.proxies,
-                timeout=self._client.timeout
+                proxies=proxies or getattr(self._client, "proxies", None),
+                timeout=timeout or self._client.timeout
             )
             resp.raise_for_status()
 

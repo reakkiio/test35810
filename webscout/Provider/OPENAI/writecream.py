@@ -22,14 +22,16 @@ class Completions(BaseCompletions):
         self._client = client
 
     def create(
-        *,
         self,
+        *,
         model: str = None,  # Not used by Writecream, for compatibility
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,  # Not used by Writecream
         stream: bool = False,
         temperature: Optional[float] = None,  # Not used by Writecream
         top_p: Optional[float] = None,  # Not used by Writecream
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -40,15 +42,15 @@ class Completions(BaseCompletions):
         request_id = f"chatcmpl-{uuid.uuid4()}"
         created_time = int(time.time())
         if stream:
-            return self._create_stream(request_id, created_time, payload)
+            return self._create_stream(request_id, created_time, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, payload)
+            return self._create_non_stream(request_id, created_time, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, payload: List[Dict[str, str]]
+        self, request_id: str, created_time: int, payload: List[Dict[str, str]], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         # Writecream does not support streaming, so yield the full response as a single chunk
-        completion = self._create_non_stream(request_id, created_time, payload)
+        completion = self._create_non_stream(request_id, created_time, payload, timeout, proxies)
         content = completion.choices[0].message.content
         # Yield as a single chunk
         delta = ChoiceDelta(content=content)
@@ -72,7 +74,7 @@ class Completions(BaseCompletions):
         yield chunk
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, payload: List[Dict[str, str]]
+        self, request_id: str, created_time: int, payload: List[Dict[str, str]], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
             params = {
@@ -83,7 +85,8 @@ class Completions(BaseCompletions):
                 self._client.base_url,
                 params=params,
                 headers=self._client.headers,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
             data = response.json()
@@ -129,8 +132,8 @@ class Writecream(OpenAICompatibleProvider):
     """
     AVAILABLE_MODELS = ["writecream"]
 
-    def __init__(self, timeout: Optional[int] = 30, browser: str = "chrome"):
-        self.timeout = timeout
+    def __init__(self, browser: str = "chrome"):
+        self.timeout = None
         self.base_url = "https://8pe3nv3qha.execute-api.us-east-1.amazonaws.com/default/llm_chat"
         self.session = requests.Session()
         agent = LitAgent()

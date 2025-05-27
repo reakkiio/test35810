@@ -36,6 +36,8 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         stream: bool = False,
         temperature: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -67,16 +69,18 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_streaming(request_id, created_time, model, payload)
+            return self._create_streaming(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._create_non_streaming(request_id, created_time, model, payload)
+            return self._create_non_streaming(request_id, created_time, model, payload, timeout, proxies)
 
     def _create_streaming(
         self,
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Implementation for streaming chat completions."""
         try:
@@ -86,7 +90,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers, 
                 json=payload, 
                 stream=True, 
-                timeout=self._client.timeout,
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None),
                 impersonate="chrome120"
             )
 
@@ -161,7 +166,9 @@ class Completions(BaseCompletions):
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
         try:
@@ -171,7 +178,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers, 
                 json=payload, 
                 stream=True, 
-                timeout=self._client.timeout,
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None),
                 impersonate="chrome120"
             )
 
@@ -352,4 +360,3 @@ class TypefullyAI(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
-

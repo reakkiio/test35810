@@ -100,6 +100,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -136,12 +138,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, provider, payload)
+            return self._create_stream(request_id, created_time, model, provider, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, provider, payload)
+            return self._create_non_stream(request_id, created_time, model, provider, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, provider: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, provider: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
             endpoint = self._client._get_endpoint(provider)
@@ -150,7 +152,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -203,7 +206,7 @@ class Completions(BaseCompletions):
             raise IOError(f"ExaChat request failed: {e}") from e
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, provider: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, provider: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
             endpoint = self._client._get_endpoint(provider)
@@ -211,7 +214,8 @@ class Completions(BaseCompletions):
                 endpoint,
                 headers=self._client.headers,
                 json=payload,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 

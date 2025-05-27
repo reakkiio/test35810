@@ -296,43 +296,43 @@ class Completions(BaseCompletions):
         if proxies is not None:
             self._client.session.proxies = proxies
         try:
-        # Prepare user messages for BlackboxAI API format
-        blackbox_messages = []
-        for i, msg in enumerate(messages):
-            if msg["role"] == "system":
-                continue  # System message handled separately
-            msg_id = self._client.generate_id() if i > 0 else request_id
-            blackbox_messages.append({
-                "id": msg_id,
-                "content": msg["content"],
-                "role": msg["role"]
-            })
-        # Add image data if provided
-        if media and blackbox_messages:
-            blackbox_messages[-1]['data'] = {
-                "imagesData": [
-                    {
-                        "filePath": f"/",
-                        "contents": to_data_uri(image[0])
-                    } for image in media
-                ],
-                "fileText": "",
-                "title": ""
-            }
-        # Generate request payload with session
-        request_email = f"{self._client.generate_random_string(8)}@blackbox.ai"
-        session_data = self._client.generate_session(request_email)
-        payload = self._client.create_request_payload(
-            messages=blackbox_messages,
-            chat_id=request_id,
-            system_message=system_message,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            session_data=session_data,
-            model=model
-        )
-        # Make the API request with cookies, stream=True
+            # Prepare user messages for BlackboxAI API format
+            blackbox_messages = []
+            for i, msg in enumerate(messages):
+                if msg["role"] == "system":
+                    continue  # System message handled separately
+                msg_id = self._client.generate_id() if i > 0 else request_id
+                blackbox_messages.append({
+                    "id": msg_id,
+                    "content": msg["content"],
+                    "role": msg["role"]
+                })
+            # Add image data if provided
+            if media and blackbox_messages:
+                blackbox_messages[-1]['data'] = {
+                    "imagesData": [
+                        {
+                            "filePath": f"/",
+                            "contents": to_data_uri(image[0])
+                        } for image in media
+                    ],
+                    "fileText": "",
+                    "title": ""
+                }
+            # Generate request payload with session
+            request_email = f"{self._client.generate_random_string(8)}@blackbox.ai"
+            session_data = self._client.generate_session(request_email)
+            payload = self._client.create_request_payload(
+                messages=blackbox_messages,
+                chat_id=request_id,
+                system_message=system_message,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                session_data=session_data,
+                model=model
+            )
+            # Make the API request with cookies, stream=True
             response = self._client.session.post(
                 self._client.api_endpoint,
                 json=payload,

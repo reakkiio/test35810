@@ -29,6 +29,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -52,11 +54,11 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._create_non_stream(request_id, created_time, model, payload)
+            return self._create_non_stream(request_id, created_time, model, payload, timeout, proxies)
 
-    def _post_with_retry(self, payload, stream=False):
+    def _post_with_retry(self, payload, stream=False, timeout=None, proxies=None):
         """
         Try all endpoints until one succeeds or all fail.
         """
@@ -68,7 +70,8 @@ class Completions(BaseCompletions):
                     headers=self._client.headers,
                     json=payload,
                     stream=stream,
-                    timeout=self._client.timeout
+                    timeout=timeout or self._client.timeout,
+                    proxies=proxies or getattr(self._client, "proxies", None)
                 )
                 response.raise_for_status()
                 self._client.base_url = endpoint  # Update to working endpoint
@@ -79,10 +82,10 @@ class Completions(BaseCompletions):
         raise IOError(f"All oivscode endpoints failed: {last_exception}") from last_exception
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         try:
-            response = self._post_with_retry(payload, stream=True)
+            response = self._post_with_retry(payload, stream=True, timeout=timeout, proxies=proxies)
             prompt_tokens = 0
             completion_tokens = 0
             total_tokens = 0
@@ -160,10 +163,10 @@ class Completions(BaseCompletions):
             raise
 
     def _create_non_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         try:
-            response = self._post_with_retry(payload, stream=False)
+            response = self._post_with_retry(payload, stream=False, timeout=timeout, proxies=proxies)
             data = response.json()
 
             choices_data = data.get('choices', [])

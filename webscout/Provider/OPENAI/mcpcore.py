@@ -43,6 +43,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -75,12 +77,12 @@ class Completions(BaseCompletions):
         created_time = int(time.time())
 
         if stream:
-            return self._create_stream(request_id, created_time, model, payload)
+            return self._create_stream(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._create_non_stream_from_stream(request_id, created_time, model, payload)
+            return self._create_non_stream_from_stream(request_id, created_time, model, payload, timeout, proxies)
 
     def _create_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Handles the streaming response from MCPCore."""
         final_usage_data = None # To store usage if received
@@ -90,7 +92,8 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout,
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None),
                 impersonate="chrome110" # Impersonation often helps
             )
 
@@ -193,7 +196,7 @@ class Completions(BaseCompletions):
             raise IOError(f"MCPCore stream processing failed: {e}{error_details}") from e
 
     def _create_non_stream_from_stream(
-        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any]
+        self, request_id: str, created_time: int, model: str, payload: Dict[str, Any], timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         """Handles the non-streaming response by making a single POST request (like deepinfra)."""
         try:
@@ -205,7 +208,8 @@ class Completions(BaseCompletions):
                 self._client.api_endpoint,
                 headers=self._client.headers,
                 json=payload,
-                timeout=self._client.timeout,
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None),
                 impersonate="chrome110"
             )
             if not response.ok:
@@ -386,4 +390,3 @@ class MCPCore(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
-

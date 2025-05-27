@@ -40,7 +40,7 @@ class Completions(BaseCompletions):
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         timeout: Optional[int] = None,
-        proxies: Optional[dict] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """Create a chat completion using TwoAI."""
@@ -66,13 +66,13 @@ class Completions(BaseCompletions):
 
     def _create_stream(
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
-        timeout: Optional[int] = None, proxies: Optional[dict] = None
+        timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         original_proxies = self._client.session.proxies.copy()
         if proxies is not None:
             self._client.session.proxies = proxies
         else:
-            self._client.session.proxies = {} # Reset if no specific proxies for this call
+            self._client.session.proxies = {}
         try:
             response = self._client.session.post(
                 self._client.base_url,
@@ -80,6 +80,7 @@ class Completions(BaseCompletions):
                 json=payload,
                 stream=True,
                 timeout=timeout if timeout is not None else self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -142,7 +143,7 @@ class Completions(BaseCompletions):
 
     def _create_non_stream(
         self, request_id: str, created_time: int, model: str, payload: Dict[str, Any],
-        timeout: Optional[int] = None, proxies: Optional[dict] = None
+        timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         original_proxies = self._client.session.proxies.copy()
         if proxies is not None:
@@ -155,6 +156,7 @@ class Completions(BaseCompletions):
                 headers=self._client.headers,
                 json=payload,
                 timeout=timeout if timeout is not None else self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
             data = response.json()

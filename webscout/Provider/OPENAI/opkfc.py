@@ -30,6 +30,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """
@@ -56,6 +58,8 @@ class Completions(BaseCompletions):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                timeout=timeout,
+                proxies=proxies,
                 **kwargs
             )
 
@@ -66,6 +70,8 @@ class Completions(BaseCompletions):
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            timeout=timeout,
+            proxies=proxies,
             **kwargs
         )
 
@@ -77,6 +83,8 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Implementation for streaming chat completions."""
@@ -144,7 +152,8 @@ class Completions(BaseCompletions):
                 headers=headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -254,6 +263,8 @@ class Completions(BaseCompletions):
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
@@ -322,7 +333,8 @@ class Completions(BaseCompletions):
                 headers=headers,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
             response.raise_for_status()
 
@@ -493,4 +505,3 @@ class OPKFC(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
-

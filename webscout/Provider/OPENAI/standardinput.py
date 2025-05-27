@@ -48,6 +48,8 @@ class Completions(BaseCompletions):
         stream: bool = False,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]]:
         """Create a chat completion."""
@@ -85,16 +87,18 @@ class Completions(BaseCompletions):
 
         # Handle streaming vs non-streaming
         if stream:
-            return self._stream_request(request_id, created_time, model, payload)
+            return self._stream_request(request_id, created_time, model, payload, timeout, proxies)
         else:
-            return self._non_stream_request(request_id, created_time, model, payload)
+            return self._non_stream_request(request_id, created_time, model, payload, timeout, proxies)
 
     def _non_stream_request(
         self,
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> ChatCompletion:
         """Handle non-streaming request."""
         try:
@@ -103,7 +107,8 @@ class Completions(BaseCompletions):
                 self._client.api_endpoint,
                 cookies=self._client.cookies,
                 json=payload,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             # Check for errors
@@ -121,7 +126,8 @@ class Completions(BaseCompletions):
                         self._client.api_endpoint,
                         cookies=self._client.cookies,
                         json=payload,
-                        timeout=self._client.timeout
+                        timeout=timeout or self._client.timeout,
+                        proxies=proxies or getattr(self._client, "proxies", None)
                     )
                     if not response.ok:
                         raise IOError(f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}")
@@ -189,7 +195,9 @@ class Completions(BaseCompletions):
         request_id: str,
         created_time: int,
         model: str,
-        payload: Dict[str, Any]
+        payload: Dict[str, Any],
+        timeout: Optional[int] = None,
+        proxies: Optional[Dict[str, str]] = None
     ) -> Generator[ChatCompletionChunk, None, None]:
         """Handle streaming request."""
         try:
@@ -199,7 +207,8 @@ class Completions(BaseCompletions):
                 cookies=self._client.cookies,
                 json=payload,
                 stream=True,
-                timeout=self._client.timeout
+                timeout=timeout or self._client.timeout,
+                proxies=proxies or getattr(self._client, "proxies", None)
             )
 
             # Check for errors
@@ -218,7 +227,8 @@ class Completions(BaseCompletions):
                         cookies=self._client.cookies,
                         json=payload,
                         stream=True,
-                        timeout=self._client.timeout
+                        timeout=timeout or self._client.timeout,
+                        proxies=proxies or getattr(self._client, "proxies", None)
                     )
                     if not response.ok:
                         raise IOError(f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}")
@@ -430,4 +440,3 @@ class StandardInput(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
-

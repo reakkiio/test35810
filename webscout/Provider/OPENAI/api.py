@@ -722,23 +722,23 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                             chunk_data = chunk
                         else:  # Fallback for unknown chunk types
                             chunk_data = chunk
-                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
                 except TypeError as te:
                     logger.error(f"Error iterating over completion_stream: {te}")
                     # Fall back to treating as non-generator response
                     if hasattr(completion_stream, 'model_dump'):
-                        yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
+                        yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True), ensure_ascii=False)}\n\n"
                     elif hasattr(completion_stream, 'dict'):
-                        yield f"data: {json.dumps(completion_stream.dict(exclude_none=True))}\n\n"
+                        yield f"data: {json.dumps(completion_stream.dict(exclude_none=True), ensure_ascii=False)}\n\n"
                     else:
-                        yield f"data: {json.dumps(completion_stream)}\n\n"
+                        yield f"data: {json.dumps(completion_stream, ensure_ascii=False)}\n\n"
             else:  # Non-generator response
                 if hasattr(completion_stream, 'model_dump'):
-                    yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True))}\n\n"
+                    yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True), ensure_ascii=False)}\n\n"
                 elif hasattr(completion_stream, 'dict'):
-                    yield f"data: {json.dumps(completion_stream.dict(exclude_none=True))}\n\n"
+                    yield f"data: {json.dumps(completion_stream.dict(exclude_none=True), ensure_ascii=False)}\n\n"
                 else:
-                    yield f"data: {json.dumps(completion_stream)}\n\n"
+                    yield f"data: {json.dumps(completion_stream, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             logger.error(f"Error in streaming response for request {request_id}: {e}")
@@ -749,7 +749,7 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                     "code": "streaming_error"
                 }
             }
-            yield f"data: {json.dumps(error_data)}\n\n"
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
         finally:
             yield "data: [DONE]\n\n"
     return StreamingResponse(streaming(), media_type="text/event-stream")

@@ -345,11 +345,11 @@ class Completions(BaseCompletions):
             buffer = ""
             chunk_size = 32  # Tune as needed for smoothness
             from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
-            for chunk in response.iter_content(chunk_size=chunk_size):
+            for chunk in response.iter_content(chunk_size=chunk_size, decode_unicode=True):
                 if not chunk:
                     continue
-                text = chunk.decode(errors="ignore")
-                buffer += text
+                # With decode_unicode=True, chunk is already a string
+                buffer += chunk
                 # Yield in small pieces, but only non-empty
                 while len(buffer) >= chunk_size:
                     out = buffer[:chunk_size]

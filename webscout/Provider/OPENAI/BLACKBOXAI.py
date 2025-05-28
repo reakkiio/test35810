@@ -1,23 +1,198 @@
+# from pickle import NONE
+import requests
 import requests
 import random
 import string
 import base64
 from datetime import datetime, timedelta
 from typing import Generator, List, Dict, Optional, Any, Union
-import json # Not used directly in this snippet, but often useful
 import uuid
 import time
 import codecs
+import gzip
+import zstandard as zstd
+import brotli
+import zlib
 
 # Import base classes and utility structures
 from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage, count_tokens,
-    ChatCompletionChunk, ChoiceDelta # Added for streaming return type
+    ChatCompletionChunk # Added for streaming return type
 )
-from webscout.litagent import LitAgent, agent
+from webscout.litagent import LitAgent
 agent = LitAgent()
+
+class StreamingDecompressor:
+    """
+    A streaming decompressor that can handle partial compressed data in real-time.
+    This allows for true streaming decompression without buffering entire response.
+    """
+    def __init__(self, content_encoding: str):
+        self.encoding = content_encoding.lower().strip() if content_encoding else None
+        self.decompressor = None
+        self.text_decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self.zstd_buffer = b""  # Buffer for zstd incomplete frames
+        
+        if self.encoding == 'gzip':
+            self.decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)  # gzip format
+        elif self.encoding == 'deflate':
+            self.decompressor = zlib.decompressobj()  # deflate format
+        elif self.encoding == 'zstd':
+            self.decompressor = zstd.ZstdDecompressor()
+        elif self.encoding == 'br':
+            self.decompressor = brotli.Decompressor()
+    
+    def decompress_chunk(self, chunk: bytes) -> str:
+        """
+        Decompress a chunk of data and return decoded text.
+        Handles partial compressed data properly for real-time streaming.
+        """
+        try:
+            if not chunk:
+                return ""
+            
+            if not self.encoding or self.encoding not in ['gzip', 'deflate', 'zstd', 'br']:
+                # No compression or unsupported - decode directly
+                return self.text_decoder.decode(chunk, final=False)
+            
+            if self.encoding in ['gzip', 'deflate']:
+                # Use zlib decompressor for gzip/deflate
+                decompressed_data = self.decompressor.decompress(chunk)
+                return self.text_decoder.decode(decompressed_data, final=False)
+            
+            elif self.encoding == 'zstd':
+                # Zstandard streaming decompression with buffering for incomplete frames
+                self.zstd_buffer += chunk
+                try:
+                    # Try to decompress the current buffer
+                    decompressed_data = self.decompressor.decompress(self.zstd_buffer)
+                    # If successful, clear the buffer and return decoded text
+                    self.zstd_buffer = b""
+                    return self.text_decoder.decode(decompressed_data, final=False)
+                except zstd.ZstdError:
+                    # Frame is incomplete, keep buffering
+                    # Try to decompress any complete frames from buffer start
+                    try:
+                        # Process buffer in chunks to find complete frames
+                        buffer_len = len(self.zstd_buffer)
+                        if buffer_len > 4:  # Minimum zstd frame size
+                            # Try smaller chunks of the buffer
+                            for end_pos in range(4, buffer_len + 1):
+                                try:
+                                    partial_data = self.decompressor.decompress(self.zstd_buffer[:end_pos])
+                                    # If we got here, we found a complete frame
+                                    self.zstd_buffer = self.zstd_buffer[end_pos:]
+                                    return self.text_decoder.decode(partial_data, final=False)
+                                except zstd.ZstdError:
+                                    continue
+                    except Exception:
+                        pass
+                    return ""
+            
+            elif self.encoding == 'br':
+                # Brotli streaming decompression
+                try:
+                    decompressed_data = self.decompressor.decompress(chunk)
+                    return self.text_decoder.decode(decompressed_data, final=False)
+                except brotli.error:
+                    # If brotli fails, it might need more data or be at end
+                    return ""
+        
+        except Exception as e:
+            # If decompression fails, try to decode the chunk as-is (fallback)
+            try:
+                return self.text_decoder.decode(chunk, final=False)
+            except UnicodeDecodeError:
+                return ""
+    
+    def finalize(self) -> str:
+        """
+        Finalize the decompression and return any remaining decoded text.
+        """
+        try:
+            remaining_text = ""
+            
+            if self.encoding in ['gzip', 'deflate'] and self.decompressor:
+                # Flush any remaining compressed data
+                remaining_data = self.decompressor.flush()
+                if remaining_data:
+                    remaining_text = self.text_decoder.decode(remaining_data, final=True)
+                else:
+                    remaining_text = self.text_decoder.decode(b"", final=True)
+            elif self.encoding == 'zstd':
+                # Process any remaining buffered data
+                if self.zstd_buffer:
+                    try:
+                        remaining_data = self.decompressor.decompress(self.zstd_buffer)
+                        remaining_text = self.text_decoder.decode(remaining_data, final=True)
+                    except:
+                        # If buffered data can't be decompressed, finalize decoder
+                        remaining_text = self.text_decoder.decode(b"", final=True)
+                else:
+                    remaining_text = self.text_decoder.decode(b"", final=True)
+            else:
+                # Finalize the text decoder for other encodings
+                remaining_text = self.text_decoder.decode(b"", final=True)
+            
+            return remaining_text
+        except Exception:
+            # Ensure we always finalize the text decoder
+            try:
+                return self.text_decoder.decode(b"", final=True)
+            except:
+                return ""
+
+def decompress_response(response_content: bytes, content_encoding: str) -> str:
+    """
+    Decompress response content based on the Content-Encoding header.
+    
+    Args:
+        response_content: The raw response content as bytes
+        content_encoding: The Content-Encoding header value
+        
+    Returns:
+        str: The decompressed and decoded content as UTF-8 string
+        
+    Raises:
+        IOError: If decompression fails
+    """
+    try:
+        if not content_encoding:
+            # No compression, decode directly
+            return response_content.decode('utf-8')
+        
+        encoding = content_encoding.lower().strip()
+        
+        if encoding == 'zstd':
+            # Decompress using zstandard
+            dctx = zstd.ZstdDecompressor()
+            decompressed_data = dctx.decompress(response_content)
+            return decompressed_data.decode('utf-8')
+        
+        elif encoding == 'gzip':
+            # Decompress using gzip
+            decompressed_data = gzip.decompress(response_content)
+            return decompressed_data.decode('utf-8')
+        
+        elif encoding == 'br':
+            # Decompress using brotli
+            decompressed_data = brotli.decompress(response_content)
+            return decompressed_data.decode('utf-8')
+        
+        elif encoding == 'deflate':
+            # Decompress using zlib (deflate)
+            import zlib
+            decompressed_data = zlib.decompress(response_content)
+            return decompressed_data.decode('utf-8')
+        
+        else:
+            # Unknown or unsupported encoding, try to decode as-is
+            return response_content.decode('utf-8')
+            
+    except Exception as e:
+        raise IOError(f"Failed to decompress response with encoding '{content_encoding}': {str(e)}") from e
 
 def to_data_uri(image_data):
     """Convert image data to a data URI format"""
@@ -228,10 +403,17 @@ class Completions(BaseCompletions):
             # Process the response
             full_content = ""
             if response.status_code == 200:
-                # Use incremental decoder for UTF-8 to avoid splitting multi-byte chars
-                decoder = codecs.getincrementaldecoder("utf-8")("replace")
-                response_bytes = response.content
-                response_text = decoder.decode(response_bytes, final=True)
+                # Check for Content-Encoding header
+                content_encoding = response.headers.get('Content-Encoding')
+                
+                # Decompress the response if needed
+                try:
+                    response_text = decompress_response(response.content, content_encoding)
+                except IOError as e:
+                    # If decompression fails, fall back to the original method
+                    print(f"Warning: {e}. Falling back to original decoding method.")
+                    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+                    response_text = decoder.decode(response.content, final=True)
 
                 # Handle possible SSE format in response
                 if "data: " in response_text:
@@ -360,17 +542,21 @@ class Completions(BaseCompletions):
             )
             # Blackbox streams as raw text, no line breaks, so chunk manually
             import codecs
-            buffer = bytearray()
-            decoder = codecs.getincrementaldecoder("utf-8")("replace")
             chunk_size = 32  # Tune as needed for smoothness
             from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
+            
+            # Check if the response is compressed and create appropriate decompressor
+            content_encoding = response.headers.get('Content-Encoding')
+            streaming_decompressor = StreamingDecompressor(content_encoding)
+            
+            # Stream with real-time decompression
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
-                buffer.extend(chunk)
-                # Decode as much as possible (may leave partial chars for next chunk)
-                text = decoder.decode(buffer, final=False)
-                buffer.clear()
+                
+                # Decompress chunk in real-time
+                text = streaming_decompressor.decompress_chunk(chunk)
+                
                 if text:
                     cleaned_chunk = clean_text(text)
                     if cleaned_chunk.strip():
@@ -384,8 +570,9 @@ class Completions(BaseCompletions):
                             system_fingerprint=None
                         )
                         yield chunk_obj
-            # Flush any remaining bytes
-            final_text = decoder.decode(b"", final=True)
+            
+            # Finalize decompression and get any remaining text
+            final_text = streaming_decompressor.finalize()
             if final_text.strip():
                 cleaned_final = clean_text(final_text)
                 delta = ChoiceDelta(content=cleaned_final, role="assistant")
@@ -398,6 +585,31 @@ class Completions(BaseCompletions):
                     system_fingerprint=None
                 )
                 yield chunk_obj
+            
+            # Send final chunk with finish_reason="stop"
+            delta = ChoiceDelta(content="", role="assistant")
+            choice = Choice(index=0, delta=delta, finish_reason="stop")
+            final_chunk = ChatCompletionChunk(
+                id=request_id,
+                choices=[choice],
+                created=created_time,
+                model=model,
+                system_fingerprint=None
+            )
+            yield final_chunk
+            
+        except Exception as e:
+            # Handle errors gracefully by yielding an error chunk
+            error_delta = ChoiceDelta(content=f"Error: {str(e)}", role="assistant")
+            error_choice = Choice(index=0, delta=error_delta, finish_reason="stop")
+            error_chunk = ChatCompletionChunk(
+                id=request_id,
+                choices=[error_choice],
+                created=created_time,
+                model=model,
+                system_fingerprint=None
+            )
+            yield error_chunk
         finally:
             if proxies is not None:
                 self._client.session.proxies = original_proxies
@@ -424,7 +636,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
     default_model = "GPT-4.1"
     default_vision_model = default_model
     api_endpoint = "https://www.blackbox.ai/api/chat"
-    timeout = 30
+    timeout = None
 
 
     # Default model (remains the same as per original class)

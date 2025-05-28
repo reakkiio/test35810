@@ -227,8 +227,11 @@ class Completions(BaseCompletions):
             # Process the response
             full_content = ""
             if response.status_code == 200:
-                # Extract content from response text
-                response_text = response.text
+                # Use incremental decoder for UTF-8 to avoid splitting multi-byte chars
+                import codecs
+                decoder = codecs.getincrementaldecoder("utf-8")("replace")
+                response_bytes = response.content
+                response_text = decoder.decode(response_bytes, final=True)
 
                 # Handle possible SSE format in response
                 if "data: " in response_text:
@@ -356,23 +359,22 @@ class Completions(BaseCompletions):
                 timeout=timeout if timeout is not None else self._client.timeout
             )
             # Blackbox streams as raw text, no line breaks, so chunk manually
-            buffer = ""
+            import codecs
+            buffer = bytearray()
+            decoder = codecs.getincrementaldecoder("utf-8")("replace")
             chunk_size = 32  # Tune as needed for smoothness
             from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
-                # Decode chunk as utf-8, replacing errors
-                text = chunk.decode("utf-8", errors="replace")
-                cleaned_chunk = clean_text(text)
-                buffer += cleaned_chunk
-                # Yield in small pieces, but only non-empty
-                while len(buffer) >= chunk_size:
-                    out = buffer[:chunk_size]
-                    buffer = buffer[chunk_size:]
-                    clean_out = clean_text(out)
-                    if clean_out.strip():
-                        delta = ChoiceDelta(content=clean_out, role="assistant")
+                buffer.extend(chunk)
+                # Decode as much as possible (may leave partial chars for next chunk)
+                text = decoder.decode(buffer, final=False)
+                buffer.clear()
+                if text:
+                    cleaned_chunk = clean_text(text)
+                    if cleaned_chunk.strip():
+                        delta = ChoiceDelta(content=cleaned_chunk, role="assistant")
                         choice = Choice(index=0, delta=delta, finish_reason=None)
                         chunk_obj = ChatCompletionChunk(
                             id=request_id,
@@ -382,20 +384,20 @@ class Completions(BaseCompletions):
                             system_fingerprint=None
                         )
                         yield chunk_obj
-            # Yield any remaining buffer
-            if buffer.strip():
-                final_buffer = clean_text(buffer)
-                if final_buffer.strip():
-                    delta = ChoiceDelta(content=final_buffer, role="assistant")
-                    choice = Choice(index=0, delta=delta, finish_reason=None)
-                    chunk_obj = ChatCompletionChunk(
-                        id=request_id,
-                        choices=[choice],
-                        created=created_time,
-                        model=model,
-                        system_fingerprint=None
-                    )
-                    yield chunk_obj
+            # Flush any remaining bytes
+            final_text = decoder.decode(b"", final=True)
+            if final_text.strip():
+                cleaned_final = clean_text(final_text)
+                delta = ChoiceDelta(content=cleaned_final, role="assistant")
+                choice = Choice(index=0, delta=delta, finish_reason=None)
+                chunk_obj = ChatCompletionChunk(
+                    id=request_id,
+                    choices=[choice],
+                    created=created_time,
+                    model=model,
+                    system_fingerprint=None
+                )
+                yield chunk_obj
         finally:
             if proxies is not None:
                 self._client.session.proxies = original_proxies

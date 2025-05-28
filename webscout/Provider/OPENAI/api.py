@@ -16,6 +16,8 @@ import sys
 import time
 import uuid
 import inspect
+import re
+import codecs
 from typing import List, Dict, Optional, Union, Any, Generator, Callable
 import types
 
@@ -28,6 +30,18 @@ from fastapi.routing import APIRoute
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+def clean_text(text):
+    """Clean text by removing null bytes and control characters except newlines and tabs."""
+    if not isinstance(text, str):
+        return text
+    
+    # Remove null bytes
+    text = text.replace('\x00', '')
+    
+    # Keep newlines, tabs, and other printable characters, remove other control chars
+    # This regex matches control characters except \n, \r, \t
+    return re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
 from starlette.status import (
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_404_NOT_FOUND,
@@ -722,29 +736,64 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                             chunk_data = chunk
                         else:  # Fallback for unknown chunk types
                             chunk_data = chunk
+                        
+                        # Clean text content in the chunk to remove control characters
+                        if isinstance(chunk_data, dict) and 'choices' in chunk_data:
+                            for choice in chunk_data.get('choices', []):
+                                if isinstance(choice, dict):
+                                    # Handle delta for streaming
+                                    if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
+                                        choice['delta']['content'] = clean_text(choice['delta']['content'])
+                                    # Handle message for non-streaming
+                                    elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
+                                        choice['message']['content'] = clean_text(choice['message']['content'])
+                        
                         yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
                 except TypeError as te:
                     logger.error(f"Error iterating over completion_stream: {te}")
                     # Fall back to treating as non-generator response
                     if hasattr(completion_stream, 'model_dump'):
-                        yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True), ensure_ascii=False)}\n\n"
+                        response_data = completion_stream.model_dump(exclude_none=True)
                     elif hasattr(completion_stream, 'dict'):
-                        yield f"data: {json.dumps(completion_stream.dict(exclude_none=True), ensure_ascii=False)}\n\n"
+                        response_data = completion_stream.dict(exclude_none=True)
                     else:
-                        yield f"data: {json.dumps(completion_stream, ensure_ascii=False)}\n\n"
+                        response_data = completion_stream
+                    
+                    # Clean text content in the response
+                    if isinstance(response_data, dict) and 'choices' in response_data:
+                        for choice in response_data.get('choices', []):
+                            if isinstance(choice, dict):
+                                if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
+                                    choice['delta']['content'] = clean_text(choice['delta']['content'])
+                                elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
+                                    choice['message']['content'] = clean_text(choice['message']['content'])
+                    
+                    yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
             else:  # Non-generator response
                 if hasattr(completion_stream, 'model_dump'):
-                    yield f"data: {json.dumps(completion_stream.model_dump(exclude_none=True), ensure_ascii=False)}\n\n"
+                    response_data = completion_stream.model_dump(exclude_none=True)
                 elif hasattr(completion_stream, 'dict'):
-                    yield f"data: {json.dumps(completion_stream.dict(exclude_none=True), ensure_ascii=False)}\n\n"
+                    response_data = completion_stream.dict(exclude_none=True)
                 else:
-                    yield f"data: {json.dumps(completion_stream, ensure_ascii=False)}\n\n"
+                    response_data = completion_stream
+                
+                # Clean text content in the response
+                if isinstance(response_data, dict) and 'choices' in response_data:
+                    for choice in response_data.get('choices', []):
+                        if isinstance(choice, dict):
+                            if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
+                                choice['delta']['content'] = clean_text(choice['delta']['content'])
+                            elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
+                                choice['message']['content'] = clean_text(choice['message']['content'])
+                
+                yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             logger.error(f"Error in streaming response for request {request_id}: {e}")
+            error_message = clean_text(str(e))
             error_data = {
                 "error": {
-                    "message": str(e),
+                    "message": error_message,
                     "type": "server_error",
                     "code": "streaming_error"
                 }
@@ -789,6 +838,13 @@ async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
                 HTTP_500_INTERNAL_SERVER_ERROR,
                 "provider_error"
             )
+        
+        # Clean text content in the response to remove control characters
+        if isinstance(response_data, dict) and 'choices' in response_data:
+            for choice in response_data.get('choices', []):
+                if isinstance(choice, dict) and 'message' in choice:
+                    if isinstance(choice['message'], dict) and 'content' in choice['message']:
+                        choice['message']['content'] = clean_text(choice['message']['content'])
 
         elapsed = time.time() - start_time
         logger.info(f"Completed non-streaming request {request_id} in {elapsed:.2f}s")
@@ -797,8 +853,9 @@ async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
 
     except Exception as e:
         logger.error(f"Error in non-streaming response for request {request_id}: {e}")
+        error_message = clean_text(str(e))
         raise APIError(
-            f"Provider error: {str(e)}",
+            f"Provider error: {error_message}",
             HTTP_500_INTERNAL_SERVER_ERROR,
             "provider_error"
         )

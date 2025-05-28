@@ -7,6 +7,7 @@ from typing import Generator, List, Dict, Optional, Any, Union
 import json # Not used directly in this snippet, but often useful
 import uuid
 import time
+import codecs
 
 # Import base classes and utility structures
 from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
@@ -228,7 +229,6 @@ class Completions(BaseCompletions):
             full_content = ""
             if response.status_code == 200:
                 # Use incremental decoder for UTF-8 to avoid splitting multi-byte chars
-                import codecs
                 decoder = codecs.getincrementaldecoder("utf-8")("replace")
                 response_bytes = response.content
                 response_text = decoder.decode(response_bytes, final=True)

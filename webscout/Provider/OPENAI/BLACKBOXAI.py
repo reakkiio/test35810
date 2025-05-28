@@ -341,26 +341,22 @@ class Completions(BaseCompletions):
                 stream=True,
                 timeout=timeout if timeout is not None else self._client.timeout
             )
-            import re
             # Blackbox streams as raw text, no line breaks, so chunk manually
             buffer = ""
             chunk_size = 32  # Tune as needed for smoothness
             from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
-            control_char_re = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
-                text = chunk.decode("utf-8", errors="replace")
+                text = chunk.decode(errors="ignore")
                 buffer += text
                 # Yield in small pieces, but only non-empty
                 while len(buffer) >= chunk_size:
                     out = buffer[:chunk_size]
                     buffer = buffer[chunk_size:]
-                    # Remove control characters except for \n, \r, and tab
-                    clean_out = control_char_re.sub('', out)
-                    if clean_out.strip():
+                    if out.strip():
                         # Wrap the chunk in OpenAI-compatible structure
-                        delta = ChoiceDelta(content=clean_out, role="assistant")
+                        delta = ChoiceDelta(content=out, role="assistant")
                         choice = Choice(index=0, delta=delta, finish_reason=None)
                         chunk_obj = ChatCompletionChunk(
                             id=request_id,
@@ -372,18 +368,16 @@ class Completions(BaseCompletions):
                         yield chunk_obj
             # Yield any remaining buffer
             if buffer.strip():
-                clean_buffer = control_char_re.sub('', buffer)
-                if clean_buffer.strip():
-                    delta = ChoiceDelta(content=clean_buffer, role="assistant")
-                    choice = Choice(index=0, delta=delta, finish_reason=None)
-                    chunk_obj = ChatCompletionChunk(
-                        id=request_id,
-                        choices=[choice],
-                        created=created_time,
-                        model=model,
-                        system_fingerprint=None
-                    )
-                    yield chunk_obj
+                delta = ChoiceDelta(content=buffer, role="assistant")
+                choice = Choice(index=0, delta=delta, finish_reason=None)
+                chunk_obj = ChatCompletionChunk(
+                    id=request_id,
+                    choices=[choice],
+                    created=created_time,
+                    model=model,
+                    system_fingerprint=None
+                )
+                yield chunk_obj
         finally:
             if proxies is not None:
                 self._client.session.proxies = original_proxies

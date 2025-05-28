@@ -38,6 +38,19 @@ def to_data_uri(image_data):
 
     return f"data:{mime_type};base64,{encoded}"
 
+def clean_text(text):
+    """Clean text by removing null bytes and control characters except newlines and tabs."""
+    import re
+    if not isinstance(text, str):
+        return text
+    
+    # Remove null bytes
+    text = text.replace('\x00', '')
+    
+    # Keep newlines, tabs, and other printable characters, remove other control chars
+    # This regex matches control characters except \n, \r, \t
+    return re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
 
 class Completions(BaseCompletions):
     def __init__(self, client: 'BLACKBOXAI'):
@@ -238,10 +251,11 @@ class Completions(BaseCompletions):
                 # Handle error response
                 raise IOError(f"BlackboxAI request failed with status code {response.status_code}")
 
-            # Create the completion message
+            # Clean and create the completion message
+            cleaned_content = clean_text(full_content)
             message = ChatCompletionMessage(
                 role="assistant",
-                content=full_content
+                content=cleaned_content
             )
 
             # Create the choice with the message
@@ -253,7 +267,7 @@ class Completions(BaseCompletions):
 
             # Estimate token usage using count_tokens
             prompt_tokens = count_tokens([str(msg.get("content", "")) for msg in messages])
-            completion_tokens = count_tokens(full_content)
+            completion_tokens = count_tokens(cleaned_content)
 
             # Create the final completion object
             completion = ChatCompletion(
@@ -345,18 +359,20 @@ class Completions(BaseCompletions):
             buffer = ""
             chunk_size = 32  # Tune as needed for smoothness
             from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
-            for chunk in response.iter_content(chunk_size=chunk_size, decode_unicode=True):
+            for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
-                # With decode_unicode=True, chunk is already a string
-                buffer += chunk
+                # Decode chunk as utf-8, replacing errors
+                text = chunk.decode("utf-8", errors="replace")
+                cleaned_chunk = clean_text(text)
+                buffer += cleaned_chunk
                 # Yield in small pieces, but only non-empty
                 while len(buffer) >= chunk_size:
                     out = buffer[:chunk_size]
                     buffer = buffer[chunk_size:]
-                    if out.strip():
-                        # Wrap the chunk in OpenAI-compatible structure
-                        delta = ChoiceDelta(content=out, role="assistant")
+                    clean_out = clean_text(out)
+                    if clean_out.strip():
+                        delta = ChoiceDelta(content=clean_out, role="assistant")
                         choice = Choice(index=0, delta=delta, finish_reason=None)
                         chunk_obj = ChatCompletionChunk(
                             id=request_id,
@@ -368,16 +384,18 @@ class Completions(BaseCompletions):
                         yield chunk_obj
             # Yield any remaining buffer
             if buffer.strip():
-                delta = ChoiceDelta(content=buffer, role="assistant")
-                choice = Choice(index=0, delta=delta, finish_reason=None)
-                chunk_obj = ChatCompletionChunk(
-                    id=request_id,
-                    choices=[choice],
-                    created=created_time,
-                    model=model,
-                    system_fingerprint=None
-                )
-                yield chunk_obj
+                final_buffer = clean_text(buffer)
+                if final_buffer.strip():
+                    delta = ChoiceDelta(content=final_buffer, role="assistant")
+                    choice = Choice(index=0, delta=delta, finish_reason=None)
+                    chunk_obj = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model,
+                        system_fingerprint=None
+                    )
+                    yield chunk_obj
         finally:
             if proxies is not None:
                 self._client.session.proxies = original_proxies

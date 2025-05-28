@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import List, Dict, Optional, Union, Generator, Any
 
 from webscout.litagent import LitAgent
-from .base import BaseChat, BaseCompletions, OpenAICompatibleProvider
-from .utils import (
+from webscout.Provider.OPENAI.base import BaseChat, BaseCompletions, OpenAICompatibleProvider
+from webscout.Provider.OPENAI.utils import (
     ChatCompletion,
     ChatCompletionChunk,
     Choice,

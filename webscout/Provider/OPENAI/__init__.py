@@ -38,3 +38,4 @@ from .copilot import * # Add Microsoft Copilot
 from .TwoAI import *
 from .oivscode import * # Add OnRender provider
 from .Qwen3 import *
+from .FalconH1 import *

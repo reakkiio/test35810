@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, count_tokens
 )
@@ -21,9 +21,21 @@ RED = "\033[91m"
 RESET = "\033[0m"
 
 class ChatGPTReversed:
+    AVAILABLE_MODELS = [
+        "auto", 
+        "gpt-4o-mini", 
+        "gpt-4o", 
+        "o4-mini",
+        "gpt-4-1",
+        "gpt-4-1-mini",
+        "o3",
+        "o4-mini-high"
+
+
+
+    ]
     csrf_token = None
     initialized = False
-    AVAILABLE_MODELS = ["auto", "gpt-4o-mini", "gpt-4o", "o4-mini"]
 
     def __init__(self, model="auto"):
         if ChatGPTReversed.initialized:
@@ -533,13 +545,6 @@ class ChatGPT(OpenAICompatibleProvider):
         print(response.choices[0].message.content)
     """
 
-    AVAILABLE_MODELS = [
-        "auto", 
-        "gpt-4o-mini", 
-        "gpt-4o", 
-        "o4-mini"
-    ]
-
     def __init__(
         self
     ):
@@ -550,8 +555,21 @@ class ChatGPT(OpenAICompatibleProvider):
         self.chat = Chat(self)
 
     @property
+    def AVAILABLE_MODELS(self):
+        return ChatGPTReversed.AVAILABLE_MODELS
+
+    @property
     def models(self):
         class _ModelList:
             def list(inner_self):
-                return type(self).AVAILABLE_MODELS
+                return ChatGPTReversed.AVAILABLE_MODELS
         return _ModelList()
+
+if __name__ == "__main__":
+    # Example usage
+    client = ChatGPT()
+    response = client.chat.completions.create(
+        model="o4-mini-high",
+        messages=[{"role": "user", "content": "How manr r in strawberry"}]
+    )
+    print(response.choices[0].message.content)

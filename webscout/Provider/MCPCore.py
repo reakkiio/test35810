@@ -66,9 +66,13 @@ class MCPCore(Provider):
     ):
         """Initializes the MCPCore API client."""
         if model not in self.AVAILABLE_MODELS:
-            print(f"Warning: Model '{model}' not in known AVAILABLE_MODELS. Attempting to use anyway.")
+            print(f"Warning: Model '{model}' is not listed in AVAILABLE_MODELS. Proceeding with the provided model.")
 
         self.api_endpoint = "https://chat.mcpcore.xyz/api/chat/completions"
+        
+        # Cache the user-agent at the class level
+        if not hasattr(MCPCore, '_cached_user_agent'):
+            MCPCore._cached_user_agent = LitAgent().random()
         self.model = model
         self.system_prompt = system_prompt
         self.cookies_path = cookies_path
@@ -82,7 +86,7 @@ class MCPCore(Provider):
             'authority': 'chat.mcpcore.xyz',
             'accept': '*/*',
             'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
-            'authorization': f'Bearer {self.token}' if self.token else '',
+            **({'authorization': f'Bearer {self.token}'} if self.token else {}),
             'content-type': 'application/json',
             'dnt': '1',
             'origin': 'https://chat.mcpcore.xyz',
@@ -95,7 +99,7 @@ class MCPCore(Provider):
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-origin',
             'sec-gpc': '1',
-            'user-agent': LitAgent().random(),
+            'user-agent': self._cached_user_agent,
         }
 
         # Apply headers, proxies, and cookies to the session

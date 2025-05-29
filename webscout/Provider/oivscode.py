@@ -262,43 +262,43 @@ class oivscode(Provider):
             return response["text"]
         return ""
 
-    # def fetch_available_models(self):
-    #     """Fetches available models from the /models endpoint of all API endpoints and prints models per endpoint."""
-    #     endpoints = self.api_endpoints.copy()
-    #     random.shuffle(endpoints)
-    #     results = {}
-    #     errors = []
-    #     for endpoint in endpoints:
-    #         models_url = endpoint.replace('/v1/chat/completions', '/v1/models')
-    #         try:
-    #             response = self.session.get(models_url, timeout=self.timeout)
-    #             if response.ok:
-    #                 data = response.json()
-    #                 if isinstance(data, dict) and "data" in data:
-    #                     models = [m["id"] if isinstance(m, dict) and "id" in m else m for m in data["data"]]
-    #                 elif isinstance(data, list):
-    #                     models = data
-    #                 else:
-    #                     models = list(data.keys()) if isinstance(data, dict) else []
-    #                 results[models_url] = models
-    #             else:
-    #                 errors.append(f"Failed to fetch models from {models_url}: {response.status_code} {response.text}")
-    #         except Exception as e:
-    #             errors.append(f"Error fetching from {models_url}: {e}")
-    #     if results:
-    #         for url, models in results.items():
-    #             print(f"Models from {url}:")
-    #             if models:
-    #                 for m in sorted(models):
-    #                     print(f"  {m}")
-    #             else:
-    #                 print("  No models found.")
-    #         return results
-    #     else:
-    #         print("No models found from any endpoint.")
-    #         for err in errors:
-    #             print(err)
-    #         return {}
+    def fetch_available_models(self):
+        """Fetches available models from the /models endpoint of all API endpoints and prints models per endpoint."""
+        endpoints = self.api_endpoints.copy()
+        random.shuffle(endpoints)
+        results = {}
+        errors = []
+        for endpoint in endpoints:
+            models_url = endpoint.replace('/v1/chat/completions', '/v1/models')
+            try:
+                response = self.session.get(models_url, timeout=self.timeout)
+                if response.ok:
+                    data = response.json()
+                    if isinstance(data, dict) and "data" in data:
+                        models = [m["id"] if isinstance(m, dict) and "id" in m else m for m in data["data"]]
+                    elif isinstance(data, list):
+                        models = data
+                    else:
+                        models = list(data.keys()) if isinstance(data, dict) else []
+                    results[models_url] = models
+                else:
+                    errors.append(f"Failed to fetch models from {models_url}: {response.status_code} {response.text}")
+            except Exception as e:
+                errors.append(f"Error fetching from {models_url}: {e}")
+        if results:
+            for url, models in results.items():
+                print(f"Models from {url}:")
+                if models:
+                    for m in sorted(models):
+                        print(f"  {m}")
+                else:
+                    print("  No models found.")
+            return results
+        else:
+            print("No models found from any endpoint.")
+            for err in errors:
+                print(err)
+            return {}
 
 if __name__ == "__main__":
     from rich import print

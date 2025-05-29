@@ -21,6 +21,7 @@ class LambdaChat(Provider):
 
     AVAILABLE_MODELS = [
         "deepseek-llama3.3-70b",
+        "apriel-5b-instruct",
         "deepseek-r1",
         "hermes-3-llama-3.1-405b-fp8",
         "llama3.1-nemotron-70b-instruct",

@@ -14,11 +14,11 @@ class IBMGranite(Provider):
     using Lit agent for the user agent.
     """
 
-    AVAILABLE_MODELS = ["granite-3-8b-instruct", "granite-3-2-8b-instruct"]
+    AVAILABLE_MODELS = ["granite-3-8b-instruct", "granite-3-2-8b-instruct", "granite-3-3-8b-instruct"]
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = None,
         is_conversation: bool = True,
         max_tokens: int = 600, # Note: max_tokens is not used by this API
         timeout: int = 30,
@@ -28,13 +28,17 @@ class IBMGranite(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "granite-3-2-8b-instruct",
+        model: str = "granite-3-3-8b-instruct",
         system_prompt: str = "You are a helpful AI assistant.",
         thinking: bool = False,
     ):
         """Initializes the IBMGranite API client using Lit agent for the user agent."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
+
+        # Auto-generate API key if not provided or empty
+        if not api_key:
+            api_key = self.generate_api_key()
 
         # Initialize curl_cffi Session
         self.session = Session()
@@ -55,6 +59,7 @@ class IBMGranite(Provider):
             "content-type": "application/json",
             "origin": "https://www.ibm.com", # Keep origin
             "referer": "https://www.ibm.com/", # Keep referer
+            "User-Agent": Lit().random(),
         }
         self.headers["Authorization"] = f"Bearer {api_key}"
         
@@ -83,6 +88,36 @@ class IBMGranite(Provider):
         if isinstance(chunk, list) and len(chunk) == 2 and chunk[0] == 3 and isinstance(chunk[1], str):
             return chunk[1]
         return None
+
+    @staticmethod
+    def generate_api_key() -> str:
+        """
+        Auto-generate an API key (sessionId) by making a GET request to the Granite auth endpoint.
+        Returns:
+            str: The sessionId to be used as the API key.
+        Raises:
+            Exception: If the sessionId cannot be retrieved.
+        """
+        session = Session()
+        headers = {
+            "User-Agent": Lit().random(),
+            "Origin": "https://www.ibm.com",
+            "Referer": "https://d18n68ssusgr7r.cloudfront.net/",
+            "Accept": "application/json,application/jsonl",
+        }
+        session.headers.update(headers)
+        url = "https://d18n68ssusgr7r.cloudfront.net/v1/auth"
+        resp = session.get(url, timeout=15, impersonate="chrome110")
+        if resp.status_code != 200:
+            raise Exception(f"Failed to get Granite API key: {resp.status_code} - {resp.text}")
+        try:
+            data = resp.json()
+            session_id = data.get("sessionId")
+            if not session_id:
+                raise Exception(f"No sessionId in Granite auth response: {data}")
+            return session_id
+        except Exception as e:
+            raise Exception(f"Failed to parse Granite auth response: {e}")
 
     def ask(
         self,
@@ -117,8 +152,9 @@ class IBMGranite(Provider):
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": conversation_prompt},
             ],
-            "stream": True # API seems to require stream=True based on response format
         }
+        if self.thinking:
+            payload["thinking"] = True
 
         def for_stream():
             streaming_text = "" # Initialize outside try block
@@ -227,9 +263,8 @@ if __name__ == "__main__":
     from rich import print
     # Example usage: Initialize without logging.
     ai = IBMGranite(
-        api_key="",  # press f12 to see the API key
         thinking=True,
     )
-    response = ai.chat("write a poem about AI", stream=True)
+    response = ai.chat("How many r in strawberry", stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)

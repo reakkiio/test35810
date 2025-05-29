@@ -18,7 +18,7 @@ class DeepInfra(Provider):
 
     AVAILABLE_MODELS = [
         # "anthropic/claude-3-7-sonnet-latest",  # >>>> NOT WORKING
-
+        "deepseek-ai/DeepSeek-R1-0528",
         "deepseek-ai/DeepSeek-R1",
         "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",

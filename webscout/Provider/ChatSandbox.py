@@ -32,7 +32,8 @@ class ChatSandbox(Provider):
         >>> print(response)
         'I'm doing well, thank you for asking! How can I assist you today?'
     """
-    AVAILABLE_MODELS = ["openai", "deepseek", "llama", "gemini", "mistral-large"]
+    AVAILABLE_MODELS = ["openai", "deepseek", "llama", "gemini", "mistral-large", "deepseek-r1", "deepseek-r1-full", "gemini-thinking", "openai-o1-mini", "llama", "mistral", "gemma-3"]
+
 
     def __init__(
         self,

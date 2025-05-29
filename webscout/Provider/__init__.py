@@ -42,7 +42,6 @@ from .chatglm import *
 from .hermes import *
 from .TextPollinationsAI import *
 from .Glider import *
-from .ChatGPTGratis import *
 from .QwenLM import *
 from .granite import *
 from .WiseCat import *
@@ -111,7 +110,6 @@ __all__ = [
     'WiseCat',
     'IBMGranite',
     'QwenLM',
-    'ChatGPTGratis',
     'LambdaChat',
     'TextPollinationsAI',
     'GliderAI',

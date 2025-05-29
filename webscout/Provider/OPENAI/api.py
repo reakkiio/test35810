@@ -58,6 +58,9 @@ from webscout.Provider.OPENAI import *
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice, ChatCompletionMessage, CompletionUsage
 )
+from webscout.Provider.TTI import *
+from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.base import TTICompatibleProvider
 
 
 # Configuration constants
@@ -176,6 +179,33 @@ class ChatCompletionRequest(BaseModel):
             }
         }
 
+class ImageGenerationRequest(BaseModel):
+    """Request model for OpenAI-compatible image generation endpoint."""
+    prompt: str = Field(..., description="A text description of the desired image(s). The maximum length is 1000 characters.")
+    model: str = Field(..., description="The model to use for image generation.")
+    n: Optional[int] = Field(1, description="The number of images to generate. Must be between 1 and 10.")
+    size: Optional[str] = Field("1024x1024", description="The size of the generated images. Must be one of: '256x256', '512x512', or '1024x1024'.")
+    response_format: Optional[Literal["url", "b64_json"]] = Field("url", description="The format in which the generated images are returned. Must be either 'url' or 'b64_json'.")
+    user: Optional[str] = Field(None, description="A unique identifier representing your end-user, which can help to monitor and detect abuse.")
+    style: Optional[str] = Field(None, description="Optional style for the image (provider/model-specific).")
+    aspect_ratio: Optional[str] = Field(None, description="Optional aspect ratio for the image (provider/model-specific).")
+    timeout: Optional[int] = Field(None, description="Optional timeout for the image generation request in seconds.")
+    image_format: Optional[str] = Field(None, description="Optional image format (e.g., 'png', 'jpeg').")
+    seed: Optional[int] = Field(None, description="Optional random seed for reproducibility.")
+
+    class Config:
+        extra = "ignore"
+        schema_extra = {
+            "example": {
+                "prompt": "A futuristic cityscape at sunset, digital art",
+                "model": "PollinationsAI/turbo",
+                "n": 1,
+                "size": "1024x1024",
+                "response_format": "url",
+                "user": "user-1234"
+            }
+        }
+
 class ModelInfo(BaseModel):
     """Model information for the models endpoint."""
     id: str
@@ -235,7 +265,9 @@ class AppConfig:
     """Legacy configuration class for backward compatibility."""
     api_key: Optional[str] = None
     provider_map = {}
+    tti_provider_map = {}  # Add TTI provider map
     default_provider = "ChatGPT"
+    default_tti_provider = "PollinationsAI"  # Add default TTI provider
     base_url: Optional[str] = None
 
     @classmethod
@@ -287,6 +319,7 @@ def create_app():
     api.register_validation_exception_handler()
     api.register_routes()
     initialize_provider_map()
+    initialize_tti_provider_map()  # Initialize TTI providers
 
     def custom_openapi():
         if app.openapi_schema:
@@ -315,6 +348,7 @@ def create_app():
             "ImagePart": ImagePart,
             "Message": Message,
             "ChatCompletionRequest": ChatCompletionRequest,
+            "ImageGenerationRequest": ImageGenerationRequest,
         }
 
         for name, model_cls in pydantic_models_to_register.items():
@@ -397,6 +431,63 @@ def initialize_provider_map() -> None:
     except Exception as e:
         logger.error(f"Failed to initialize provider map: {e}")
         raise APIError(f"Provider initialization failed: {e}", HTTP_500_INTERNAL_SERVER_ERROR)
+
+def initialize_tti_provider_map() -> None:
+    """Initialize the TTI provider map by discovering available TTI providers."""
+    logger.info("Initializing TTI provider map...")
+
+    try:
+        import webscout.Provider.TTI as tti_module
+        
+        provider_count = 0
+        model_count = 0
+
+        for name, obj in inspect.getmembers(tti_module):
+            if (
+                inspect.isclass(obj)
+                and issubclass(obj, TTICompatibleProvider)
+                and obj.__name__ != "TTICompatibleProvider"
+                and obj.__name__ != "BaseImages"
+            ):
+                provider_name = obj.__name__
+                AppConfig.tti_provider_map[provider_name] = obj
+                provider_count += 1
+
+                # Register available models for this TTI provider
+                if hasattr(obj, "AVAILABLE_MODELS") and isinstance(
+                    obj.AVAILABLE_MODELS, (list, tuple, set)
+                ):
+                    for model in obj.AVAILABLE_MODELS:
+                        if model and isinstance(model, str):
+                            model_key = f"{provider_name}/{model}"
+                            AppConfig.tti_provider_map[model_key] = obj
+                            model_count += 1
+
+        # Fallback to PollinationsAI if no TTI providers found
+        if not AppConfig.tti_provider_map:
+            logger.warning("No TTI providers found, using PollinationsAI fallback")
+            try:
+                from webscout.Provider.TTI.pollinations import PollinationsAI
+                fallback_models = ["flux", "turbo", "gptimage"]
+
+                AppConfig.tti_provider_map["PollinationsAI"] = PollinationsAI
+
+                for model in fallback_models:
+                    model_key = f"PollinationsAI/{model}"
+                    AppConfig.tti_provider_map[model_key] = PollinationsAI
+
+                AppConfig.default_tti_provider = "PollinationsAI"
+                provider_count = 1
+                model_count = len(fallback_models)
+            except ImportError as e:
+                logger.error(f"Failed to import PollinationsAI fallback: {e}")
+                raise APIError("No TTI providers available", HTTP_500_INTERNAL_SERVER_ERROR)
+
+        logger.info(f"Initialized {provider_count} TTI providers with {model_count} models")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize TTI provider map: {e}")
+        raise APIError(f"TTI Provider initialization failed: {e}", HTTP_500_INTERNAL_SERVER_ERROR)
 
 class Api:
     def __init__(self, app: FastAPI) -> None:
@@ -620,6 +711,92 @@ class Api:
                     "internal_error"
                 )
 
+        @self.app.post(
+            "/v1/images/generations",
+            response_model_exclude_none=True,
+            response_model_exclude_unset=True,
+            openapi_extra={
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ImageGenerationRequest"
+                            },
+                            "example": ImageGenerationRequest.Config.schema_extra["example"]
+                        }
+                    }
+                }            }
+        )
+        async def image_generations(
+            image_request: ImageGenerationRequest = Body(...)
+        ):
+            """Handle image generation requests (OpenAI-compatible)."""
+            request_id = f"imggen-{uuid.uuid4()}"
+            try:
+                logger.info(f"Processing image generation request {request_id} for model: {image_request.model}")
+                # Provider/model resolution using TTI providers
+                provider_class, model_name = resolve_tti_provider_and_model(image_request.model)
+                # Initialize provider
+                try:
+                    provider = provider_class()
+                    logger.debug(f"Initialized provider: {provider_class.__name__}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize provider {provider_class.__name__}: {e}")
+                    raise APIError(
+                        f"Failed to initialize provider {provider_class.__name__}: {e}",
+                        HTTP_500_INTERNAL_SERVER_ERROR,
+                        "provider_error"
+                    )
+                # Prepare parameters for provider
+                params = {
+                    "model": model_name,
+                    "prompt": image_request.prompt,
+                    "n": image_request.n,
+                    "size": image_request.size,
+                    "response_format": image_request.response_format,
+                    "user": image_request.user,
+                    "style": image_request.style,
+                    "aspect_ratio": image_request.aspect_ratio,
+                    "timeout": image_request.timeout,
+                    "image_format": image_request.image_format,
+                    "seed": image_request.seed,
+                }
+                # Remove None values
+                params = {k: v for k, v in params.items() if v is not None}
+                # Call provider
+                try:
+                    result = provider.images.create(**params)
+                except Exception as e:
+                    logger.error(f"Error in image generation for request {request_id}: {e}")
+                    raise APIError(
+                        f"Provider error: {str(e)}",
+                        HTTP_500_INTERNAL_SERVER_ERROR,
+                        "provider_error"
+                    )
+                # Standardize response
+                if hasattr(result, "model_dump"):
+                    response_data = result.model_dump(exclude_none=True)
+                elif hasattr(result, "dict"):
+                    response_data = result.dict(exclude_none=True)
+                elif isinstance(result, dict):
+                    response_data = result
+                else:
+                    raise APIError(
+                        "Invalid response format from provider",
+                        HTTP_500_INTERNAL_SERVER_ERROR,
+                        "provider_error"
+                    )
+                return response_data
+            except APIError:
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error in image generation {request_id}: {e}")
+                raise APIError(
+                    f"Internal server error: {str(e)}",
+                    HTTP_500_INTERNAL_SERVER_ERROR,
+                    "internal_error"
+                )
+
 
 def resolve_provider_and_model(model_identifier: str) -> tuple[Any, str]:
     """Resolve provider class and model name from model identifier."""
@@ -661,6 +838,53 @@ def resolve_provider_and_model(model_identifier: str) -> tuple[Any, str]:
         if available and model_name not in available:
             raise APIError(
                 f"Model '{model_name}' not supported by provider '{provider_class.__name__}'. Available models: {available}",
+                HTTP_404_NOT_FOUND,
+                "model_not_found",
+                param="model"
+            )
+
+    return provider_class, model_name
+
+def resolve_tti_provider_and_model(model_identifier: str) -> tuple[Any, str]:
+    """Resolve TTI provider class and model name from model identifier."""
+    provider_class = None
+    model_name = None
+
+    # Check for explicit provider/model syntax
+    if model_identifier in AppConfig.tti_provider_map and "/" in model_identifier:
+        provider_class = AppConfig.tti_provider_map[model_identifier]
+        _, model_name = model_identifier.split("/", 1)
+    elif "/" in model_identifier:
+        provider_name, model_name = model_identifier.split("/", 1)
+        provider_class = AppConfig.tti_provider_map.get(provider_name)
+    else:
+        provider_class = AppConfig.tti_provider_map.get(AppConfig.default_tti_provider)
+        model_name = model_identifier
+
+    if not provider_class:
+        available_providers = list(set(v.__name__ for v in AppConfig.tti_provider_map.values()))
+        raise APIError(
+            f"TTI Provider for model '{model_identifier}' not found. Available TTI providers: {available_providers}",
+            HTTP_404_NOT_FOUND,
+            "model_not_found",
+            param="model"
+        )
+
+    # Validate model availability
+    if hasattr(provider_class, "AVAILABLE_MODELS") and model_name is not None:
+        available = getattr(provider_class, "AVAILABLE_MODELS", None)
+        # If it's a property, get from instance
+        if isinstance(available, property):
+            try:
+                available = getattr(provider_class(), "AVAILABLE_MODELS", [])
+            except Exception:
+                available = []
+        # If still not iterable, fallback to empty list
+        if not isinstance(available, (list, tuple, set)):
+            available = list(available) if hasattr(available, "__iter__") and not isinstance(available, str) else []
+        if available and model_name not in available:
+            raise APIError(
+                f"Model '{model_name}' not supported by TTI provider '{provider_class.__name__}'. Available models: {available}",
                 HTTP_404_NOT_FOUND,
                 "model_not_found",
                 param="model"
@@ -930,6 +1154,8 @@ def run_api(
     if show_available_providers: # Initialize map if needed for display before app creation
         if not AppConfig.provider_map: # Avoid re-initializing if already done by app creation logic path
             initialize_provider_map()
+        if not AppConfig.tti_provider_map:
+            initialize_tti_provider_map() # Ensure TTI providers are initialized for display
 
         print("\n=== Webscout OpenAI API Server ===")
         print(f"Server URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
@@ -960,6 +1186,19 @@ def run_api(
                 print(f"{i}. {model_name} (via {AppConfig.provider_map[model_name].__name__})")
         else:
             print("\nNo specific models registered. Use provider names as models.")
+
+        tti_providers = list(set(v.__name__ for v in AppConfig.tti_provider_map.values()))
+        print(f"\n--- Available TTI Providers ({len(tti_providers)}) ---")
+        for i, provider_name in enumerate(sorted(tti_providers), 1):
+            print(f"{i}. {provider_name}")
+
+        tti_models = sorted([model for model in AppConfig.tti_provider_map.keys() if model not in tti_providers])
+        if tti_models:
+            print(f"\n--- Available TTI Models ({len(tti_models)}) ---")
+            for i, model_name in enumerate(tti_models, 1):
+                print(f"{i}. {model_name} (via {AppConfig.tti_provider_map[model_name].__name__})")
+        else:
+            print("\nNo specific TTI models registered. Use TTI provider names as models.")
 
         print("\nUse Ctrl+C to stop the server.")
         print("=" * 40 + "\n")
@@ -1033,3 +1272,4 @@ if __name__ == "__main__":
         base_url=args.base_url,
         debug=args.debug
     )
+

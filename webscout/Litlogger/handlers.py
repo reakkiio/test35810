@@ -101,3 +101,21 @@ class TCPHandler(Handler):
             return
         with socket.create_connection((self.host, self.port), timeout=5) as sock:
             sock.sendall(message.encode() + b"\n")
+
+class JSONFileHandler(FileHandler):
+    def __init__(self, path: str, level: LogLevel = LogLevel.DEBUG, max_bytes: int = 0, backups: int = 0):
+        super().__init__(path, level, max_bytes, backups)
+
+    def emit(self, message: str, level: LogLevel):
+        # Expect message to be a JSON string or dict
+        if level < self.level:
+            return
+        import json
+        if isinstance(message, dict):
+            log_entry = json.dumps(message)
+        else:
+            log_entry = message
+        self._file.write(log_entry + "\n")
+        self._file.flush()
+        if self.max_bytes and self._file.tell() >= self.max_bytes:
+            self._rotate()

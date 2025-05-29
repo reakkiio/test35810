@@ -16,16 +16,58 @@ class Logger:
         handlers: Optional[List[Handler]] = None,
         fmt: str = LogFormat.DEFAULT,  # <--- use LogFormat.DEFAULT
         async_mode: bool = False,
+        include_context: bool = False,  # New flag to include thread/process info
     ):
+        import threading
+        import multiprocessing
+
         self.name = name
         self.level = level
         self.format = fmt
         self.async_mode = async_mode
+        self.include_context = include_context
         self.handlers = handlers or [ConsoleHandler()]
+        self._thread = threading
+        self._multiprocessing = multiprocessing
 
     def _format(self, level: LogLevel, message: str) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return self.format.format(time=now, level=level.name, name=self.name, message=message)
+        if self.include_context:
+            thread_name = self._thread.current_thread().name
+            process_id = self._multiprocessing.current_process().pid
+            # Check if format is JSON format
+            if self.format.strip().startswith('{') and self.format.strip().endswith('}'):
+                # Format as JSON string with extra fields
+                return self.format.format(
+                    time=now,
+                    level=level.name,
+                    name=self.name,
+                    message=message,
+                    thread=thread_name,
+                    process=process_id
+                )
+            else:
+                # For non-JSON formats, add thread and process info if placeholders exist
+                try:
+                    return self.format.format(
+                        time=now,
+                        level=level.name,
+                        name=self.name,
+                        message=message,
+                        thread=thread_name,
+                        process=process_id
+                    )
+                except KeyError:
+                    # If thread/process placeholders not in format, append them manually
+                    base = self.format.format(time=now, level=level.name, name=self.name, message=message)
+                    return f"{base} | Thread: {thread_name} | Process: {process_id}"
+        else:
+            return self.format.format(time=now, level=level.name, name=self.name, message=message)
+
+    def set_format(self, fmt: str, include_context: bool = False):
+        """Dynamically change the log format and context inclusion."""
+        self.format = fmt
+        self.include_context = include_context
 
     def _should_log(self, level: LogLevel) -> bool:
         return level >= self.level

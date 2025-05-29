@@ -4,12 +4,11 @@ import uuid
 import urllib.parse
 from datetime import datetime
 from typing import List, Dict, Optional, Union, Generator, Any
-import cloudscraper
-import requests  # For bypassing Cloudflare protection
+from curl_cffi import requests as curl_requests
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, count_tokens
 )
@@ -18,11 +17,7 @@ from .utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    class LitAgent:
-        def random(self) -> str:
-            # Return a default user agent if LitAgent is unavailable
-            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-
+    pass
 # ANSI escape codes for formatting
 BOLD = "\033[1m"
 RED = "\033[91m"
@@ -1015,7 +1010,7 @@ class Completions(BaseCompletions):
             return self._create_non_stream(request_id, created_time, model_id, request_body, timeout, proxies)
 
     def _send_request(self, request_body: dict, model_config: dict, timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None, retries: int = 3) -> str:
-        """Sends the chat request using cloudscraper and handles retries."""
+        """Sends the chat request using curl_cffi with browser fingerprinting to bypass limits."""
         url = model_config["apiUrl"]
         target_origin = "https://fragments.e2b.dev"
 
@@ -1042,12 +1037,14 @@ class Completions(BaseCompletions):
         for attempt in range(1, retries + 1):
             try:
                 json_data = json.dumps(request_body)
+                # Use curl_cffi session with browser fingerprinting to bypass limits
                 response = self._client.session.post(
                     url=url,
                     headers=headers,
                     data=json_data,
                     timeout=timeout or self._client.timeout,
-                    proxies=proxies or getattr(self._client, "proxies", None)
+                    proxies=proxies or getattr(self._client, "proxies", None),
+                    impersonate=self._client.impersonation
                 )
 
                 if response.status_code == 429:
@@ -1079,7 +1076,7 @@ class Completions(BaseCompletions):
                         time.sleep(2)
                         continue
 
-            except requests.exceptions.RequestException as error:
+            except curl_requests.exceptions.RequestException as error:
                 print(f"{RED}Attempt {attempt} failed: {error}{RESET}")
                 if attempt == retries:
                     raise ConnectionError(f"E2B API request failed after {retries} attempts: {error}") from error
@@ -1176,7 +1173,7 @@ class E2B(OpenAICompatibleProvider):
         )
         print(response.choices[0].message.content)
 
-    Note: This provider uses cloudscraper to bypass potential Cloudflare protection.
+    Note: This provider uses curl_cffi with browser fingerprinting to bypass rate limits and Cloudflare protection.
           The underlying API (fragments.e2b.dev/api/chat) does not appear to support true streaming responses,
           so `stream=True` will simulate streaming by returning the full response in chunks.
     """
@@ -1198,7 +1195,7 @@ class E2B(OpenAICompatibleProvider):
 
     def __init__(self, retries: int = 3):
         """
-        Initialize the E2B client.
+        Initialize the E2B client with curl_cffi and browser fingerprinting.
 
         Args:
             retries: Number of retries for failed requests.
@@ -1206,14 +1203,13 @@ class E2B(OpenAICompatibleProvider):
         self.timeout = 60  # Default timeout in seconds
         self.proxies = None  # Default proxies
         self.retries = retries
-        self.session = cloudscraper.create_scraper() # Use cloudscraper session
 
         # Use LitAgent for user-agent
-        agent = LitAgent()
-        self.headers = {
-            'user-agent': agent.random(),
-            # Other headers are set dynamically in _send_request
-        }
+        self.headers = LitAgent().generate_fingerprint()
+
+        # Initialize curl_cffi session with Chrome browser fingerprinting
+        self.impersonation = curl_requests.impersonate.DEFAULT_CHROME
+        self.session = curl_requests.Session()
         self.session.headers.update(self.headers)
 
         # Initialize the chat interface
@@ -1369,7 +1365,7 @@ if __name__ == "__main__":
     print("-" * 80)
     print("\n--- Streaming Simulation Test (gpt-4.1-mini) ---")
     try:
-        client_stream = E2B(timeout=120)
+        client_stream = E2B()
         stream = client_stream.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[

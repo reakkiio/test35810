@@ -9,7 +9,6 @@ authentication, and provider management.
 from __future__ import annotations
 
 import json
-import logging
 import os
 import secrets
 import sys
@@ -21,6 +20,7 @@ import codecs
 from typing import List, Dict, Optional, Union, Any, Generator, Callable
 import types
 
+from webscout.Litlogger import Logger, LogLevel, LogFormat, ConsoleHandler
 import uvicorn
 from fastapi import FastAPI, Response, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,15 +65,13 @@ DEFAULT_PORT = 8000
 DEFAULT_HOST = "0.0.0.0"
 API_VERSION = "v1"
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-    ]
+# Setup Litlogger
+logger = Logger(
+    name="webscout.api",
+    level=LogLevel.INFO,
+    handlers=[ConsoleHandler(stream=sys.stdout)],
+    fmt=LogFormat.DEFAULT
 )
-logger = logging.getLogger("webscout.api")
 
 
 class ServerConfig:

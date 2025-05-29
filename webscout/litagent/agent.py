@@ -361,12 +361,16 @@ class LitAgent:
                 sec_ch_ua = FINGERPRINTS["sec_ch_ua"][browser_name].format(version, version)
                 break
         
+        ip = self._random_ip() if hasattr(self, '_random_ip') else '.'.join(str(random.randint(0, 255)) for _ in range(4))
         fingerprint = {
             "user_agent": user_agent,
             "accept_language": accept_language,
             "accept": accept,
             "sec_ch_ua": sec_ch_ua,
-            "platform": platform
+            "platform": platform,
+            "x-forwarded-for": ip,
+            "x-real-ip": ip,
+            "x-request-id": self.random_id(8) if hasattr(self, 'random_id') else ''.join(random.choices('0123456789abcdef', k=8)),
         }
         
         self._update_stats(browser_type=browser)
@@ -434,6 +438,14 @@ class LitAgent:
             return True
         except Exception as e:
             return False
+
+    def random_crypto_ip(self) -> str:
+        """Generate a random IP address for cryptography purposes."""
+        return ".".join(str(random.randint(0, 255)) for _ in range(4))
+
+    def random_id(self, length: int = 16) -> str:
+        """Generate a random identifier string."""
+        return ''.join(random.choices('0123456789abcdef', k=length)).lower()
 
 if __name__ == "__main__":
     # Test it out! 🧪

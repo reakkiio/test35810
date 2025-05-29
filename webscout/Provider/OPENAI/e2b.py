@@ -2,7 +2,9 @@ import json
 import time
 import uuid
 import urllib.parse
-from datetime import datetime
+import random
+import base64
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union, Generator, Any
 from curl_cffi import requests as curl_requests
 
@@ -17,7 +19,7 @@ from webscout.Provider.OPENAI.utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    pass
+    LitAgent = None
 # ANSI escape codes for formatting
 BOLD = "\033[1m"
 RED = "\033[91m"
@@ -999,9 +1001,7 @@ class Completions(BaseCompletions):
             raise ValueError(f"Error preparing messages for E2B API: {e}") from e
 
         request_id = f"chatcmpl-{uuid.uuid4()}"
-        created_time = int(time.time())
-
-        # Note: The E2B API endpoint used here doesn't seem to support streaming.
+        created_time = int(time.time())        # Note: The E2B API endpoint used here doesn't seem to support streaming.
         # The `send_chat_request` method fetches the full response.
         # We will simulate streaming if stream=True by yielding the full response in one chunk.
         if stream:
@@ -1010,41 +1010,52 @@ class Completions(BaseCompletions):
             return self._create_non_stream(request_id, created_time, model_id, request_body, timeout, proxies)
 
     def _send_request(self, request_body: dict, model_config: dict, timeout: Optional[int] = None, proxies: Optional[Dict[str, str]] = None, retries: int = 3) -> str:
-        """Sends the chat request using curl_cffi with browser fingerprinting to bypass limits."""
+        """Enhanced request method with IP rotation, session rotation, and advanced rate limit bypass."""
         url = model_config["apiUrl"]
         target_origin = "https://fragments.e2b.dev"
 
-        current_time = int(time.time() * 1000)
-        session_id = str(uuid.uuid4())
-        cookie_data = {
-            "distinct_id": request_body["userID"],
-            "$sesid": [current_time, session_id, current_time - 153614],
-            "$epp": True,
-        }
-        cookie_value = urllib.parse.quote(json.dumps(cookie_data))
-        cookie_string = f"ph_phc_4G4hDbKEleKb87f0Y4jRyvSdlP5iBQ1dHr8Qu6CcPSh_posthog={cookie_value}"
-
-        # Use LitAgent to generate a browser fingerprint
-        fingerprint = LitAgent().generate_fingerprint()
-        headers = {
-            'accept': fingerprint.get('accept', '*/*'),
-            'accept-language': fingerprint.get('accept_language', 'en-US,en;q=0.9'),
-            'content-type': 'application/json',
-            'origin': target_origin,
-            'referer': f'{target_origin}/',
-            'cookie': cookie_string,
-            'user-agent': fingerprint.get('user_agent'),
-        }
-        # Optionally add sec-ch-ua and platform if present in fingerprint
-        if fingerprint.get('sec_ch_ua'):
-            headers['sec-ch-ua'] = fingerprint['sec_ch_ua']
-        if fingerprint.get('platform'):
-            headers['sec-ch-ua-platform'] = fingerprint['platform']
-
-        for attempt in range(1, retries + 1):
+        for attempt in range(retries):
             try:
-                json_data = json.dumps(request_body)
-                # Use curl_cffi session with browser fingerprinting to bypass limits
+                # Rotate session data for each attempt to avoid detection
+                session_data = self._client.rotate_session_data()
+                
+                # Generate enhanced bypass headers with potential IP spoofing
+                headers = self._client.simulate_bypass_headers(
+                    spoof_address=(attempt > 0),  # Start IP spoofing after first failure
+                    custom_user_agent=None
+                )
+
+                # Enhanced cookie generation with session rotation
+                current_time = int(time.time() * 1000)
+                cookie_data = {
+                    "distinct_id": session_data["user_id"],
+                    "$sesid": [current_time, session_data["session_id"], current_time - random.randint(100000, 300000)],
+                    "$epp": True,
+                    "device_id": session_data["device_id"],
+                    "csrf_token": session_data["csrf_token"],
+                    "request_id": session_data["request_id"]
+                }
+                cookie_value = urllib.parse.quote(json.dumps(cookie_data))
+                cookie_string = f"ph_phc_4G4hDbKEleKb87f0Y4jRyvSdlP5iBQ1dHr8Qu6CcPSh_posthog={cookie_value}"
+
+                # Update headers with rotated session information
+                headers.update({
+                    'cookie': cookie_string,
+                    'x-csrf-token': session_data["csrf_token"],
+                    'x-request-id': session_data["request_id"],
+                    'x-device-fingerprint': base64.b64encode(json.dumps(session_data["browser_fingerprint"]).encode()).decode(),
+                    'x-timestamp': str(current_time)
+                })
+
+                # Modify request body to include session information
+                enhanced_request_body = request_body.copy()
+                enhanced_request_body["userID"] = session_data["user_id"]
+                if "sessionId" not in enhanced_request_body:
+                    enhanced_request_body["sessionId"] = session_data["session_id"]
+
+                json_data = json.dumps(enhanced_request_body)
+                
+                # Use curl_cffi session with enhanced fingerprinting
                 response = self._client.session.post(
                     url=url,
                     headers=headers,
@@ -1054,10 +1065,9 @@ class Completions(BaseCompletions):
                     impersonate=self._client.impersonation
                 )
 
-                if response.status_code == 429:
-                    wait_time = (2 ** attempt)
-                    print(f"{RED}Rate limited. Retrying in {wait_time}s...{RESET}")
-                    time.sleep(wait_time)
+                # Enhanced rate limit detection
+                if self._client.is_rate_limited(response.text, response.status_code):
+                    self._client.handle_rate_limit_retry(attempt, retries)
                     continue
 
                 response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
@@ -1065,6 +1075,9 @@ class Completions(BaseCompletions):
                 try:
                     response_data = response.json()
                     if isinstance(response_data, dict):
+                        # Reset rate limit failure counter on success
+                        self._client._rate_limit_failures = 0
+                        
                         code = response_data.get("code")
                         if isinstance(code, str):
                             return code.strip()
@@ -1078,21 +1091,34 @@ class Completions(BaseCompletions):
                     if response.text:
                         return response.text.strip()
                     else:
-                        if attempt == retries:
+                        if attempt == retries - 1:
                             raise ValueError("Empty response received from server")
                         time.sleep(2)
                         continue
 
             except curl_requests.exceptions.RequestException as error:
-                print(f"{RED}Attempt {attempt} failed: {error}{RESET}")
-                if attempt == retries:
+                print(f"{RED}Attempt {attempt + 1} failed: {error}{RESET}")
+                if attempt == retries - 1:
                     raise ConnectionError(f"E2B API request failed after {retries} attempts: {error}") from error
-                time.sleep(2 ** attempt)
+                
+                # Enhanced retry logic with session rotation on failure
+                if "403" in str(error) or "429" in str(error) or "cloudflare" in str(error).lower():
+                    self._client.rotate_session_data(force_rotation=True)
+                    print(f"{RED}Security/rate limit detected. Forcing session rotation...{RESET}")
+                
+                # Progressive backoff with jitter
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                time.sleep(wait_time)
+                
             except Exception as error: # Catch other potential errors
-                 print(f"{RED}Attempt {attempt} failed with unexpected error: {error}{RESET}")
-                 if attempt == retries:
+                 print(f"{RED}Attempt {attempt + 1} failed with unexpected error: {error}{RESET}")
+                 if attempt == retries - 1:
                      raise ConnectionError(f"E2B API request failed after {retries} attempts with unexpected error: {error}") from error
-                 time.sleep(2 ** attempt)
+                 
+                 # Force session rotation on unexpected errors
+                 self._client.rotate_session_data(force_rotation=True)
+                 wait_time = (2 ** attempt) + random.uniform(0, 2)
+                 time.sleep(wait_time)
 
         raise ConnectionError(f"E2B API request failed after {retries} attempts.")
 
@@ -1199,7 +1225,6 @@ class E2B(OpenAICompatibleProvider):
         'deepseek-r1-instruct': 'deepseek-r1'
     }
 
-
     def __init__(self, retries: int = 3):
         """
         Initialize the E2B client with curl_cffi and browser fingerprinting.
@@ -1219,8 +1244,174 @@ class E2B(OpenAICompatibleProvider):
         self.session = curl_requests.Session()
         self.session.headers.update(self.headers)
 
+        # Initialize bypass session data
+        self._session_rotation_data = {}
+        self._last_rotation_time = 0
+        self._rotation_interval = 300  # Rotate session every 5 minutes
+        self._rate_limit_failures = 0
+        self._max_rate_limit_failures = 3
+
         # Initialize the chat interface
         self.chat = Chat(self)
+
+    def random_ip(self):
+        """Generate a random IP address for rate limit bypass."""
+        return ".".join(str(random.randint(1, 254)) for _ in range(4))
+
+    def random_uuid(self):
+        """Generate a random UUID for session identification."""
+        return str(uuid.uuid4())
+
+    def random_float(self, min_val, max_val):
+        """Generate a random float between min and max values."""
+        return round(random.uniform(min_val, max_val), 4)
+
+    def simulate_bypass_headers(self, spoof_address=False, custom_user_agent=None):
+        """Simulate browser headers to bypass detection and rate limits."""
+        # Use LitAgent for realistic browser fingerprinting
+        fingerprint = LitAgent().generate_fingerprint() if LitAgent else {}
+        
+        # Fallback user agents if LitAgent is not available
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+        ]
+
+        # Generate random device ID and session ID
+        device_id = self.random_uuid()
+        session_id = self.random_uuid()
+        
+        headers = {
+            'accept': '*/*',
+            'accept-language': fingerprint.get('accept_language', 'en-US,en;q=0.9'),
+            'content-type': 'application/json',
+            'origin': 'https://fragments.e2b.dev',
+            'referer': 'https://fragments.e2b.dev/',
+            'user-agent': custom_user_agent or fingerprint.get('user_agent', random.choice(user_agents)),
+            'sec-ch-ua': fingerprint.get('sec_ch_ua', '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"'),
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': f'"{fingerprint.get("platform", "Windows")}"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'x-device-id': device_id,
+            'x-session-id': session_id,
+            'cache-control': 'no-cache',
+            'pragma': 'no-cache'
+        }
+
+        # Add IP spoofing headers if requested
+        if spoof_address:
+            ip = self.random_ip()
+            headers.update({
+                "X-Forwarded-For": ip,
+                "X-Originating-IP": ip,
+                "X-Remote-IP": ip,
+                "X-Remote-Addr": ip,
+                "X-Host": ip,
+                "X-Forwarded-Host": ip,
+                "X-Real-IP": ip,
+                "CF-Connecting-IP": ip
+            })
+
+        return headers
+
+    def rotate_session_data(self, force_rotation=False):
+        """Rotate session data to maintain fresh authentication and avoid rate limits."""
+        current_time = time.time()
+        
+        # Check if rotation is needed
+        if (not force_rotation and 
+            self._session_rotation_data and 
+            (current_time - self._last_rotation_time) < self._rotation_interval):
+            return self._session_rotation_data
+
+        # Generate new session data
+        session_data = {
+            "user_id": self.random_uuid(),
+            "session_id": self.random_uuid(),
+            "device_id": self.random_uuid(),
+            "timestamp": current_time,
+            "browser_fingerprint": LitAgent().generate_fingerprint() if LitAgent else {},
+            "csrf_token": base64.b64encode(f"{self.random_uuid()}-{int(current_time)}".encode()).decode(),
+            "request_id": self.random_uuid()
+        }
+
+        self._session_rotation_data = session_data
+        self._last_rotation_time = current_time
+        
+        return session_data
+
+    def is_rate_limited(self, response_text, status_code):
+        """Detect if the request was rate limited."""
+        rate_limit_indicators = [
+            "rate limit",
+            "too many requests",
+            "rate exceeded",
+            "quota exceeded",
+            "request limit",
+            "throttled",
+            "try again later",
+            "slow down",
+            "rate_limit_exceeded",
+            "cloudflare",
+            "blocked"
+        ]
+        
+        # Check status code
+        if status_code in [429, 403, 503, 502, 520, 521, 522, 523, 524]:
+            return True
+            
+        # Check response text
+        if response_text:
+            response_lower = response_text.lower()
+            return any(indicator in response_lower for indicator in rate_limit_indicators)
+            
+        return False
+
+    def handle_rate_limit_retry(self, attempt, max_retries):
+        """Handle rate limit retry with exponential backoff and session rotation."""
+        self._rate_limit_failures += 1
+        
+        if self._rate_limit_failures >= self._max_rate_limit_failures:
+            # Force session rotation after multiple failures
+            self.rotate_session_data(force_rotation=True)
+            self._rate_limit_failures = 0
+            print(f"{RED}Multiple rate limit failures detected. Rotating session data...{RESET}")
+        
+        # Calculate wait time with jitter
+        base_wait = min(2 ** attempt, 60)  # Cap at 60 seconds
+        jitter = random.uniform(0.5, 1.5)
+        wait_time = base_wait * jitter
+        
+        print(f"{RED}Rate limit detected. Waiting {wait_time:.1f}s before retry {attempt + 1}/{max_retries}...{RESET}")
+        time.sleep(wait_time)
+
+    def refresh_session(self):
+        """Manually refresh session data and headers."""
+        print(f"{BOLD}Refreshing session data and headers...{RESET}")
+        self.rotate_session_data(force_rotation=True)
+        
+        # Update session headers with new fingerprint
+        new_headers = self.simulate_bypass_headers()
+        self.session.headers.update(new_headers)
+        
+        # Clear any cached authentication data
+        self._rate_limit_failures = 0
+        
+        print(f"{BOLD}Session refreshed successfully.{RESET}")
+
+    def get_session_stats(self):
+        """Get current session statistics for debugging."""
+        return {
+            "session_age_seconds": time.time() - self._last_rotation_time,
+            "rate_limit_failures": self._rate_limit_failures,
+            "session_data": self._session_rotation_data,
+            "rotation_interval": self._rotation_interval
+        }
 
     @property
     def models(self):
@@ -1228,6 +1419,7 @@ class E2B(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+
     def convert_model_name(self, model: str) -> str:
         """Normalize and validate model name."""
         normalized_model = self.MODEL_NAME_NORMALIZATION.get(model, model)

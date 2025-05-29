@@ -648,7 +648,16 @@ def resolve_provider_and_model(model_identifier: str) -> tuple[Any, str]:
 
     # Validate model availability
     if hasattr(provider_class, "AVAILABLE_MODELS") and model_name is not None:
-        available = getattr(provider_class, "AVAILABLE_MODELS", [])
+        available = getattr(provider_class, "AVAILABLE_MODELS", None)
+        # If it's a property, get from instance
+        if isinstance(available, property):
+            try:
+                available = getattr(provider_class(), "AVAILABLE_MODELS", [])
+            except Exception:
+                available = []
+        # If still not iterable, fallback to empty list
+        if not isinstance(available, (list, tuple, set)):
+            available = list(available) if hasattr(available, "__iter__") and not isinstance(available, str) else []
         if available and model_name not in available:
             raise APIError(
                 f"Model '{model_name}' not supported by provider '{provider_class.__name__}'. Available models: {available}",

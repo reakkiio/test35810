@@ -18,6 +18,7 @@ class SCNet(Provider):
         {"modelId": 5, "name": "Deepseek-r1-70B"},
         {"modelId": 7, "name": "QWQ-32B"},
         {"modelId": 8, "name": "minimax-text-01-456B"},
+        {"modelId": 9, "name": "Qwen3-30B-A3B"},  # Added new model
         # Add more models here as needed
     ]
     MODEL_NAME_TO_ID = {m["name"]: m["modelId"] for m in AVAILABLE_MODELS}

@@ -158,7 +158,8 @@ class PiAI(Provider):
         except CurlError as e: # Catch CurlError
             raise exceptions.FailedToGenerateResponseError(f"Failed to start conversation (CurlError): {e}") from e
         except Exception as e: # Catch other potential exceptions (like HTTPError, JSONDecodeError)
-            err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+            # Extract error text from the response if available
+            err_text = e.response.text if hasattr(e, 'response') and hasattr(e.response, 'text') else ''
             raise exceptions.FailedToGenerateResponseError(f"Failed to start conversation ({type(e).__name__}): {e} - {err_text}") from e
 
     def ask(

@@ -39,3 +39,4 @@ from .TwoAI import *
 from .oivscode import * # Add OnRender provider
 from .Qwen3 import *
 from .FalconH1 import *
+from .PI import *  # Add PI.ai provider

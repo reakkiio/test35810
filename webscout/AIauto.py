@@ -45,8 +45,8 @@ def load_providers():
                         api_key_providers.add(attr_name.upper())
                     if 'cookie_file' in sig or 'cookie_path' in sig:
                         cookie_providers.add(attr_name.upper())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error loading provider {module_name}: {e}")
     return provider_map, api_key_providers.union(cookie_providers)
 
 provider_map, api_key_providers = load_providers()

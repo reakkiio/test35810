@@ -1024,15 +1024,22 @@ class Completions(BaseCompletions):
         cookie_value = urllib.parse.quote(json.dumps(cookie_data))
         cookie_string = f"ph_phc_4G4hDbKEleKb87f0Y4jRyvSdlP5iBQ1dHr8Qu6CcPSh_posthog={cookie_value}"
 
+        # Use LitAgent to generate a browser fingerprint
+        fingerprint = LitAgent().generate_fingerprint()
         headers = {
-            'accept': '*/*',
-            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'accept': fingerprint.get('accept', '*/*'),
+            'accept-language': fingerprint.get('accept_language', 'en-US,en;q=0.9'),
             'content-type': 'application/json',
             'origin': target_origin,
             'referer': f'{target_origin}/',
             'cookie': cookie_string,
-            'user-agent': self._client.headers.get('user-agent', LitAgent().random()), # Use client's UA
+            'user-agent': fingerprint.get('user_agent'),
         }
+        # Optionally add sec-ch-ua and platform if present in fingerprint
+        if fingerprint.get('sec_ch_ua'):
+            headers['sec-ch-ua'] = fingerprint['sec_ch_ua']
+        if fingerprint.get('platform'):
+            headers['sec-ch-ua-platform'] = fingerprint['platform']
 
         for attempt in range(1, retries + 1):
             try:

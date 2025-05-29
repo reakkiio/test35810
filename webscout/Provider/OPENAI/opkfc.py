@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 import uuid
 import requests
@@ -6,12 +7,12 @@ import random
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, count_tokens
 )
-
+from webscout.litagent import LitAgent
 # ANSI escape codes for formatting
 BOLD = "\033[1m"
 RED = "\033[91m"
@@ -466,7 +467,9 @@ class OPKFC(OpenAICompatibleProvider):
         "auto",
         "o4-mini",
         "gpt-4o-mini",
-        "gpt-4o"
+        "gpt-4o",
+        "gpt-4-1-mini",
+        
     ]
 
     def __init__(
@@ -491,10 +494,10 @@ class OPKFC(OpenAICompatibleProvider):
             self.session.proxies.update(proxies)
 
         # Set the user agent to match the original script
-        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+        self.user_agent = LitAgent().random()
 
         # Set the cookie from the original script
-        self.cookie = "__vtins__KUc0LhjVWFNXQv11=%7B%22sid%22%3A%20%228fab09e3-c23e-5f60-b369-9697fbb821ce%22%2C%20%22vd%22%3A%201%2C%20%22stt%22%3A%200%2C%20%22dr%22%3A%200%2C%20%22expires%22%3A%201744896723481%2C%20%22ct%22%3A%201744894923481%7D; __51uvsct__KUc0LhjVWFNXQv11=1; __51vcke__KUc0LhjVWFNXQv11=06da852c-bb56-547c-91a8-43a0d485ffed; __51vuft__KUc0LhjVWFNXQv11=1744894923504; gfsessionid=1ochrgv17vy4sbd98xmwt6crpmkxwlqf; oai-nav-state=1; p_uv_id=ad86646801bc60d6d95f6098e4ee7450; _dd_s=rum=0&expire=1744895920821&logs=1&id=a39221c9-e8ed-44e6-a2c8-03192699c71e&created=1744894970625"
+        self.cookie = f"__vtins__KUc0LhjVWFNXQv11=%7B%22sid%22%3A%20%{uuid.uuid4().hex}%22%2C%20%22vd%22%3A%201%2C%20%22stt%22%3A%200%2C%20%22dr%22%3A%200%2C%20%22expires%22%3A%201744896723481%2C%20%22ct%22%3A%201744894923481%7D; __51uvsct__KUc0LhjVWFNXQv11=1; __51vcke__KUc0LhjVWFNXQv11=06da852c-bb56-547c-91a8-43a0d485ffed; __51vuft__KUc0LhjVWFNXQv11=1744894923504; gfsessionid=1ochrgv17vy4sbd98xmwt6crpmkxwlqf; oai-nav-state=1; p_uv_id=ad86646801bc60d6d95f6098e4ee7450; _dd_s=rum=0&expire=1744895920821&logs=1&id={uuid.uuid4().hex}&created={int(datetime.utcnow().timestamp() * 1000)}"
 
         # Initialize chat interface
         self.chat = Chat(self)
@@ -505,3 +508,12 @@ class OPKFC(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+
+if __name__ == "__main__":
+    # Example usage
+    client = OPKFC()
+    response = client.chat.completions.create(
+        model="auto",
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+    print(response.choices[0].message.content)

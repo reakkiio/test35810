@@ -646,6 +646,27 @@ class Api:
                 "data": models
             }
 
+        @self.app.get("/v1/TTI/models", response_model=ModelListResponse)
+        async def list_tti_models():
+            models = []
+            for model_name, provider_class in AppConfig.tti_provider_map.items():
+                if "/" not in model_name:
+                    continue  # Skip provider names
+                if any(m["id"] == model_name for m in models):
+                    continue
+                models.append({
+                    "id": model_name,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": provider_class.__name__
+                })
+            # Sort models alphabetically by the part after the first '/'
+            models = sorted(models, key=lambda m: m["id"].split("/", 1)[1].lower())
+            return {
+                "object": "list",
+                "data": models
+            }
+
         @self.app.post(
             "/v1/chat/completions",
             response_model_exclude_none=True,

@@ -23,11 +23,17 @@ class LambdaChat(Provider):
         "deepseek-llama3.3-70b",
         "apriel-5b-instruct",
         "deepseek-r1",
+        "deepseek-v3-0324",
+        "deepseek-r1-0528",
         "hermes-3-llama-3.1-405b-fp8",
         "llama3.1-nemotron-70b-instruct",
         "lfm-40b",
         "llama3.3-70b-instruct-fp8",
-        "qwen25-coder-32b-instruct"
+        "qwen25-coder-32b-instruct",
+        "qwen3-32b-fp8",
+        "llama-4-maverick-70b-128e-instruct-fp8",
+        "llama-4-scout-17b-16e-instruct"
+
     ]
     
     def __init__(

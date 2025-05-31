@@ -6,7 +6,7 @@ API keys or cookies.
 
 from webscout.AIbase import Provider
 from webscout.exceptions import AllProvidersFailure
-from typing import Union, Any, Dict, Generator
+from typing import Union, Any, Dict, Generator, Optional
 import importlib
 import pkgutil
 import random
@@ -71,7 +71,7 @@ class AUTO(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        exclude: list[str] = [],
+        exclude: Optional[list[str]] = None,
         print_provider_info: bool = False,
     ):
         """
@@ -90,7 +90,7 @@ class AUTO(Provider):
             proxies (dict): Proxies for requests. Defaults to {}.
             history_offset (int): History character offset limit. Defaults to 10250.
             act (str, optional): Awesome prompt key. Defaults to None.
-            exclude (list[str]): List of provider names (uppercase) to exclude. Defaults to [].
+            exclude (Optional[list[str]]): List of provider names (uppercase) to exclude. Defaults to None.
             print_provider_info (bool): Whether to print the name of the successful provider. Defaults to False.
         """
         self.provider = None  # type: Provider
@@ -104,7 +104,7 @@ class AUTO(Provider):
         self.proxies: dict = proxies
         self.history_offset: int = history_offset
         self.act: str = act
-        self.exclude: list[str] = [e.upper() for e in exclude]
+        self.exclude: list[str] = [e.upper() for e in exclude] if exclude else []
         self.print_provider_info: bool = print_provider_info
 
 

@@ -37,9 +37,21 @@ class ChatGPTReversed:
     csrf_token = None
     initialized = False
 
+    _instance = None
+
+    def __new__(cls, model="auto"):
+        if cls._instance is None:
+            cls._instance = super(ChatGPTReversed, cls).__new__(cls)
+            cls._instance.initialized = False
+        return cls._instance
+
     def __init__(self, model="auto"):
-        if ChatGPTReversed.initialized:
-            raise Exception("ChatGPTReversed has already been initialized.")
+        if self.initialized:
+            # Already initialized, just update model if needed
+            if model not in self.AVAILABLE_MODELS:
+                raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
+            self.model = model
+            return
 
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")

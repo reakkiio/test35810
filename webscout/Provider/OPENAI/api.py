@@ -112,6 +112,10 @@ class ServerConfig:
 # Global configuration instance
 config = ServerConfig()
 
+# Cache for provider instances to avoid reinitialization on every request
+provider_instances: Dict[str, Any] = {}
+tti_provider_instances: Dict[str, Any] = {}
+
 
 # Define Pydantic models for multimodal content parts, aligning with OpenAI's API
 class TextPart(BaseModel):
@@ -697,10 +701,10 @@ class Api:
                 # Resolve provider and model
                 provider_class, model_name = resolve_provider_and_model(chat_request.model)
 
-                # Initialize provider with error handling
+                # Initialize provider with caching and error handling
                 try:
-                    provider = provider_class()
-                    logger.debug(f"Initialized provider: {provider_class.__name__}")
+                    provider = get_provider_instance(provider_class)
+                    logger.debug(f"Using provider instance: {provider_class.__name__}")
                 except Exception as e:
                     logger.error(f"Failed to initialize provider {provider_class.__name__}: {e}")
                     raise APIError(
@@ -757,10 +761,10 @@ class Api:
                 logger.info(f"Processing image generation request {request_id} for model: {image_request.model}")
                 # Provider/model resolution using TTI providers
                 provider_class, model_name = resolve_tti_provider_and_model(image_request.model)
-                # Initialize provider
+                # Initialize provider with caching
                 try:
-                    provider = provider_class()
-                    logger.debug(f"Initialized provider: {provider_class.__name__}")
+                    provider = get_tti_provider_instance(provider_class)
+                    logger.debug(f"Using TTI provider instance: {provider_class.__name__}")
                 except Exception as e:
                     logger.error(f"Failed to initialize provider {provider_class.__name__}: {e}")
                     raise APIError(
@@ -912,6 +916,26 @@ def resolve_tti_provider_and_model(model_identifier: str) -> tuple[Any, str]:
             )
 
     return provider_class, model_name
+
+
+def get_provider_instance(provider_class: Any):
+    """Return a cached instance of the provider, creating it if necessary."""
+    key = provider_class.__name__
+    instance = provider_instances.get(key)
+    if instance is None:
+        instance = provider_class()
+        provider_instances[key] = instance
+    return instance
+
+
+def get_tti_provider_instance(provider_class: Any):
+    """Return a cached instance of the TTI provider, creating it if needed."""
+    key = provider_class.__name__
+    instance = tti_provider_instances.get(key)
+    if instance is None:
+        instance = provider_class()
+        tti_provider_instances[key] = instance
+    return instance
 
 
 def process_messages(messages: List[Message]) -> List[Dict[str, Any]]:

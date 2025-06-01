@@ -20,12 +20,13 @@ class SciraAI(Provider):
     AVAILABLE_MODELS = {
         "scira-default": "Grok3-mini", # thinking model
         "scira-grok-3": "Grok3",
-        "scira-anthropic": "Sonnet 3.7 thinking",
+        "scira-anthropic": "Claude 4 Sonnet",
+        "scira-anthropic-thinking": "Claude 4 Sonnet Thinking", # thinking model
         "scira-vision" : "Grok2-Vision", # vision model
         "scira-4o": "GPT4o",
         "scira-qwq": "QWQ-32B",
         "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash",
+        "scira-google": "gemini 2.5 flash Thinking", # thinking model
         "scira-google-pro": "gemini 2.5 pro",
         "scira-llama-4": "llama 4 Maverick",
     }

@@ -302,7 +302,6 @@ class Toolbaz(OpenAICompatibleProvider):
         "Llama-4-Scout",
         "Llama-3.3-70B",
         "Qwen2.5-72B",
-        "Qwen2-72B",
         "grok-2-1212",
         "grok-3-beta",
         "toolbaz_v3.5_pro",

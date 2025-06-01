@@ -13,15 +13,14 @@ import gzip
 import zstandard as zstd
 import brotli
 import zlib
-
-# Import base classes and utility structures
-from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage, count_tokens,
-    ChatCompletionChunk # Added for streaming return type
+    ChatCompletionChunk, ChoiceDelta # Added for streaming return type
 )
 from webscout.litagent import LitAgent
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+
 agent = LitAgent()
 
 class StreamingDecompressor:

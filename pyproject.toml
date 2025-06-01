@@ -96,6 +96,7 @@ api = [
     "pydantic",
     "python-multipart",
     "tiktoken",  # Added tiktoken for token counting support
+    "proxyfox"
 ]
 
 [tool.setuptools]

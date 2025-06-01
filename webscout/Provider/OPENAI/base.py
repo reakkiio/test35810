@@ -1,8 +1,15 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, ABCMeta
 from typing import List, Dict, Optional, Union, Generator, Any, TypedDict, Callable
 import json
 import logging
 from dataclasses import dataclass
+import requests
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
+from webscout.Provider.OPENAI.autoproxy import get_auto_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +181,41 @@ class BaseChat(ABC):
     completions: BaseCompletions
 
 
-class OpenAICompatibleProvider(ABC):
+class ProxyAutoMeta(ABCMeta):
+    """
+    Metaclass to ensure all OpenAICompatibleProvider subclasses automatically get proxy support.
+    This will inject proxies into any requests.Session or httpx.Client attributes found on the instance.
+    """
+    def __call__(cls, *args, **kwargs):
+        instance = super().__call__(*args, **kwargs)
+        proxies = getattr(instance, 'proxies', None) or kwargs.get('proxies', None)
+        if proxies is None:
+            proxies = {"http": get_auto_proxy(), "https": get_auto_proxy()}
+        instance.proxies = proxies
+        # Patch requests.Session if present
+        for attr in dir(instance):
+            obj = getattr(instance, attr)
+            if isinstance(obj, requests.Session):
+                obj.proxies.update(proxies)
+            if httpx and isinstance(obj, httpx.Client):
+                try:
+                    obj._proxies = proxies
+                except Exception:
+                    pass
+        # Provide a helper for a proxied session
+        def get_proxied_session():
+            s = requests.Session()
+            s.proxies.update(proxies)
+            return s
+        instance.get_proxied_session = get_proxied_session
+        return instance
+
+class OpenAICompatibleProvider(ABC, metaclass=ProxyAutoMeta):
     """
     Abstract Base Class for providers mimicking the OpenAI Python client structure.
     Requires a nested 'chat.completions' structure with tool support.
+    All subclasses automatically get proxy support via ProxyAutoMeta.
+    Use self.proxies for all network requests, or self.get_proxied_session() for a ready-to-use requests.Session.
     """
     chat: BaseChat
     available_tools: Dict[str, Tool] = {}  # Dictionary of available tools
@@ -185,18 +223,13 @@ class OpenAICompatibleProvider(ABC):
     supports_tool_choice: bool = False  # Whether the provider supports tool_choice
 
     @abstractmethod
-    def __init__(self, api_key: Optional[str] = None, tools: Optional[List[Tool]] = None, **kwargs: Any):
-        """
-        Initialize the provider, potentially with an API key and tools.
-        
-        Args:
-            api_key: Optional API key for the provider
-            tools: Optional list of tools to make available to the provider
-            **kwargs: Additional provider-specific parameters
-        """
+    def __init__(self, api_key: Optional[str] = None, tools: Optional[List[Tool]] = None, proxies: Optional[dict] = None, **kwargs: Any):
         self.available_tools = {}
         if tools:
             self.register_tools(tools)
+        # self.proxies is set by ProxyAutoMeta
+        # Subclasses should use self.proxies for all network requests
+        # Optionally, use self.get_proxied_session() for a requests.Session with proxies
         raise NotImplementedError
 
     @property

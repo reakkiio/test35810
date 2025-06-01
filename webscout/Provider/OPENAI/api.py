@@ -172,7 +172,7 @@ class ChatCompletionRequest(BaseModel):
         extra = "ignore"  # Ignore extra fields that aren't in the model
         schema_extra = {
             "example": {
-                "model": "ChatGPT/gpt-4o",
+                "model": "Cloudflare/@cf/meta/llama-4-scout-17b-16e-instruct",
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "Hello, how are you?"}

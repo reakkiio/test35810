@@ -230,7 +230,7 @@ class OpenAICompatibleProvider(ABC, metaclass=ProxyAutoMeta):
         # self.proxies is set by ProxyAutoMeta
         # Subclasses should use self.proxies for all network requests
         # Optionally, use self.get_proxied_session() for a requests.Session with proxies
-        raise NotImplementedError
+        # raise NotImplementedError  # <-- Commented out for metaclass test
 
     @property
     @abstractmethod

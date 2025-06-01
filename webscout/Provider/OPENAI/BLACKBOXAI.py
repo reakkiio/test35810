@@ -16,12 +16,19 @@ import zlib
 from webscout.Provider.OPENAI.utils import (
     ChatCompletion, Choice,
     ChatCompletionMessage, CompletionUsage, count_tokens,
-    ChatCompletionChunk, ChoiceDelta # Added for streaming return type
+    ChatCompletionChunk, ChoiceDelta  # Ensure ChoiceDelta is always imported at the top
 )
-from webscout.litagent import LitAgent
-from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+try:
+    from webscout.litagent import LitAgent
+    agent = LitAgent()
+except ImportError:
+    print("Warning: LitAgent not available, using default user agent")
+    class MockAgent:
+        def random(self):
+            return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
+    agent = MockAgent()
 
-agent = LitAgent()
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
 
 class StreamingDecompressor:
     """
@@ -344,9 +351,13 @@ class Completions(BaseCompletions):
         proxies: Optional[dict] = None
     ) -> ChatCompletion:
         """Implementation for non-streaming chat completions."""
-        original_proxies = self._client.session.proxies
-        if proxies is not None:
-            self._client.session.proxies = proxies
+        original_proxies = self._client.session.proxies.copy()
+        # Only use proxies if they are explicitly provided and not causing issues
+        if proxies is not None and proxies:
+            self._client.session.proxies.update(proxies)
+        else:
+            # Clear proxies to avoid connection issues
+            self._client.session.proxies = {}
         try:
             # Prepare user messages for BlackboxAI API format
             blackbox_messages = []
@@ -390,14 +401,24 @@ class Completions(BaseCompletions):
                 model=model
             )
 
-            # Make the API request with cookies
-            response = self._client.session.post(
-                self._client.api_endpoint,
-                json=payload,
-                headers=self._client.headers,
-                cookies=self._client.cookies,
-                timeout=timeout if timeout is not None else self._client.timeout
-            )
+            # Make the API request with cookies and retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self._client.session.post(
+                        self._client.api_endpoint,
+                        json=payload,
+                        headers=self._client.headers,
+                        cookies=self._client.cookies,
+                        timeout=timeout if timeout is not None else self._client.timeout
+                    )
+                    break  # Success, exit retry loop
+                except (requests.exceptions.ConnectionError, requests.exceptions.ProxyError) as e:
+                    if attempt == max_retries - 1:
+                        raise IOError(f"BlackboxAI connection failed after {max_retries} attempts: {str(e)}") from e
+                    # Clear proxies and retry
+                    self._client.session.proxies = {}
+                    time.sleep(1)  # Wait before retry
 
             # Process the response
             full_content = ""
@@ -471,8 +492,8 @@ class Completions(BaseCompletions):
         except Exception as e:
             raise IOError(f"BlackboxAI request failed: {str(e)}") from e
         finally:
-            if proxies is not None:
-                self._client.session.proxies = original_proxies
+            # Restore original proxies
+            self._client.session.proxies = original_proxies
 
     def _create_streaming(
         self,
@@ -490,9 +511,13 @@ class Completions(BaseCompletions):
         proxies: Optional[dict] = None
     ):
         """Implementation for streaming chat completions (OpenAI-compatible chunks)."""
-        original_proxies = self._client.session.proxies
-        if proxies is not None:
-            self._client.session.proxies = proxies
+        original_proxies = self._client.session.proxies.copy()
+        # Only use proxies if they are explicitly provided and not causing issues
+        if proxies is not None and proxies:
+            self._client.session.proxies.update(proxies)
+        else:
+            # Clear proxies to avoid connection issues
+            self._client.session.proxies = {}
         try:
             # Prepare user messages for BlackboxAI API format
             blackbox_messages = []
@@ -530,19 +555,28 @@ class Completions(BaseCompletions):
                 session_data=session_data,
                 model=model
             )
-            # Make the API request with cookies, stream=True
-            response = self._client.session.post(
-                self._client.api_endpoint,
-                json=payload,
-                headers=self._client.headers,
-                cookies=self._client.cookies,
-                stream=True,
-                timeout=timeout if timeout is not None else self._client.timeout
-            )
+            # Make the API request with cookies, stream=True and retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self._client.session.post(
+                        self._client.api_endpoint,
+                        json=payload,
+                        headers=self._client.headers,
+                        cookies=self._client.cookies,
+                        stream=True,
+                        timeout=timeout if timeout is not None else self._client.timeout
+                    )
+                    break  # Success, exit retry loop
+                except (requests.exceptions.ConnectionError, requests.exceptions.ProxyError) as e:
+                    if attempt == max_retries - 1:
+                        raise IOError(f"BlackboxAI connection failed after {max_retries} attempts: {str(e)}") from e
+                    # Clear proxies and retry
+                    self._client.session.proxies = {}
+                    time.sleep(1)  # Wait before retry
             # Blackbox streams as raw text, no line breaks, so chunk manually
-            import codecs
             chunk_size = 32  # Tune as needed for smoothness
-            from webscout.Provider.OPENAI.utils import ChatCompletionChunk, Choice, ChoiceDelta
+            # ChoiceDelta is already imported at the top of the file
             
             # Check if the response is compressed and create appropriate decompressor
             content_encoding = response.headers.get('Content-Encoding')
@@ -610,8 +644,8 @@ class Completions(BaseCompletions):
             )
             yield error_chunk
         finally:
-            if proxies is not None:
-                self._client.session.proxies = original_proxies
+            # Restore original proxies
+            self._client.session.proxies = original_proxies
 
 
 class Chat(BaseChat):
@@ -636,11 +670,6 @@ class BLACKBOXAI(OpenAICompatibleProvider):
     default_vision_model = default_model
     api_endpoint = "https://www.blackbox.ai/api/chat"
     timeout = None
-
-
-    # Default model (remains the same as per original class)
-    default_model = "GPT-4.1"
-    default_vision_model = default_model
 
     # New OpenRouter models list
     openrouter_models = [
@@ -828,6 +857,7 @@ class BLACKBOXAI(OpenAICompatibleProvider):
         """
         # Initialize session
         self.session = requests.Session()
+        # Remove any proxy configuration to avoid connection issues
         self.session.proxies = {}
 
         # Set headers based on GitHub reference
@@ -1014,3 +1044,6 @@ if __name__ == "__main__":
     )
     for chunk in response:
         print(chunk.choices[0].delta.content, end='', flush=True)
+    print()
+    print("Proxies on instance:", client.proxies)
+    print("Proxies on session:", client.session.proxies)

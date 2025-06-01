@@ -2,33 +2,38 @@
 # This module provides a singleton proxy pool for all providers
 
 import proxyfox
-import threading
 
-class ProxyFoxPool:
-    _instance = None
-    _lock = threading.Lock()
+def get_auto_proxy(protocol='https', country=None, max_speed_ms=1000):
+    """
+    Returns a single proxy string (e.g. '11.22.33.44:8080') using proxyfox.
+    You can specify protocol, country, and max_speed_ms for filtering.
+    """
+    kwargs = {'protocol': protocol, 'max_speed_ms': max_speed_ms}
+    if country:
+        kwargs['country'] = country
+    return proxyfox.get_one(**kwargs)
 
-    def __new__(cls, size=20, refresh_interval=180, protocol='https', max_speed_ms=300):
-        if not cls._instance:
-            with cls._lock:
-                if not cls._instance:
-                    cls._instance = super().__new__(cls)
-                    cls._instance.pool = proxyfox.create_pool(
-                        size=size,
-                        refresh_interval=refresh_interval,
-                        protocol=protocol,
-                        max_speed_ms=max_speed_ms  # Aggressively filter for fast proxies
-                    )
-        return cls._instance
+# Optionally: pool support for advanced usage
+_pool = None
 
-    def get_proxy(self):
-        return self.pool.get()
+def get_proxy_pool(size=10, refresh_interval=300, protocol='https', max_speed_ms=1000):
+    global _pool
+    if _pool is None:
+        _pool = proxyfox.create_pool(
+            size=size,
+            refresh_interval=refresh_interval,
+            protocol=protocol,
+            max_speed_ms=max_speed_ms
+        )
+    return _pool
 
-    def all_proxies(self):
-        return self.pool.all()
+def get_pool_proxy():
+    pool = get_proxy_pool()
+    return pool.get()
 
-# Global singleton for use in all providers
-proxy_pool = ProxyFoxPool()
+def get_all_pool_proxies():
+    pool = get_proxy_pool()
+    return pool.all()
 
-def get_auto_proxy():
-    return proxy_pool.get_proxy()
+if __name__ == "__main__":
+    print(get_auto_proxy())

@@ -1,229 +1,281 @@
 """
-Base class for STT providers with common functionality.
+Base classes for OpenAI-compatible STT providers.
+
+This module provides the base structure for STT providers that follow
+the OpenAI Whisper API interface pattern.
 """
-import os
-import tempfile
+
+import json
 import time
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Generator, List, Optional, Union, BinaryIO
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
-from webscout.AIbase import STTProvider
+
+# Import OpenAI response types from the main OPENAI module
+try:
+    from webscout.Provider.OPENAI.pydantic_imports import (
+        ChatCompletion, ChatCompletionChunk, Choice, ChoiceDelta,
+        Message, Usage, count_tokens
+    )
+except ImportError:
+    # Fallback if pydantic_imports is not available
+    from dataclasses import dataclass
+    
+    @dataclass
+    class Usage:
+        prompt_tokens: int = 0
+        completion_tokens: int = 0
+        total_tokens: int = 0
+    
+    @dataclass
+    class Message:
+        role: str
+        content: str
+    
+    @dataclass
+    class Choice:
+        index: int
+        message: Message
+        finish_reason: Optional[str] = None
+    
+    @dataclass
+    class ChoiceDelta:
+        content: Optional[str] = None
+        role: Optional[str] = None
+    
+    @dataclass
+    class ChatCompletionChunk:
+        id: str
+        choices: List[Dict[str, Any]]
+        created: int
+        model: str
+        object: str = "chat.completion.chunk"
+    
+    @dataclass
+    class ChatCompletion:
+        id: str
+        choices: List[Choice]
+        created: int
+        model: str
+        usage: Usage
+        object: str = "chat.completion"
+    
+    def count_tokens(text: str) -> int:
+        return len(text.split())
 
 
-class BaseSTTProvider(STTProvider):
-    """
-    Base class for STT providers with common functionality.
+class TranscriptionResponse:
+    """Response object that mimics OpenAI's transcription response."""
     
-    This class implements common methods and utilities that can be used
-    by all STT providers, following OpenAI Whisper API response format.
-    """
+    def __init__(self, data: Dict[str, Any], response_format: str = "json"):
+        self._data = data
+        self._response_format = response_format
+        
+    @property
+    def text(self) -> str:
+        """Get the transcribed text."""
+        return self._data.get("text", "")
     
-    def __init__(self, timeout: int = 60):
-        """Initialize the base STT provider.
-        
-        Args:
-            timeout (int): Request timeout in seconds. Defaults to 60.
-        """
-        self.timeout = timeout
-        self.temp_dir = tempfile.mkdtemp(prefix="webscout_stt_")
+    @property
+    def language(self) -> Optional[str]:
+        """Get the detected language."""
+        return self._data.get("language")
     
-    def _validate_audio_file(self, audio_path: Union[str, Path]) -> Path:
-        """Validate that the audio file exists and is readable.
-        
-        Args:
-            audio_path (Union[str, Path]): Path to the audio file
-            
-        Returns:
-            Path: Validated Path object
-            
-        Raises:
-            FileNotFoundError: If the audio file doesn't exist
-        """
-        audio_path = Path(audio_path)
-        if not audio_path.is_file():
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        return audio_path
+    @property
+    def duration(self) -> Optional[float]:
+        """Get the audio duration."""
+        return self._data.get("duration")
     
-    def _format_openai_response(
-        self,
-        text: str,
-        language: Optional[str] = None,
-        duration: Optional[float] = None,
-        segments: Optional[list] = None,
-        words: Optional[list] = None
-    ) -> Dict[str, Any]:
-        """Format response to match OpenAI Whisper API format.
-        
-        Args:
-            text (str): Transcribed text
-            language (Optional[str]): Detected language code
-            duration (Optional[float]): Audio duration in seconds
-            segments (Optional[list]): List of text segments with timestamps
-            words (Optional[list]): List of words with timestamps
-            
-        Returns:
-            Dict[str, Any]: OpenAI Whisper-compatible response
-        """
-        response = {
-            "text": text.strip(),
-            "task": "transcribe",
-            "language": language or "en",
-            "duration": duration
-        }
-        
-        if segments:
-            response["segments"] = segments
-            
-        if words:
-            response["words"] = words
-            
-        return response
+    @property
+    def segments(self) -> Optional[list]:
+        """Get the segments with timestamps."""
+        return self._data.get("segments")
     
-    def _create_segment(
-        self,
-        id: int,
-        seek: float,
-        start: float,
-        end: float,
-        text: str,
-        tokens: Optional[list] = None,
-        temperature: float = 0.0,
-        avg_logprob: float = -0.5,
-        compression_ratio: float = 1.0,
-        no_speech_prob: float = 0.0
-    ) -> Dict[str, Any]:
-        """Create a segment object in OpenAI Whisper format.
-        
-        Args:
-            id (int): Segment ID
-            seek (float): Seek position
-            start (float): Start time in seconds
-            end (float): End time in seconds
-            text (str): Segment text
-            tokens (Optional[list]): Token list
-            temperature (float): Temperature used
-            avg_logprob (float): Average log probability
-            compression_ratio (float): Compression ratio
-            no_speech_prob (float): No speech probability
-            
-        Returns:
-            Dict[str, Any]: Segment object
-        """
-        return {
-            "id": id,
-            "seek": seek,
-            "start": start,
-            "end": end,
-            "text": text,
-            "tokens": tokens or [],
-            "temperature": temperature,
-            "avg_logprob": avg_logprob,
-            "compression_ratio": compression_ratio,
-            "no_speech_prob": no_speech_prob
-        }
+    @property
+    def words(self) -> Optional[list]:
+        """Get the words with timestamps."""
+        return self._data.get("words")
     
-    def _create_word(
-        self,
-        word: str,
-        start: float,
-        end: float,
-        probability: float = 1.0
-    ) -> Dict[str, Any]:
-        """Create a word object in OpenAI Whisper format.
-        
-        Args:
-            word (str): The word
-            start (float): Start time in seconds
-            end (float): End time in seconds
-            probability (float): Word probability
-            
-        Returns:
-            Dict[str, Any]: Word object
-        """
-        return {
-            "word": word,
-            "start": start,
-            "end": end,
-            "probability": probability
-        }
+    def __str__(self) -> str:
+        """Return string representation based on response format."""
+        if self._response_format == "text":
+            return self.text
+        elif self._response_format == "srt":
+            return self._to_srt()
+        elif self._response_format == "vtt":
+            return self._to_vtt()
+        else:  # json or verbose_json
+            return json.dumps(self._data, indent=2)
     
-    def save_transcription(
-        self,
-        transcription: Dict[str, Any],
-        destination: str = None,
-        format: str = "json"
-    ) -> str:
-        """Save transcription to a file.
+    def _to_srt(self) -> str:
+        """Convert to SRT subtitle format."""
+        if not self.segments:
+            return ""
         
-        Args:
-            transcription (Dict[str, Any]): Transcription result
-            destination (str, optional): Destination path
-            format (str): Output format ('json', 'txt', 'srt', 'vtt')
+        srt_content = []
+        for i, segment in enumerate(self.segments, 1):
+            start_time = self._format_time_srt(segment.get("start", 0))
+            end_time = self._format_time_srt(segment.get("end", 0))
+            text = segment.get("text", "").strip()
             
-        Returns:
-            str: Path to the saved file
-        """
-        import json
+            srt_content.append(f"{i}")
+            srt_content.append(f"{start_time} --> {end_time}")
+            srt_content.append(text)
+            srt_content.append("")
         
-        if destination is None:
-            timestamp = int(time.time())
-            destination = os.path.join(
-                os.getcwd(),
-                f"transcription_{timestamp}.{format}"
-            )
+        return "\n".join(srt_content)
+    
+    def _to_vtt(self) -> str:
+        """Convert to VTT subtitle format."""
+        if not self.segments:
+            return "WEBVTT\n\n"
         
-        os.makedirs(os.path.dirname(os.path.abspath(destination)), exist_ok=True)
-        
-        if format == "json":
-            with open(destination, 'w', encoding='utf-8') as f:
-                json.dump(transcription, f, indent=2, ensure_ascii=False)
-        elif format == "txt":
-            with open(destination, 'w', encoding='utf-8') as f:
-                f.write(transcription.get("text", ""))
-        elif format == "srt":
-            self._save_as_srt(transcription, destination)
-        elif format == "vtt":
-            self._save_as_vtt(transcription, destination)
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        vtt_content = ["WEBVTT", ""]
+        for segment in self.segments:
+            start_time = self._format_time_vtt(segment.get("start", 0))
+            end_time = self._format_time_vtt(segment.get("end", 0))
+            text = segment.get("text", "").strip()
             
-        return destination
-    
-    def _save_as_srt(self, transcription: Dict[str, Any], destination: str):
-        """Save transcription as SRT subtitle format."""
-        segments = transcription.get("segments", [])
-        with open(destination, 'w', encoding='utf-8') as f:
-            for i, segment in enumerate(segments, 1):
-                start_time = self._format_timestamp(segment["start"])
-                end_time = self._format_timestamp(segment["end"])
-                f.write(f"{i}\n")
-                f.write(f"{start_time} --> {end_time}\n")
-                f.write(f"{segment['text'].strip()}\n\n")
-    
-    def _save_as_vtt(self, transcription: Dict[str, Any], destination: str):
-        """Save transcription as WebVTT format."""
-        segments = transcription.get("segments", [])
-        with open(destination, 'w', encoding='utf-8') as f:
-            f.write("WEBVTT\n\n")
-            for segment in segments:
-                start_time = self._format_timestamp(segment["start"], vtt=True)
-                end_time = self._format_timestamp(segment["end"], vtt=True)
-                f.write(f"{start_time} --> {end_time}\n")
-                f.write(f"{segment['text'].strip()}\n\n")
-    
-    def _format_timestamp(self, seconds: float, vtt: bool = False) -> str:
-        """Format timestamp for subtitle formats.
+            vtt_content.append(f"{start_time} --> {end_time}")
+            vtt_content.append(text)
+            vtt_content.append("")
         
-        Args:
-            seconds (float): Time in seconds
-            vtt (bool): Whether to format for WebVTT (uses . instead of ,)
-            
-        Returns:
-            str: Formatted timestamp
-        """
+        return "\n".join(vtt_content)
+    
+    def _format_time_srt(self, seconds: float) -> str:
+        """Format time for SRT format (HH:MM:SS,mmm)."""
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
-        milliseconds = int((seconds % 1) * 1000)
+        millisecs = int((seconds % 1) * 1000)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millisecs:03d}"
+    
+    def _format_time_vtt(self, seconds: float) -> str:
+        """Format time for VTT format (HH:MM:SS.mmm)."""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        millisecs = int((seconds % 1) * 1000)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millisecs:03d}"
+
+
+class BaseSTTTranscriptions(ABC):
+    """Base class for STT transcriptions interface."""
+    
+    def __init__(self, client):
+        self._client = client
+    
+    @abstractmethod
+    def create(
+        self,
+        *,
+        model: str,
+        file: Union[BinaryIO, str, Path],
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+        response_format: str = "json",
+        temperature: Optional[float] = None,
+        timestamp_granularities: Optional[List[str]] = None,
+        stream: bool = False,
+        timeout: Optional[int] = None,
+        proxies: Optional[dict] = None,
+        **kwargs: Any
+    ) -> Union[TranscriptionResponse, Generator[str, None, None]]:
+        """
+        Create a transcription of the given audio file.
         
-        separator = "." if vtt else ","
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{milliseconds:03d}"
+        Args:
+            model: Model to use for transcription
+            file: Audio file to transcribe
+            language: Language of the audio (ISO-639-1 format)
+            prompt: Optional text to guide the model's style
+            response_format: Format of the response
+            temperature: Sampling temperature (0 to 1)
+            timestamp_granularities: Timestamp granularities to include
+            stream: Whether to stream the response
+            timeout: Request timeout
+            proxies: Proxy configuration
+            **kwargs: Additional parameters
+            
+        Returns:
+            TranscriptionResponse or generator of SSE strings if streaming
+        """
+        raise NotImplementedError
+
+
+class BaseSTTAudio(ABC):
+    """Base class for STT audio interface."""
+    
+    def __init__(self, client):
+        self.transcriptions = self._create_transcriptions(client)
+    
+    @abstractmethod
+    def _create_transcriptions(self, client) -> BaseSTTTranscriptions:
+        """Create the transcriptions interface."""
+        raise NotImplementedError
+
+
+class BaseSTTChat:
+    """Base chat interface for STT providers (placeholder for consistency)."""
+
+    def __init__(self, client):
+        _ = client  # Unused but kept for interface consistency
+        self.completions = None  # STT providers don't have completions
+
+
+class STTCompatibleProvider(ABC):
+    """
+    Abstract Base Class for STT providers mimicking the OpenAI structure.
+    Requires a nested 'audio.transcriptions' structure.
+    """
+    
+    audio: BaseSTTAudio
+    
+    @abstractmethod
+    def __init__(self, **kwargs: Any):
+        """Initialize the STT provider."""
+        pass
+    
+    @property
+    @abstractmethod
+    def models(self):
+        """
+        Property that returns an object with a .list() method returning available models.
+        """
+        pass
+
+
+class STTModels:
+    """Models interface for STT providers."""
+    
+    def __init__(self, available_models: List[str]):
+        self._available_models = available_models
+    
+    def list(self) -> List[Dict[str, Any]]:
+        """List available models."""
+        return [
+            {
+                "id": model,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "webscout"
+            }
+            for model in self._available_models
+        ]
+
+
+__all__ = [
+    'TranscriptionResponse',
+    'BaseSTTTranscriptions', 
+    'BaseSTTAudio',
+    'BaseSTTChat',
+    'STTCompatibleProvider',
+    'STTModels',
+    'ChatCompletion',
+    'ChatCompletionChunk',
+    'Choice',
+    'ChoiceDelta',
+    'Message',
+    'Usage',
+    'count_tokens'
+]

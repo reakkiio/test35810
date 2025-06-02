@@ -18,3 +18,4 @@ venv/
 .coverage
 *.egg-info/
 .ipynb_checkpoints/
+uv.lock

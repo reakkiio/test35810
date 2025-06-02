@@ -2,9 +2,9 @@
 
 import random
 import threading
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from webscout.litagent.constants import BROWSERS, OS_VERSIONS, DEVICES, FINGERPRINTS
+from webscout.litagent.constants import BROWSERS, DEVICES, FINGERPRINTS, OS_VERSIONS
 
 
 class LitAgent:
@@ -19,6 +19,8 @@ class LitAgent:
         self.agents = self._generate_agents(100)  # Keep 100 agents in memory
         self.thread_safe = thread_safe
         self.lock = threading.RLock() if thread_safe else None
+        self.ip_pool = self._generate_ip_pool(20)
+        self._ip_index = 0
         self._refresh_timer = None
         self._stats = {
             "total_generated": 100,
@@ -33,18 +35,18 @@ class LitAgent:
         for _ in range(count):
             browser = random.choice(list(BROWSERS.keys()))
             version = random.randint(*BROWSERS[browser])
-            
+
             if browser in ['chrome', 'firefox', 'edge', 'opera', 'brave', 'vivaldi']:
                 os_type = random.choice(['windows', 'mac', 'linux'])
                 os_ver = random.choice(OS_VERSIONS[os_type])
-                
+
                 if os_type == 'windows':
                     platform = f"Windows NT {os_ver}"
                 elif os_type == 'mac':
                     platform = f"Macintosh; Intel Mac OS X {os_ver}"
                 else:
                     platform = f"X11; Linux {os_ver}"
-                
+
                 agent = f"Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) "
                 if browser == 'chrome':
                     agent += f"Chrome/{version}.0.0.0 Safari/537.36"
@@ -58,7 +60,7 @@ class LitAgent:
                     agent += f"Chrome/{version}.0.0.0 Safari/537.36 Brave/{version}.0.0.0"
                 elif browser == 'vivaldi':
                     agent += f"Chrome/{version}.0.0.0 Safari/537.36 Vivaldi/{version}.0.{random.randint(1000, 9999)}"
-            
+
             elif browser == 'safari':
                 device = random.choice(['mac', 'ios'])
                 if device == 'mac':
@@ -69,9 +71,9 @@ class LitAgent:
                     device = random.choice(['iPhone', 'iPad'])
                     agent = f"Mozilla/5.0 ({device}; CPU OS {ver} like Mac OS X) "
                 agent += f"AppleWebKit/{version}.1.15 (KHTML, like Gecko) Version/{version//100}.0 Safari/{version}.1.15"
-            
+
             agents.append(agent)
-        
+
         return list(set(agents))  # Remove any duplicates
 
     def _update_stats(self, browser_type=None, device_type=None):
@@ -107,7 +109,7 @@ class LitAgent:
         name = name.lower()
         if name not in BROWSERS:
             return self.random()
-        
+
         if self.thread_safe and self.lock:
             with self.lock:
                 agents = [a for a in self.agents if name in a.lower()]
@@ -153,12 +155,12 @@ class LitAgent:
         if self.thread_safe and self.lock:
             with self.lock:
                 # Focus on iPad and Android tablets
-                agents = [a for a in self.agents if 'iPad' in a or 'Android' in a and not 'Mobile' in a]
+                agents = [a for a in self.agents if 'iPad' in a or 'Android' in a and 'Mobile' not in a]
                 agent = random.choice(agents) if agents else self.random()
                 self._update_stats(device_type="tablet")
                 return agent
         else:
-            agents = [a for a in self.agents if 'iPad' in a or 'Android' in a and not 'Mobile' in a]
+            agents = [a for a in self.agents if 'iPad' in a or 'Android' in a and 'Mobile' not in a]
             agent = random.choice(agents) if agents else self.random()
             self._update_stats(device_type="tablet")
             return agent
@@ -174,10 +176,10 @@ class LitAgent:
         elif 'Android' in tv_type:
             agent = f"Mozilla/5.0 (Linux; Android 9; {tv_type}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36"
         elif 'Apple' in tv_type:
-            agent = f"Mozilla/5.0 (AppleTV; CPU like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+            agent = "Mozilla/5.0 (AppleTV; CPU like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
         else:
             agent = f"Mozilla/5.0 (Linux; {tv_type}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36"
-        
+
         self._update_stats(device_type="tv")
         return agent
 
@@ -192,7 +194,7 @@ class LitAgent:
             agent = f"Mozilla/5.0 (Nintendo Switch; {console_type}) AppleWebKit/601.6 (KHTML, like Gecko) NintendoBrowser/5.1.0.13343"
         else:
             agent = self.random()
-        
+
         self._update_stats(device_type="console")
         return agent
 
@@ -215,15 +217,15 @@ class LitAgent:
     def opera(self) -> str:
         """Get an Opera agent! 🎭"""
         return self.browser('opera')
-    
+
     def brave(self) -> str:
         """Get a Brave agent! 🦁"""
         return self.browser('brave')
-    
+
     def vivaldi(self) -> str:
         """Get a Vivaldi agent! 🎨"""
         return self.browser('vivaldi')
-    
+
     # OS-specific agents
     def windows(self) -> str:
         """Get a Windows agent! 🪟"""
@@ -231,28 +233,28 @@ class LitAgent:
         agent = random.choice(agents) if agents else self.random()
         self._update_stats()
         return agent
-    
+
     def macos(self) -> str:
         """Get a macOS agent! 🍎"""
         agents = [a for a in self.agents if 'Macintosh' in a]
         agent = random.choice(agents) if agents else self.random()
         self._update_stats()
         return agent
-    
+
     def linux(self) -> str:
         """Get a Linux agent! 🐧"""
         agents = [a for a in self.agents if 'Linux' in a and 'Android' not in a]
         agent = random.choice(agents) if agents else self.random()
         self._update_stats()
         return agent
-    
+
     def android(self) -> str:
         """Get an Android agent! 🤖"""
         agents = [a for a in self.agents if 'Android' in a]
         agent = random.choice(agents) if agents else self.random()
         self._update_stats()
         return agent
-    
+
     def ios(self) -> str:
         """Get an iOS agent! 📱"""
         agents = [a for a in self.agents if 'iPhone' in a or 'iPad' in a]
@@ -260,25 +262,24 @@ class LitAgent:
         self._update_stats()
         return agent
 
-    def custom(self, browser: str, version: Optional[str] = None, 
-               os: Optional[str] = None, os_version: Optional[str] = None, 
+    def custom(self, browser: str, version: Optional[str] = None,
+               os: Optional[str] = None, os_version: Optional[str] = None,
                device_type: Optional[str] = None) -> str:
         """Generate a custom user agent with specified parameters! 🛠️
-        
+
         Args:
             browser: Browser name (chrome, firefox, safari, edge, opera)
             version: Browser version (optional)
             os: Operating system (windows, mac, linux, android, ios)
             os_version: OS version (optional)
             device_type: Device type (desktop, mobile, tablet)
-            
         Returns:
             Customized user agent string
         """
         browser = browser.lower() if browser else 'chrome'
         if browser not in BROWSERS:
             browser = 'chrome'
-            
+
         if version:
             try:
                 version_num = int(version.split('.')[0])
@@ -286,15 +287,15 @@ class LitAgent:
                 version_num = random.randint(*BROWSERS[browser])
         else:
             version_num = random.randint(*BROWSERS[browser])
-            
+
         os = os.lower() if os else random.choice(['windows', 'mac', 'linux'])
         if os not in OS_VERSIONS:
             os = 'windows'
-            
+
         os_ver = os_version or random.choice(OS_VERSIONS[os])
-        
+
         device_type = device_type.lower() if device_type else 'desktop'
-        
+
         # Build the user agent
         if os == 'windows':
             platform = f"Windows NT {os_ver}"
@@ -308,10 +309,10 @@ class LitAgent:
             device = 'iPhone' if device_type == 'mobile' else 'iPad'
             platform = f"{device}; CPU OS {os_ver} like Mac OS X"
         else:
-            platform = f"Windows NT 10.0"  # Default fallback
-        
+            platform = "Windows NT 10.0"  # Default fallback
+
         agent = f"Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) "
-        
+
         if browser == 'chrome':
             agent += f"Chrome/{version_num}.0.0.0 Safari/537.36"
         elif browser == 'firefox':
@@ -325,34 +326,31 @@ class LitAgent:
             agent += f"Chrome/{version_num}.0.0.0 Safari/537.36 OPR/{version_num}.0.0.0"
         elif browser == 'brave':
             agent += f"Chrome/{version_num}.0.0.0 Safari/537.36 Brave/{version_num}.1.0"
-        
+
         self._update_stats(browser_type=browser, device_type=device_type)
         return agent
 
     def generate_fingerprint(self, browser: Optional[str] = None) -> Dict[str, str]:
         """Generate a consistent browser fingerprint! 👆
-        
         This creates a coherent set of headers for anti-fingerprinting.
-        
         Args:
             browser: Specific browser to generate fingerprint for
-            
         Returns:
             Dictionary with fingerprinting headers
         """
         # Get a random user agent using the random() method
         user_agent = self.random()
-        
+
         # If browser is specified, try to get a matching one
         if browser:
             browser = browser.lower()
             if browser in BROWSERS:
                 user_agent = self.browser(browser)
-        
+
         accept_language = random.choice(FINGERPRINTS["accept_language"])
         accept = random.choice(FINGERPRINTS["accept"])
         platform = random.choice(FINGERPRINTS["platforms"])
-        
+
         # Generate sec-ch-ua based on the user agent
         sec_ch_ua = ""
         for browser_name in FINGERPRINTS["sec_ch_ua"]:
@@ -360,8 +358,8 @@ class LitAgent:
                 version = random.randint(*BROWSERS[browser_name])
                 sec_ch_ua = FINGERPRINTS["sec_ch_ua"][browser_name].format(version, version)
                 break
-        
-        ip = self._random_ip() if hasattr(self, '_random_ip') else '.'.join(str(random.randint(0, 255)) for _ in range(4))
+
+        ip = self.rotate_ip()
         fingerprint = {
             "user_agent": user_agent,
             "accept_language": accept_language,
@@ -370,9 +368,12 @@ class LitAgent:
             "platform": platform,
             "x-forwarded-for": ip,
             "x-real-ip": ip,
+            "x-client-ip": ip,
+            "forwarded": f"for={ip};proto=https",
+            "x-forwarded-proto": "https",
             "x-request-id": self.random_id(8) if hasattr(self, 'random_id') else ''.join(random.choices('0123456789abcdef', k=8)),
         }
-        
+
         self._update_stats(browser_type=browser)
         return fingerprint
 
@@ -385,30 +386,30 @@ class LitAgent:
         else:
             self.agents = self._generate_agents(100)
             self._stats["total_generated"] += 100
-        
+
 
     def auto_refresh(self, interval_minutes: int = 30) -> None:
         """Set up automatic refreshing of agents pool! ⏱️
-        
+
         Args:
             interval_minutes: Minutes between refreshes
         """
         if self._refresh_timer:
             self._refresh_timer.cancel()
-            
+
         def _refresh_task():
             self.refresh()
             self._refresh_timer = threading.Timer(interval_minutes * 60, _refresh_task)
             self._refresh_timer.daemon = True
             self._refresh_timer.start()
-        
+
         self._refresh_timer = threading.Timer(interval_minutes * 60, _refresh_task)
         self._refresh_timer.daemon = True
         self._refresh_timer.start()
-        
+
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about agent usage! 📊
-        
+
         Returns:
             Dictionary with usage statistics
         """
@@ -416,18 +417,16 @@ class LitAgent:
         # Calculate top browser
         top_browser = max(stats_copy["browser_usage"].items(), key=lambda x: x[1])[0] if stats_copy["browser_usage"] else None
         stats_copy["top_browser"] = top_browser
-        
+
         # Calculate fake detection avoidance rate (just for fun)
         stats_copy["avoidance_rate"] = min(99.9, 90 + (stats_copy["total_generated"] / 1000))
-        
+
         return stats_copy
-        
+
     def export_stats(self, filename: str) -> bool:
         """Export usage statistics to a file! 💾
-        
         Args:
             filename: Path to export the stats
-            
         Returns:
             True if export was successful, False otherwise
         """
@@ -436,12 +435,30 @@ class LitAgent:
             with open(filename, 'w') as f:
                 json.dump(self.get_stats(), f, indent=2)
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     def random_crypto_ip(self) -> str:
         """Generate a random IP address for cryptography purposes."""
         return ".".join(str(random.randint(0, 255)) for _ in range(4))
+
+    def _generate_ip_pool(self, count: int = 20) -> List[str]:
+        """Generate a pool of random IP addresses."""
+        return [self.random_crypto_ip() for _ in range(count)]
+
+    def rotate_ip(self) -> str:
+        """Rotate through the IP pool and return the next IP."""
+        if not self.ip_pool:
+            self.ip_pool = self._generate_ip_pool(20)
+            self._ip_index = 0
+
+        ip = self.ip_pool[self._ip_index]
+        self._ip_index = (self._ip_index + 1) % len(self.ip_pool)
+        return ip
+
+    # Backwards compatibility for older versions expecting _random_ip
+    def _random_ip(self) -> str:
+        return self.rotate_ip()
 
     def random_id(self, length: int = 16) -> str:
         """Generate a random identifier string."""
@@ -459,9 +476,9 @@ if __name__ == "__main__":
     print("Tablet:", agent.tablet())
     print("Smart TV:", agent.smart_tv())
     print("Gaming:", agent.gaming())
-    
+
     # Test custom agent
     print("Custom:", agent.custom(browser="chrome", os="windows", os_version="10.0"))
-    
+
     # Test fingerprinting
     print("Fingerprint:", agent.generate_fingerprint("chrome"))

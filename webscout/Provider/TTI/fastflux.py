@@ -6,8 +6,7 @@ import base64
 from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -51,9 +50,7 @@ class Images(BaseImages):
             "isPublic": is_public,
         }
         for _ in range(n):
-            resp = request_with_proxy_fallback(
-                self._client.session,
-                "post",
+            resp = self._client.session.post(
                 api_url,
                 json=payload,
                 timeout=timeout,

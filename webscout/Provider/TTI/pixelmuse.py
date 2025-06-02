@@ -3,7 +3,6 @@ from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
     ImageResponse,
-    request_with_proxy_fallback,
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -124,9 +123,7 @@ class Images(BaseImages):
                 return None
 
         for _ in range(n):
-            resp = request_with_proxy_fallback(
-                self._client.session,
-                "post",
+            resp = self._client.session.post(
                 self._client.api_endpoint,
                 json={
                     "prompt": prompt,
@@ -141,12 +138,7 @@ class Images(BaseImages):
 
             if "output" in data and len(data["output"]) > 0:
                 image_url = data["output"][0]
-                img_resp = request_with_proxy_fallback(
-                    self._client.session,
-                    "get",
-                    image_url,
-                    timeout=timeout,
-                )
+                img_resp = self._client.sessions.get(image_url, timeout=timeout)
                 img_resp.raise_for_status()
                 webp_bytes = img_resp.content
 

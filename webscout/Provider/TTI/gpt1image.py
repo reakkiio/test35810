@@ -4,8 +4,7 @@ import string
 from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -94,9 +93,8 @@ class Images(BaseImages):
             "response_format": response_format,
         }
         try:
-            # Use the new fallback request method
-            resp = request_with_proxy_fallback(
-                self.session,
+            # Use direct session.request instead of request_with_proxy_fallback
+            resp = self.session.request(
                 "post",
                 f"{self.base_url}/v1/images/generations",
                 json=body,

@@ -15,8 +15,7 @@ import requests
 from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -158,9 +157,7 @@ class Images(BaseImages):
                 "aspect_ratio": str(aspect_ratio),
             }
             # Step 2: Generate Image (send as form data, not JSON)
-            image_response = request_with_proxy_fallback(
-                self._client.session,
-                "post",
+            image_response = self._client.session.post(
                 self._client.image_generation_url,
                 data=image_payload,  # Use form data instead of JSON
                 headers=gen_headers,
@@ -177,9 +174,7 @@ class Images(BaseImages):
             # Step 3: Check Generation Status
             status_url = self._client.status_check_url.format(record_id=record_id)
             while True:
-                status_response = request_with_proxy_fallback(
-                    self._client.session,
-                    "get",
+                status_response = self._client.session.get(
                     status_url,
                     headers=gen_headers,
                     timeout=timeout,
@@ -192,9 +187,7 @@ class Images(BaseImages):
                     ]
                     if not image_urls:
                         raise RuntimeError("No image URLs returned from AIArta")
-                    img_resp = request_with_proxy_fallback(
-                        self._client.session,
-                        "get",
+                    img_resp = self._client.session.get(
                         image_urls[0],
                         timeout=timeout,
                     )
@@ -332,9 +325,7 @@ class AIArta(TTICompatibleProvider):
     def create_token(self, path: str) -> Dict[str, Any]:
         auth_payload = {"clientType": "CLIENT_TYPE_ANDROID"}
         proxies = self.session.proxies if self.session.proxies else None
-        auth_response = request_with_proxy_fallback(
-            self.session,
-            "post",
+        auth_response = self.session.post(
             self.auth_url,
             json=auth_payload,
             timeout=60,
@@ -353,9 +344,7 @@ class AIArta(TTICompatibleProvider):
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
         }
-        response = request_with_proxy_fallback(
-            self.session,
-            "post",
+        response = self.session.post(
             self.token_refresh_url,
             data=payload,
             timeout=60,

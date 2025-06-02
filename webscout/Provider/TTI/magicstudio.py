@@ -6,8 +6,7 @@ import tempfile
 from typing import Optional, List
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -63,9 +62,7 @@ class Images(BaseImages):
                 "user_is_subscribed": "false",
                 "client_id": uuid.uuid4().hex,
             }
-            resp = request_with_proxy_fallback(
-                session,
-                "post",
+            resp = session.post(
                 api_url,
                 data=form_data,
                 timeout=timeout,

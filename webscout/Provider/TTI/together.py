@@ -6,8 +6,7 @@ import time
 from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -150,8 +149,7 @@ class Images(BaseImages):
         body.update(kwargs)
 
         try:
-            resp = request_with_proxy_fallback(
-                self.session,
+            resp = self.session.request(
                 "post",
                 f"{self.base_url}/images/generations",
                 json=body,

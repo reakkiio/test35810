@@ -2,8 +2,7 @@ import requests
 from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -123,9 +122,7 @@ class Images(BaseImages):
 
         for _ in range(n):
             payload = {"prompt": prompt}
-            resp = request_with_proxy_fallback(
-                self._client.session,
-                "post",
+            resp = self._client.session.post(
                 self._client.api_endpoint,
                 json=payload,
                 timeout=timeout,

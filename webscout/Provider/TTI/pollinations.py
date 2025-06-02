@@ -4,8 +4,7 @@ from pathlib import Path
 from requests.exceptions import RequestException
 from webscout.Provider.TTI.utils import (
     ImageData,
-    ImageResponse,
-    request_with_proxy_fallback,
+    ImageResponse
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
@@ -140,9 +139,7 @@ class Images(BaseImages):
             query = "&".join(f"{k}={v}" for k, v in params.items())
             url = f"{base_url}?{query}"
             try:
-                resp = request_with_proxy_fallback(
-                    self._client.session,
-                    "get",
+                resp = self._client.session.get(
                     url,
                     timeout=timeout,
                 )

@@ -4,7 +4,6 @@ from typing import Optional, List, Dict, Any
 from webscout.Provider.TTI.utils import (
     ImageData,
     ImageResponse,
-    request_with_proxy_fallback,
 )
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from webscout.litagent import LitAgent
@@ -62,8 +61,7 @@ class Images(BaseImages):
 
             try:
                 # Make the API request
-                resp = request_with_proxy_fallback(
-                    self._client.session,
+                resp = self._client.session.request(
                     "post",
                     self._client.api_endpoint,
                     json=payload,
@@ -88,8 +86,7 @@ class Images(BaseImages):
                     elif response_format == "b64_json":
                         if "url" in item and item["url"]:
                             # Download the image and convert to base64
-                            img_resp = request_with_proxy_fallback(
-                                self._client.session,
+                            img_resp = self._client.session.request(
                                 "get",
                                 item["url"],
                                 timeout=timeout,

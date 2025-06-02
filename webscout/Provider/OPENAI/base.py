@@ -1,27 +1,13 @@
-from abc import ABC, abstractmethod, ABCMeta
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union, Generator, Any, TypedDict, Callable
 import json
 import logging
 from dataclasses import dataclass
-import requests
-try:
-    import httpx
-except ImportError:
-    httpx = None
-
-try:
-    from curl_cffi.requests import Session as CurlSession, AsyncSession as CurlAsyncSession
-except ImportError:
-    CurlSession = None
-    CurlAsyncSession = None
-
-from webscout.Provider.OPENAI.autoproxy import get_auto_proxy
-
 logger = logging.getLogger(__name__)
 
 
 # Import the utils for response structures
-from webscout.Provider.OPENAI.utils import ChatCompletion, ChatCompletionChunk, Choice, ChatCompletionMessage, ToolCall, ToolFunction
+from webscout.Provider.OPENAI.utils import ChatCompletion, ChatCompletionChunk
 
 # Define tool-related structures
 class ToolDefinition(TypedDict):

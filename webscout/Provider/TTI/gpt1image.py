@@ -9,12 +9,34 @@ import os
 import tempfile
 from webscout.litagent import LitAgent
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class Images(BaseImages):
     def __init__(self, client):
         self._client = client
         self.base_url = "https://gpt1image.exomlapi.com"
+        # Create a session - it will automatically get proxies from the global monkey patch!
+        self.session = requests.Session()
+        self._setup_session_with_retries()
 
+    def _setup_session_with_retries(self):
+        """Setup session with retry strategy and timeout configurations"""
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            backoff_factor=1,
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+        )
+        
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        
+        # Set timeouts
+        # self.session.timeout = (10, 30)  # (connect_timeout, read_timeout)
+        # Unlimited timeout: do not set session timeout here
 
     def build_headers(self, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         agent = LitAgent()
@@ -31,7 +53,7 @@ class Images(BaseImages):
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
+            "sec-fetch-site": "same-origin",          
             "x-forwarded-for": fp["x-forwarded-for"],
             "x-real-ip": fp["x-real-ip"],
             "x-request-id": fp["x-request-id"],
@@ -39,6 +61,34 @@ class Images(BaseImages):
         if extra:
             headers.update(extra)
         return headers
+
+    def _make_request_with_fallback(self, url, body, headers, timeout):
+        """Make request with proxy fallback strategy"""
+        original_proxies = self.session.proxies.copy()
+        
+        try:
+            # First attempt with current proxies
+            resp = self.session.post(url, json=body, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except (requests.exceptions.ConnectionError, 
+                requests.exceptions.ProxyError,
+                requests.exceptions.Timeout) as e:
+            # Clear proxies for direct connection
+            self.session.proxies.clear()
+            
+            try:
+                resp = self.session.post(url, json=body, headers=headers, timeout=timeout)
+                resp.raise_for_status()
+                return resp
+            except Exception as direct_error:
+                # Restore original proxies
+                self.session.proxies.update(original_proxies)
+                raise RuntimeError(f"Both proxy and direct connections failed. Proxy error: {e}, Direct error: {direct_error}")
+        except Exception as e:
+            # For other exceptions, restore proxies and re-raise
+            self.session.proxies.update(original_proxies)
+            raise e
 
     def create(self,
         model: str = None,
@@ -55,21 +105,26 @@ class Images(BaseImages):
         **kwargs
     ) -> ImageResponse:
         if not prompt:
-            raise ValueError("Deskripsikan gambar yang ingin kamu buat (gunakan properti 'prompt').")
+            raise ValueError("Describe the image you want to create (use the 'prompt' property).")
         body = {
             "prompt": prompt,
             "n": n,
-            "size": size,
+            "size": size,            
             "is_enhance": enhance,
             "response_format": response_format
         }
         try:
-            resp = requests.post(f"{self.base_url}/v1/images/generations", json=body, headers=self.build_headers(), timeout=timeout)
-            resp.raise_for_status()
+            # Use the new fallback request method
+            resp = self._make_request_with_fallback(
+                f"{self.base_url}/v1/images/generations", 
+                body, 
+                self.build_headers(), 
+                timeout
+            )
             data = resp.json()
             if not data.get("data") or len(data["data"]) == 0:
-                error_info = f", info server: {data.get('error')}" if data.get('error') else ""
-                raise RuntimeError(f"Gagal memproses gambar. Data tidak ditemukan{error_info}.")
+                error_info = f", server info: {data.get('error')}" if data.get('error') else ""
+                raise RuntimeError(f"Failed to process image. No data found{error_info}.")
             result = data["data"]
             result_data = []
             for item in result:
@@ -79,7 +134,7 @@ class Images(BaseImages):
                     result_data.append(ImageData(b64_json=item.get("b64_json")))
             return ImageResponse(data=result_data)
         except Exception as e:
-            raise RuntimeError(f"Terjadi kesalahan: {str(e)}")
+            raise RuntimeError(f"An error occurred: {str(e)}")
 
 class GPT1Image(TTICompatibleProvider):
     AVAILABLE_MODELS = ["gpt1image"]

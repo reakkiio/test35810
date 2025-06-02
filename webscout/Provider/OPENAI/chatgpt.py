@@ -585,3 +585,6 @@ if __name__ == "__main__":
         messages=[{"role": "user", "content": "How manr r in strawberry"}]
     )
     print(response.choices[0].message.content)
+    print()
+    print("Proxies on instance:", client.proxies)
+    print("Proxies on session:", client.get_proxied_session().proxies)

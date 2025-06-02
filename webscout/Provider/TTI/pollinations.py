@@ -2,7 +2,11 @@ import requests
 from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
 from requests.exceptions import RequestException
-from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.utils import (
+    ImageData,
+    ImageResponse,
+    request_with_proxy_fallback,
+)
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
 import os
@@ -16,6 +20,7 @@ try:
     from PIL import Image
 except ImportError:
     Image = None
+
 
 class Images(BaseImages):
     def __init__(self, client):
@@ -35,7 +40,7 @@ class Images(BaseImages):
         timeout: int = 60,
         image_format: str = "png",
         seed: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ) -> ImageResponse:
         """
         image_format: "png" or "jpeg"
@@ -52,32 +57,35 @@ class Images(BaseImages):
             for attempt in range(max_retries):
                 tmp_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    with tempfile.NamedTemporaryFile(
+                        suffix=f".{ext}", delete=False
+                    ) as tmp:
                         tmp.write(img_bytes)
                         tmp.flush()
                         tmp_path = tmp.name
-                    with open(tmp_path, 'rb') as f:
-                        files = {
-                            'fileToUpload': (f'image.{ext}', f, f'image/{ext}')
-                        }
-                        data = {
-                            'reqtype': 'fileupload',
-                            'json': 'true'
-                        }
-                        headers = {'User-Agent': LitAgent().random()}
+                    with open(tmp_path, "rb") as f:
+                        files = {"fileToUpload": (f"image.{ext}", f, f"image/{ext}")}
+                        data = {"reqtype": "fileupload", "json": "true"}
+                        headers = {"User-Agent": LitAgent().random()}
                         if attempt > 0:
-                            headers['Connection'] = 'close'
-                        resp = requests.post("https://catbox.moe/user/api.php", files=files, data=data, headers=headers, timeout=timeout)
+                            headers["Connection"] = "close"
+                        resp = requests.post(
+                            "https://catbox.moe/user/api.php",
+                            files=files,
+                            data=data,
+                            headers=headers,
+                            timeout=timeout,
+                        )
                         if resp.status_code == 200 and resp.text.strip():
                             text = resp.text.strip()
-                            if text.startswith('http'):
+                            if text.startswith("http"):
                                 return text
                             try:
                                 result = resp.json()
                                 if "url" in result:
                                     return result["url"]
                             except json.JSONDecodeError:
-                                if 'http' in text:
+                                if "http" in text:
                                     return text
                 except Exception:
                     if attempt < max_retries - 1:
@@ -100,12 +108,12 @@ class Images(BaseImages):
                 try:
                     if not os.path.isfile(tmp_path):
                         return None
-                    with open(tmp_path, 'rb') as img_file:
-                        files = {'file': img_file}
-                        response = requests.post('https://0x0.st', files=files)
+                    with open(tmp_path, "rb") as img_file:
+                        files = {"file": img_file}
+                        response = requests.post("https://0x0.st", files=files)
                         response.raise_for_status()
                         image_url = response.text.strip()
-                        if not image_url.startswith('http'):
+                        if not image_url.startswith("http"):
                             return None
                         return image_url
                 except Exception:
@@ -132,7 +140,12 @@ class Images(BaseImages):
             query = "&".join(f"{k}={v}" for k, v in params.items())
             url = f"{base_url}?{query}"
             try:
-                resp = self._client.session.get(url, timeout=timeout)
+                resp = request_with_proxy_fallback(
+                    self._client.session,
+                    "get",
+                    url,
+                    timeout=timeout,
+                )
                 resp.raise_for_status()
                 img_bytes = resp.content
             except RequestException as e:
@@ -158,7 +171,9 @@ class Images(BaseImages):
                 if uploaded_url:
                     urls.append(uploaded_url)
                 else:
-                    raise RuntimeError("Failed to upload image to catbox.moe using all available methods")
+                    raise RuntimeError(
+                        "Failed to upload image to catbox.moe using all available methods"
+                    )
 
         result_data = []
         if response_format == "url":
@@ -166,6 +181,7 @@ class Images(BaseImages):
                 result_data.append(ImageData(url=url))
         elif response_format == "b64_json":
             import base64
+
             for img in images:
                 b64 = base64.b64encode(img).decode("utf-8")
                 result_data.append(ImageData(b64_json=b64))
@@ -173,17 +189,12 @@ class Images(BaseImages):
             raise ValueError("response_format must be 'url' or 'b64_json'")
 
         from time import time as _time
-        return ImageResponse(
-            created=int(_time()),
-            data=result_data
-        )
+
+        return ImageResponse(created=int(_time()), data=result_data)
+
 
 class PollinationsAI(TTICompatibleProvider):
-    AVAILABLE_MODELS = [
-        "flux",
-        "turbo",
-        "gptimage"
-    ]
+    AVAILABLE_MODELS = ["flux", "turbo", "gptimage"]
 
     def __init__(self):
         self.api_endpoint = "https://image.pollinations.ai/prompt"
@@ -205,10 +216,13 @@ class PollinationsAI(TTICompatibleProvider):
         class _ModelList:
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
+
         return _ModelList()
+
 
 if __name__ == "__main__":
     from rich import print
+
     client = PollinationsAI()
     response = client.images.create(
         model="flux",
@@ -216,6 +230,6 @@ if __name__ == "__main__":
         response_format="url",
         n=4,
         timeout=30,
-        seed=None  # You can set a specific seed for reproducibility
+        seed=None,  # You can set a specific seed for reproducibility
     )
     print(response)

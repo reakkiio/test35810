@@ -20,130 +20,6 @@ except ImportError:
 from webscout.Provider.OPENAI.autoproxy import get_auto_proxy
 
 
-# Global proxy manager for direct requests.Session monkey patching
-class _GlobalProxyManager:
-    """Singleton to transparently apply proxies to HTTP sessions."""
-
-    _instance = None
-    _proxies = {}
-
-    _original_session_init = None
-    _original_session_request = None
-
-    _original_curl_session_init = None
-    _original_curl_session_request = None
-
-    _original_curl_async_session_init = None
-    _original_curl_async_session_request = None
-
-    _patched = False
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def set_proxies(self, proxies: Dict[str, str]):
-        """Set the global proxy configuration"""
-        self._proxies = proxies or {}
-        self._ensure_patched()
-
-    def get_proxies(self) -> Dict[str, str]:
-        """Get the current global proxy configuration"""
-        return self._proxies.copy()
-
-    def _ensure_patched(self):
-        """Patch popular HTTP clients so proxies are applied everywhere."""
-        if self._patched:
-            return
-
-        # ---- requests.Session patches ----
-        self._original_session_init = requests.Session.__init__
-
-        def patched_session_init(session_self, *args, **kwargs):
-            self._original_session_init(session_self, *args, **kwargs)
-            if self._proxies:
-                session_self.proxies.update(self._proxies)
-
-        requests.Session.__init__ = patched_session_init
-
-        self._original_session_request = requests.Session.request
-
-        def patched_session_request(session_self, method, url, *a, **kw):
-            if self._proxies and 'proxies' not in kw:
-                kw['proxies'] = self._proxies
-            return self._original_session_request(session_self, method, url, *a, **kw)
-
-        requests.Session.request = patched_session_request
-
-        # ---- curl_cffi Session patches ----
-        if CurlSession:
-            self._original_curl_session_init = CurlSession.__init__
-
-            def patched_curl_init(session_self, *args, **kwargs):
-                if self._proxies and 'proxies' not in kwargs:
-                    kwargs['proxies'] = self._proxies
-                self._original_curl_session_init(session_self, *args, **kwargs)
-
-            CurlSession.__init__ = patched_curl_init
-
-            if hasattr(CurlSession, 'request'):
-                self._original_curl_session_request = CurlSession.request
-
-                def patched_curl_request(session_self, method, url, *a, **kw):
-                    if self._proxies and 'proxies' not in kw:
-                        kw['proxies'] = self._proxies
-                    return self._original_curl_session_request(session_self, method, url, *a, **kw)
-
-                CurlSession.request = patched_curl_request
-
-        if CurlAsyncSession:
-            self._original_curl_async_session_init = CurlAsyncSession.__init__
-
-            def patched_curl_async_init(session_self, *args, **kwargs):
-                if self._proxies and 'proxies' not in kwargs:
-                    kwargs['proxies'] = self._proxies
-                self._original_curl_async_session_init(session_self, *args, **kwargs)
-
-            CurlAsyncSession.__init__ = patched_curl_async_init
-
-            if hasattr(CurlAsyncSession, 'request'):
-                self._original_curl_async_session_request = CurlAsyncSession.request
-
-                async def patched_curl_async_request(session_self, method, url, *a, **kw):
-                    if self._proxies and 'proxies' not in kw:
-                        kw['proxies'] = self._proxies
-                    return await self._original_curl_async_session_request(session_self, method, url, *a, **kw)
-
-                CurlAsyncSession.request = patched_curl_async_request
-
-        self._patched = True
-
-    def unpatch(self):
-        """Remove all monkey patches (primarily for tests)."""
-        if not self._patched:
-            return
-
-        if self._original_session_init:
-            requests.Session.__init__ = self._original_session_init
-        if self._original_session_request:
-            requests.Session.request = self._original_session_request
-
-        if CurlSession and self._original_curl_session_init:
-            CurlSession.__init__ = self._original_curl_session_init
-        if CurlSession and self._original_curl_session_request:
-            CurlSession.request = self._original_curl_session_request
-
-        if CurlAsyncSession and self._original_curl_async_session_init:
-            CurlAsyncSession.__init__ = self._original_curl_async_session_init
-        if CurlAsyncSession and self._original_curl_async_session_request:
-            CurlAsyncSession.request = self._original_curl_async_session_request
-
-        self._patched = False
-
-# Global instance
-_proxy_manager = _GlobalProxyManager()
-
 class BaseImages(ABC):
     @abstractmethod
     def create(
@@ -204,12 +80,8 @@ class ProxyAutoMeta(ABCMeta):
         elif proxies is None:
             proxies = {}
 
-        # Patch global sessions before instantiation so any sessions created in __init__ get proxies
-        _proxy_manager.set_proxies(proxies)
-
+        # No global monkeypatching, just set proxies on the instance
         instance = super().__call__(*args, **kwargs)
-
-        # Expose proxies on the instance
         instance.proxies = proxies
 
         # If proxies are set, patch any existing session-like attributes

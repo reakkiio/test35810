@@ -75,6 +75,14 @@ agent.refresh()  # Generates new set of agents
 agent.auto_refresh(interval_minutes=30)  # Auto-refresh every 30 minutes
 ```
 
+### IP Rotation
+
+```python
+# Rotate the IP address used in fingerprints
+ip = agent.rotate_ip()
+print(ip)  # 192.168.1.10 (example)
+```
+
 ## 💫 Real-World Examples
 
 ### With Requests
@@ -202,7 +210,7 @@ def browse_with_playwright():
    # Use these headers for all requests in this session
    ```
 
-4. **New - Browser Fingerprinting Defense**:
+4. **New - Browser Fingerprinting & IP Rotation**:
    ```python
    # Create consistent browser fingerprinting
    fingerprint = agent.generate_fingerprint(browser="chrome")
@@ -212,10 +220,11 @@ def browse_with_playwright():
        'Accept-Language': fingerprint['accept_language'],
        'Accept': fingerprint['accept'],
        'Sec-Ch-Ua': fingerprint['sec_ch_ua'],
-       'Sec-Ch-Ua-Platform': fingerprint['platform']
+       'Sec-Ch-Ua-Platform': fingerprint['platform'],
+       'X-Forwarded-For': fingerprint['x-forwarded-for']
    }
    
-   # Use this consistent set for all session requests
+   # Use this consistent set for all session requests while rotating IPs
    ```
 
 5. **New - Multi-threading Support**:

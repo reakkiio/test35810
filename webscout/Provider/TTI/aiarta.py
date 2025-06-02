@@ -13,7 +13,11 @@ Examples:
 
 import requests
 from typing import Optional, List, Dict, Any
-from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.utils import (
+    ImageData,
+    ImageResponse,
+    request_with_proxy_fallback,
+)
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
 import os
@@ -27,8 +31,9 @@ try:
 except ImportError:
     Image = None
 
+
 class Images(BaseImages):
-    def __init__(self, client: 'AIArta'):
+    def __init__(self, client: "AIArta"):
         self._client = client
 
     def create(
@@ -44,7 +49,7 @@ class Images(BaseImages):
         aspect_ratio: str = "1:1",
         timeout: int = 60,
         image_format: str = "png",
-        **kwargs
+        **kwargs,
     ) -> ImageResponse:
         """
         image_format: "png" or "jpeg"
@@ -61,32 +66,35 @@ class Images(BaseImages):
             for attempt in range(max_retries):
                 tmp_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    with tempfile.NamedTemporaryFile(
+                        suffix=f".{ext}", delete=False
+                    ) as tmp:
                         tmp.write(img_bytes)
                         tmp.flush()
                         tmp_path = tmp.name
-                    with open(tmp_path, 'rb') as f:
-                        files = {
-                            'fileToUpload': (f'image.{ext}', f, f'image/{ext}')
-                        }
-                        data = {
-                            'reqtype': 'fileupload',
-                            'json': 'true'
-                        }
-                        headers = {'User-Agent': agent.random()}
+                    with open(tmp_path, "rb") as f:
+                        files = {"fileToUpload": (f"image.{ext}", f, f"image/{ext}")}
+                        data = {"reqtype": "fileupload", "json": "true"}
+                        headers = {"User-Agent": agent.random()}
                         if attempt > 0:
-                            headers['Connection'] = 'close'
-                        resp = requests.post("https://catbox.moe/user/api.php", files=files, data=data, headers=headers, timeout=timeout)
+                            headers["Connection"] = "close"
+                        resp = requests.post(
+                            "https://catbox.moe/user/api.php",
+                            files=files,
+                            data=data,
+                            headers=headers,
+                            timeout=timeout,
+                        )
                         if resp.status_code == 200 and resp.text.strip():
                             text = resp.text.strip()
-                            if text.startswith('http'):
+                            if text.startswith("http"):
                                 return text
                             try:
                                 result = resp.json()
                                 if "url" in result:
                                     return result["url"]
                             except json.JSONDecodeError:
-                                if 'http' in text:
+                                if "http" in text:
                                     return text
                 except Exception:
                     if attempt < max_retries - 1:
@@ -109,12 +117,12 @@ class Images(BaseImages):
                 try:
                     if not os.path.isfile(tmp_path):
                         return None
-                    with open(tmp_path, 'rb') as img_file:
-                        files = {'file': img_file}
-                        response = requests.post('https://0x0.st', files=files)
+                    with open(tmp_path, "rb") as img_file:
+                        files = {"file": img_file}
+                        response = requests.post("https://0x0.st", files=files)
                         response.raise_for_status()
                         image_url = response.text.strip()
-                        if not image_url.startswith('http'):
+                        if not image_url.startswith("http"):
                             return None
                         return image_url
                 except Exception:
@@ -140,7 +148,9 @@ class Images(BaseImages):
             style_value = self._client.get_model(model)
             image_payload = {
                 "prompt": str(prompt),
-                "negative_prompt": str(kwargs.get("negative_prompt", "blurry, deformed hands, ugly")),
+                "negative_prompt": str(
+                    kwargs.get("negative_prompt", "blurry, deformed hands, ugly")
+                ),
                 "style": str(style_value),
                 "images_num": str(1),  # Generate one image at a time in the loop
                 "cfg_scale": str(kwargs.get("guidance_scale", 7)),
@@ -148,14 +158,18 @@ class Images(BaseImages):
                 "aspect_ratio": str(aspect_ratio),
             }
             # Step 2: Generate Image (send as form data, not JSON)
-            image_response = self._client.session.post(
+            image_response = request_with_proxy_fallback(
+                self._client.session,
+                "post",
                 self._client.image_generation_url,
                 data=image_payload,  # Use form data instead of JSON
                 headers=gen_headers,
-                timeout=timeout
+                timeout=timeout,
             )
             if image_response.status_code != 200:
-                raise RuntimeError(f"AIArta API error {image_response.status_code}: {image_response.text}\nPayload: {image_payload}")
+                raise RuntimeError(
+                    f"AIArta API error {image_response.status_code}: {image_response.text}\nPayload: {image_payload}"
+                )
             image_data = image_response.json()
             record_id = image_data.get("record_id")
             if not record_id:
@@ -163,18 +177,27 @@ class Images(BaseImages):
             # Step 3: Check Generation Status
             status_url = self._client.status_check_url.format(record_id=record_id)
             while True:
-                status_response = self._client.session.get(
+                status_response = request_with_proxy_fallback(
+                    self._client.session,
+                    "get",
                     status_url,
                     headers=gen_headers,
-                    timeout=timeout
+                    timeout=timeout,
                 )
                 status_data = status_response.json()
                 status = status_data.get("status")
                 if status == "DONE":
-                    image_urls = [image["url"] for image in status_data.get("response", [])]
+                    image_urls = [
+                        image["url"] for image in status_data.get("response", [])
+                    ]
                     if not image_urls:
                         raise RuntimeError("No image URLs returned from AIArta")
-                    img_resp = self._client.session.get(image_urls[0], timeout=timeout)
+                    img_resp = request_with_proxy_fallback(
+                        self._client.session,
+                        "get",
+                        image_urls[0],
+                        timeout=timeout,
+                    )
                     img_resp.raise_for_status()
                     img_bytes = img_resp.content
                     # Convert to png or jpeg in memory
@@ -191,11 +214,15 @@ class Images(BaseImages):
                     if response_format == "url":
                         uploaded_url = upload_file_with_retry(img_bytes, image_format)
                         if not uploaded_url:
-                            uploaded_url = upload_file_alternative(img_bytes, image_format)
+                            uploaded_url = upload_file_alternative(
+                                img_bytes, image_format
+                            )
                         if uploaded_url:
                             urls.append(uploaded_url)
                         else:
-                            raise RuntimeError("Failed to upload image to catbox.moe using all available methods")
+                            raise RuntimeError(
+                                "Failed to upload image to catbox.moe using all available methods"
+                            )
                     break
                 elif status in ("IN_QUEUE", "IN_PROGRESS"):
                     time.sleep(2)
@@ -208,6 +235,7 @@ class Images(BaseImages):
                 result_data.append(ImageData(url=url))
         elif response_format == "b64_json":
             import base64
+
             for img in images:
                 b64 = base64.b64encode(img).decode("utf-8")
                 result_data.append(ImageData(b64_json=b64))
@@ -215,10 +243,9 @@ class Images(BaseImages):
             raise ValueError("response_format must be 'url' or 'b64_json'")
 
         from time import time as _time
-        return ImageResponse(
-            created=int(_time()),
-            data=result_data
-        )
+
+        return ImageResponse(created=int(_time()), data=result_data)
+
 
 class AIArta(TTICompatibleProvider):
     # Model aliases mapping from lowercase keys to proper API style names
@@ -269,16 +296,18 @@ class AIArta(TTICompatibleProvider):
         "kawaii": "Kawaii",
         "cinematic_art": "Cinematic Art",
         "professional": "Professional",
-        "black_ink": "Black Ink"
+        "black_ink": "Black Ink",
     }
-    
+
     AVAILABLE_MODELS = list(model_aliases.keys())
     default_model = "Flux"
     default_image_model = default_model
 
     def __init__(self):
         self.image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
-        self.status_check_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
+        self.status_check_url = (
+            "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
+        )
         self.auth_url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
         self.token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
         self.session = requests.Session()
@@ -303,12 +332,19 @@ class AIArta(TTICompatibleProvider):
     def create_token(self, path: str) -> Dict[str, Any]:
         auth_payload = {"clientType": "CLIENT_TYPE_ANDROID"}
         proxies = self.session.proxies if self.session.proxies else None
-        auth_response = self.session.post(self.auth_url, json=auth_payload, timeout=60, proxies=proxies)
+        auth_response = request_with_proxy_fallback(
+            self.session,
+            "post",
+            self.auth_url,
+            json=auth_payload,
+            timeout=60,
+            proxies=proxies,
+        )
         auth_data = auth_response.json()
         auth_token = auth_data.get("idToken")
         if not auth_token:
             raise Exception("Failed to obtain authentication token.")
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(auth_data, f)
         return auth_data
 
@@ -317,23 +353,29 @@ class AIArta(TTICompatibleProvider):
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
         }
-        response = self.session.post(self.token_refresh_url, data=payload, timeout=60)
+        response = request_with_proxy_fallback(
+            self.session,
+            "post",
+            self.token_refresh_url,
+            data=payload,
+            timeout=60,
+        )
         response_data = response.json()
         return response_data.get("id_token"), response_data.get("refresh_token")
 
     def read_and_refresh_token(self) -> Dict[str, Any]:
         path = self.get_auth_file()
         if os.path.isfile(path):
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 auth_data = json.load(f)
             diff = time.time() - os.path.getmtime(path)
             expires_in = int(auth_data.get("expiresIn", 3600))
             if diff < expires_in:
                 if diff > expires_in / 2:
-                    auth_data["idToken"], auth_data["refreshToken"] = self.refresh_token(
-                        auth_data.get("refreshToken")
+                    auth_data["idToken"], auth_data["refreshToken"] = (
+                        self.refresh_token(auth_data.get("refreshToken"))
                     )
-                    with open(path, 'w') as f:
+                    with open(path, "w") as f:
                         json.dump(auth_data, f)
                 return auth_data
         return self.create_token(path)
@@ -349,11 +391,14 @@ class AIArta(TTICompatibleProvider):
         class _ModelList:
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
+
         return _ModelList()
+
 
 # Example usage:
 if __name__ == "__main__":
     from rich import print
+
     client = AIArta()
     response = client.images.create(
         model="flux",

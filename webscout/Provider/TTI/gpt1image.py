@@ -2,7 +2,11 @@ import requests
 import random
 import string
 from typing import Optional, List, Dict, Any
-from webscout.Provider.TTI.utils import ImageData, ImageResponse
+from webscout.Provider.TTI.utils import (
+    ImageData,
+    ImageResponse,
+    request_with_proxy_fallback,
+)
 from webscout.Provider.TTI.base import TTICompatibleProvider, BaseImages
 from io import BytesIO
 import os
@@ -11,6 +15,7 @@ from webscout.litagent import LitAgent
 import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
 
 class Images(BaseImages):
     def __init__(self, client):
@@ -27,13 +32,13 @@ class Images(BaseImages):
             total=3,
             status_forcelist=[429, 500, 502, 503, 504],
             backoff_factor=1,
-            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
         )
-        
+
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
-        
+
         # Set timeouts
         # self.session.timeout = (10, 30)  # (connect_timeout, read_timeout)
         # Unlimited timeout: do not set session timeout here
@@ -53,7 +58,7 @@ class Images(BaseImages):
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",          
+            "sec-fetch-site": "same-origin",
             "x-forwarded-for": fp["x-forwarded-for"],
             "x-real-ip": fp["x-real-ip"],
             "x-request-id": fp["x-request-id"],
@@ -62,35 +67,8 @@ class Images(BaseImages):
             headers.update(extra)
         return headers
 
-    def _make_request_with_fallback(self, url, body, headers, timeout):
-        """Make request with proxy fallback strategy"""
-        original_proxies = self.session.proxies.copy()
-        
-        try:
-            # First attempt with current proxies
-            resp = self.session.post(url, json=body, headers=headers, timeout=timeout)
-            resp.raise_for_status()
-            return resp
-        except (requests.exceptions.ConnectionError, 
-                requests.exceptions.ProxyError,
-                requests.exceptions.Timeout) as e:
-            # Clear proxies for direct connection
-            self.session.proxies.clear()
-            
-            try:
-                resp = self.session.post(url, json=body, headers=headers, timeout=timeout)
-                resp.raise_for_status()
-                return resp
-            except Exception as direct_error:
-                # Restore original proxies
-                self.session.proxies.update(original_proxies)
-                raise RuntimeError(f"Both proxy and direct connections failed. Proxy error: {e}, Direct error: {direct_error}")
-        except Exception as e:
-            # For other exceptions, restore proxies and re-raise
-            self.session.proxies.update(original_proxies)
-            raise e
-
-    def create(self,
+    def create(
+        self,
         model: str = None,
         prompt: str = None,
         n: int = 1,
@@ -102,29 +80,37 @@ class Images(BaseImages):
         timeout: int = 60,
         image_format: str = "png",
         enhance: bool = True,
-        **kwargs
+        **kwargs,
     ) -> ImageResponse:
         if not prompt:
-            raise ValueError("Describe the image you want to create (use the 'prompt' property).")
+            raise ValueError(
+                "Describe the image you want to create (use the 'prompt' property)."
+            )
         body = {
             "prompt": prompt,
             "n": n,
-            "size": size,            
+            "size": size,
             "is_enhance": enhance,
-            "response_format": response_format
+            "response_format": response_format,
         }
         try:
             # Use the new fallback request method
-            resp = self._make_request_with_fallback(
-                f"{self.base_url}/v1/images/generations", 
-                body, 
-                self.build_headers(), 
-                timeout
+            resp = request_with_proxy_fallback(
+                self.session,
+                "post",
+                f"{self.base_url}/v1/images/generations",
+                json=body,
+                headers=self.build_headers(),
+                timeout=timeout,
             )
             data = resp.json()
             if not data.get("data") or len(data["data"]) == 0:
-                error_info = f", server info: {data.get('error')}" if data.get('error') else ""
-                raise RuntimeError(f"Failed to process image. No data found{error_info}.")
+                error_info = (
+                    f", server info: {data.get('error')}" if data.get("error") else ""
+                )
+                raise RuntimeError(
+                    f"Failed to process image. No data found{error_info}."
+                )
             result = data["data"]
             result_data = []
             for item in result:
@@ -136,19 +122,25 @@ class Images(BaseImages):
         except Exception as e:
             raise RuntimeError(f"An error occurred: {str(e)}")
 
+
 class GPT1Image(TTICompatibleProvider):
     AVAILABLE_MODELS = ["gpt1image"]
+
     def __init__(self):
         self.images = Images(self)
+
     @property
     def models(self):
         class _ModelList:
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
+
         return _ModelList()
+
 
 if __name__ == "__main__":
     from rich import print
+
     client = GPT1Image()
     response = client.images.create(
         prompt="A futuristic robot in a neon city",

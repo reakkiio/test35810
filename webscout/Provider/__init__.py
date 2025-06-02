@@ -83,6 +83,9 @@ from .Flowith import Flowith
 from .samurai import samurai
 from .lmarena import lmarena
 from .oivscode import oivscode
+
+# Import STT providers
+from .STT import *
 __all__ = [
     'SCNet',
     'oivscode',

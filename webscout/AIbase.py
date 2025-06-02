@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Union, Generator, Optional
+from typing import AsyncGenerator, Dict, List, Union, Generator, Optional, Any
 from typing_extensions import TypeAlias
 
 # Type aliases for better readability
@@ -175,6 +175,66 @@ class AsyncTTSProvider(ABC):
 
         Returns:
             str: Path to the generated audio file
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")
+
+
+class STTProvider(ABC):
+    """Abstract base class for Speech-to-Text providers."""
+
+    @abstractmethod
+    def transcribe(self, audio_path: Union[str, Path], **kwargs) -> Dict[str, Any]:
+        """Transcribe audio file to text.
+
+        Args:
+            audio_path (Union[str, Path]): Path to the audio file
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            Dict[str, Any]: Transcription result in OpenAI Whisper format
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")
+
+    @abstractmethod
+    def transcribe_from_url(self, audio_url: str, **kwargs) -> Dict[str, Any]:
+        """Transcribe audio from URL to text.
+
+        Args:
+            audio_url (str): URL of the audio file
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            Dict[str, Any]: Transcription result in OpenAI Whisper format
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")
+
+
+class AsyncSTTProvider(ABC):
+    """Abstract base class for asynchronous Speech-to-Text providers."""
+
+    @abstractmethod
+    async def transcribe(self, audio_path: Union[str, Path], **kwargs) -> Dict[str, Any]:
+        """Transcribe audio file to text asynchronously.
+
+        Args:
+            audio_path (Union[str, Path]): Path to the audio file
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            Dict[str, Any]: Transcription result in OpenAI Whisper format
+        """
+        raise NotImplementedError("Method needs to be implemented in subclass")
+
+    @abstractmethod
+    async def transcribe_from_url(self, audio_url: str, **kwargs) -> Dict[str, Any]:
+        """Transcribe audio from URL to text asynchronously.
+
+        Args:
+            audio_url (str): URL of the audio file
+            **kwargs: Additional provider-specific parameters
+
+        Returns:
+            Dict[str, Any]: Transcription result in OpenAI Whisper format
         """
         raise NotImplementedError("Method needs to be implemented in subclass")
 

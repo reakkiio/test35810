@@ -221,13 +221,13 @@ class ProxyAutoMeta(ABCMeta):
                 if CurlSession and isinstance(obj, CurlSession):
                     try:
                         obj.proxies.update(proxies)
-                    except Exception:
-                        pass
+                    except (ValueError, KeyError, AttributeError):
+                        print("Failed to update proxies for CurlSession due to an expected error.")
                 if CurlAsyncSession and isinstance(obj, CurlAsyncSession):
                     try:
                         obj.proxies.update(proxies)
-                    except Exception:
-                        pass
+                    except (ValueError, KeyError, AttributeError):
+                        print("Failed to update proxies for CurlAsyncSession due to an expected error.")
 
         # Helper for backward compatibility
         def get_proxied_session():

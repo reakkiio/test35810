@@ -65,6 +65,9 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - TwoAI
 - oivscode
 - Qwen3
+- TogetherAI
+- PiAI
+- FalconH1
 ---
 
 

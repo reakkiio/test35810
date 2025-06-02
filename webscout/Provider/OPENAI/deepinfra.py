@@ -5,8 +5,8 @@ import uuid
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage
 )
@@ -326,3 +326,14 @@ class DeepInfra(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+    
+if __name__ == "__main__":
+    # Example usage
+    client = DeepInfra()
+    response = client.chat.completions.create(
+        model="deepseek-ai/DeepSeek-R1-0528",
+        messages=[{"role": "user", "content": "Hello, how are you?"}],
+        max_tokens=100,
+        stream=False
+    )
+    print(response)

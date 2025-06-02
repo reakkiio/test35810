@@ -138,7 +138,7 @@ class Images(BaseImages):
 
             if "output" in data and len(data["output"]) > 0:
                 image_url = data["output"][0]
-                img_resp = self._client.sessions.get(image_url, timeout=timeout)
+                img_resp = self._client.session.get(image_url, timeout=timeout)
                 img_resp.raise_for_status()
                 webp_bytes = img_resp.content
 

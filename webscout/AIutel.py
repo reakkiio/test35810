@@ -277,69 +277,50 @@ def _sanitize_stream_sync(
     processing_active = start_marker is None
     buffer = ""
     found_start = False if start_marker else True
+    line_iterator: Iterable[str]
 
-    # Fast path for single string processing
     if isinstance(data, str):
-        processed_item = None
-        if processing_active:
-            if to_json:
-                try:
-                    data = data.strip()
-                    if data:
-                        processed_item = json.loads(data)
-                except Exception as e:
-                    if error_handler:
-                        try:
-                            handled = error_handler(e, data)
-                            if handled is not None:
-                                processed_item = handled
-
-                        except Exception:
-                            pass
-                    if processed_item is None:
-                        processed_item = data if yield_raw_on_error else None
+        # If data is a string, decide whether to split it into lines
+        # or treat it as an iterable containing a single chunk.
+        temp_lines: List[str]
+        if line_delimiter is None:  # Default: split by newlines if present
+            if '\n' in data or '\r' in data:
+                temp_lines = data.splitlines()
             else:
-                processed_item = _process_chunk(
-                    data, intro_value, False, effective_skip_markers,
-                    strip_chars, yield_raw_on_error, error_handler
-                )
-            if processed_item is not None:
-                if content_extractor:
-                    try:
-                        final_content = content_extractor(processed_item)
-                        if final_content is not None:
-                            yield final_content
-                    except Exception:
-                        pass
-                else:
-                    yield processed_item
-        return
+                temp_lines = [data]  # Treat as a single line/chunk
+        elif line_delimiter in data:  # Custom delimiter found in string
+            temp_lines = data.split(line_delimiter)
+        else:  # Custom delimiter not found, or string is effectively a single segment
+            temp_lines = [data]
+        line_iterator = iter(temp_lines)
+    elif hasattr(data, '__iter__'):  # data is an iterable (but not a string)
+        _iter = iter(data)
+        first_item = next(_iter, None)
 
-    # Stream processing path
-    if not hasattr(data, '__iter__'):
-        raise TypeError(f"Input must be a string or an iterable, not {type(data).__name__}")
-
-    try:
-        iterator = iter(data)
-        first_item = next(iterator, None)
-        if first_item is None:
+        if first_item is None:  # Iterable was empty
             return
-        from itertools import chain
-        stream = chain([first_item], iterator)
 
-        # Determine if we're dealing with bytes or strings
+        from itertools import chain
+        # Reconstruct the full iterable including the first_item
+        stream_input_iterable = chain([first_item], _iter)
+
         if isinstance(first_item, bytes):
+            # Ensure stream_input_iterable is typed as Iterable[bytes] for _decode_byte_stream
             line_iterator = _decode_byte_stream(
-                stream,
+                stream_input_iterable, # type: ignore
                 encoding=encoding,
                 errors=encoding_errors,
                 buffer_size=buffer_size
             )
         elif isinstance(first_item, str):
-            line_iterator = stream
+            # Ensure stream_input_iterable is typed as Iterable[str]
+            line_iterator = stream_input_iterable # type: ignore
         else:
-            raise TypeError(f"Stream must yield strings or bytes, not {type(first_item).__name__}")
+            raise TypeError(f"Iterable must yield strings or bytes, not {type(first_item).__name__}")
+    else:  # Not a string and not an iterable
+        raise TypeError(f"Input must be a string or an iterable, not {type(data).__name__}")
 
+    try:
         for line in line_iterator:
             if not line:
                 continue
@@ -683,20 +664,32 @@ def sanitize_stream(
         Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
             A generator or an asynchronous generator yielding the processed data.
     """
+    # Determine the actual data payload to process
+    payload: Any  # The type of payload can change based on data's attributes
 
-    if hasattr(data, "__aiter__"):
+    text_attr = getattr(data, "text", None)
+    content_attr = getattr(data, "content", None)
+
+    if isinstance(text_attr, str):
+        payload = text_attr
+    elif isinstance(content_attr, bytes):
+        payload = content_attr.decode(encoding, encoding_errors)
+    else:
+        # Use the original data if .text or .content are not applicable or not found
+        payload = data
+
+    # Dispatch to sync or async worker based on the nature of the 'payload'
+    if hasattr(payload, "__aiter__"):
         return _sanitize_stream_async(
-            data, intro_value, to_json, skip_markers, strip_chars,
+            payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
         )
     return _sanitize_stream_sync(
-        data, intro_value, to_json, skip_markers, strip_chars,
+        payload, intro_value, to_json, skip_markers, strip_chars,
         start_marker, end_marker, content_extractor, yield_raw_on_error,
         encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
     )
-
-
 from .conversation import Conversation  # noqa: E402,F401
 from .Extra.autocoder import AutoCoder  # noqa: E402,F401
 from .optimizers import Optimizers  # noqa: E402,F401

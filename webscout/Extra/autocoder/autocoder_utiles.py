@@ -131,7 +131,7 @@ def get_intro_prompt(name: str = "Vortex") -> str:
         - Actively clean up any temporary processes or files you use.
         - When looking through files, use git as available to skip files, and skip hidden files (.env, .git, etc) by default.
         - You can plot anything with matplotlib using Python code.
-        - **IMPORTANT**: ALWAYS Return your SCRIPT inside of a single pair of \`\`\` delimiters. This SCRIPT can be a mix of Python code and `!`-prefixed shell commands. Only the console output from this SCRIPT (Python prints or `!` command stdout/stderr) is visible to the user, so ensure it's complete.
+        - **IMPORTANT**: ALWAYS Return your SCRIPT inside of a single pair of ``` delimiters. This SCRIPT can be a mix of Python code and `!`-prefixed shell commands. Only the console output from this SCRIPT (Python prints or `!` command stdout/stderr) is visible to the user, so ensure it's complete.
     </conventions>
 
     <examples>

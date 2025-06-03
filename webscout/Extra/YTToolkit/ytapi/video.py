@@ -17,7 +17,7 @@ class Video:
         video_id : str
             The id or url of the video
         """
-        pattern = re.compile('.be/(.*?)$|=(.*?)$|^(\w{11})$')  # noqa
+        pattern = re.compile(r'.be/(.*?)$|=(.*?)$|^(\w{11})$')  # noqa
         match = pattern.search(video_id)
 
         if not match:
@@ -33,7 +33,7 @@ class Video:
             self._url = self._HEAD + self._matched_id
             self._video_data = video_data(self._matched_id)
             # Extract basic info for fallback
-            title_match = re.search('<title>(.*?) - YouTube</title>', self._video_data)
+            title_match = re.search(r'<title>(.*?) - YouTube</title>', self._video_data)
             self.title = title_match.group(1) if title_match else None
             self.id = self._matched_id
         else:
@@ -55,19 +55,19 @@ class Video:
         """
         # Multiple patterns to try for video details extraction for robustness
         details_patterns = [
-            re.compile('videoDetails\":(.*?)\"isLiveContent\":.*?}'),
-            re.compile('videoDetails\":(.*?),\"playerConfig'),
-            re.compile('videoDetails\":(.*?),\"playabilityStatus')
+            re.compile(r'videoDetails\":(.*?)\"isLiveContent\":.*?}'),
+            re.compile(r'videoDetails\":(.*?),\"playerConfig'),
+            re.compile(r'videoDetails\":(.*?),\"playabilityStatus')
         ]
 
         # Other metadata patterns
-        upload_date_pattern = re.compile("<meta itemprop=\"uploadDate\" content=\"(.*?)\">")
-        genre_pattern = re.compile("<meta itemprop=\"genre\" content=\"(.*?)\">")
+        upload_date_pattern = re.compile(r"<meta itemprop=\"uploadDate\" content=\"(.*?)\">")
+        genre_pattern = re.compile(r"<meta itemprop=\"genre\" content=\"(.*?)\">")
         like_count_patterns = [
-            re.compile("iconType\":\"LIKE\"},\"defaultText\":(.*?)}"),
-            re.compile('\"likeCount\":\"(\\d+)\"')
+            re.compile(r"iconType\":\"LIKE\"},\"defaultText\":(.*?)}"),
+            re.compile(r'\"likeCount\":\"(\d+)\"')
         ]
-        channel_name_pattern = re.compile('"ownerChannelName":"(.*?)"')
+        channel_name_pattern = re.compile(r'"ownerChannelName":"(.*?)"')
 
         # Try each pattern for video details
         raw_details_match = None

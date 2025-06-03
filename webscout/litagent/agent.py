@@ -331,12 +331,20 @@ class LitAgent:
         return agent
 
     def generate_fingerprint(self, browser: Optional[str] = None) -> Dict[str, str]:
-        """Generate a consistent browser fingerprint! 👆
-        This creates a coherent set of headers for anti-fingerprinting.
+        """
+        Generate a consistent browser fingerprint for anti-fingerprinting purposes.
+
+        This method creates a dictionary of HTTP headers and related values that simulate
+        a realistic browser fingerprint, including user agent, accept headers, platform,
+        sec-ch-ua, and various IP-related headers. Optionally, a specific browser type
+        can be requested.
+
         Args:
-            browser: Specific browser to generate fingerprint for
+            browser (Optional[str]): The browser name to generate the fingerprint for.
+                If not specified, a random browser is used.
+
         Returns:
-            Dictionary with fingerprinting headers
+            Dict[str, str]: A dictionary containing fingerprinting headers and values.
         """
         # Get a random user agent using the random() method
         user_agent = self.random()

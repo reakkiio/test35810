@@ -586,5 +586,3 @@ if __name__ == "__main__":
     )
     print(response.choices[0].message.content)
     print()
-    print("Proxies on instance:", client.proxies)
-    print("Proxies on session:", client.get_proxied_session().proxies)

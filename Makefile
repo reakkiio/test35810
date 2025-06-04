@@ -1,6 +1,7 @@
 # =============================================================================
 # Webscout Docker Makefile
 # Simplifies Docker operations and development workflows
+# Supports enhanced authentication system with no-auth mode
 # =============================================================================
 
 # Variables
@@ -39,7 +40,10 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make build          # Build the Docker image"
-	@echo "  make up             # Start services"
+	@echo "  make up             # Start services with authentication"
+	@echo "  make no-auth        # Start in no-auth mode (development)"
+	@echo "  make mongodb        # Start with MongoDB database"
+	@echo "  make generate-key   # Generate a test API key"
 	@echo "  make logs           # View logs"
 	@echo "  make clean          # Clean up everything"
 
@@ -146,6 +150,18 @@ monitoring: ## Start with monitoring stack
 	docker-compose --profile monitoring up -d
 	@make status
 
+.PHONY: no-auth
+no-auth: ## Start in no-auth mode (development/demo)
+	@echo "$(GREEN)Starting in no-auth mode...$(NC)"
+	docker-compose -f docker-compose.yml -f docker-compose.no-auth.yml up -d
+	@make status
+
+.PHONY: mongodb
+mongodb: ## Start with MongoDB database
+	@echo "$(GREEN)Starting with MongoDB...$(NC)"
+	docker-compose --profile mongodb up -d
+	@make status
+
 # =============================================================================
 # Monitoring and Debugging
 # =============================================================================
@@ -166,7 +182,7 @@ logs-api: ## Show API logs only
 .PHONY: health
 health: ## Check health status
 	@echo "$(BLUE)Health Check:$(NC)"
-	@curl -f http://localhost:$${WEBSCOUT_PORT:-8000}/v1/models > /dev/null 2>&1 && echo "$(GREEN)API is healthy$(NC)" || echo "$(RED)Health check failed$(NC)"
+	@curl -f http://localhost:$${WEBSCOUT_PORT:-8000}/health > /dev/null 2>&1 && echo "$(GREEN)API is healthy$(NC)" || echo "$(RED)Health check failed$(NC)"
 
 .PHONY: shell
 shell: ## Open shell in container
@@ -196,17 +212,38 @@ test: ## Run API tests
 .PHONY: test-health
 test-health: ## Test health endpoint
 	@echo "$(BLUE)Testing health endpoint...$(NC)"
-	@curl -f http://localhost:$${WEBSCOUT_PORT:-8000}/v1/models > /dev/null 2>&1 && echo "$(GREEN)Health check passed$(NC)" || echo "$(RED)Health check failed$(NC)"
+	@curl -f http://localhost:$${WEBSCOUT_PORT:-8000}/health > /dev/null 2>&1 && echo "$(GREEN)Health check passed$(NC)" || echo "$(RED)Health check failed$(NC)"
 
 .PHONY: test-endpoints
 test-endpoints: ## Test all endpoints
 	@echo "$(BLUE)Testing endpoints...$(NC)"
 	@echo "Root endpoint:"
 	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:$${WEBSCOUT_PORT:-8000}/
+	@echo "Health endpoint:"
+	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:$${WEBSCOUT_PORT:-8000}/health
 	@echo "Models endpoint:"
 	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:$${WEBSCOUT_PORT:-8000}/v1/models
+	@echo "TTI Models endpoint:"
+	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:$${WEBSCOUT_PORT:-8000}/v1/TTI/models
 	@echo "Docs endpoint:"
 	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:$${WEBSCOUT_PORT:-8000}/docs
+
+.PHONY: test-auth
+test-auth: ## Test authentication endpoints
+	@echo "$(BLUE)Testing authentication...$(NC)"
+	@echo "Generating API key:"
+	@curl -s -X POST "http://localhost:$${WEBSCOUT_PORT:-8000}/v1/auth/generate-key" \
+		-H "Content-Type: application/json" \
+		-d '{"username": "test_user", "telegram_id": "123456789", "name": "Test Key"}' \
+		-w "  Status: %{http_code}\n" || echo "  Failed to generate API key"
+
+.PHONY: generate-key
+generate-key: ## Generate a test API key
+	@echo "$(GREEN)Generating API key...$(NC)"
+	@curl -s -X POST "http://localhost:$${WEBSCOUT_PORT:-8000}/v1/auth/generate-key" \
+		-H "Content-Type: application/json" \
+		-d '{"username": "makefile_user", "telegram_id": "987654321", "name": "Makefile Test Key"}' \
+		| python3 -m json.tool 2>/dev/null || echo "Failed to generate API key"
 
 # =============================================================================
 # Cleanup Operations
@@ -306,10 +343,26 @@ env: ## Create example environment file
 	@if [ ! -f .env ]; then \
 		echo "$(GREEN)Creating .env file...$(NC)"; \
 		echo "# Webscout Environment Configuration" > .env; \
-		echo "WEBSCOUT_API_KEY=your-secret-api-key" >> .env; \
-		echo "WEBSCOUT_DEFAULT_PROVIDER=ChatGPT" >> .env; \
+		echo "" >> .env; \
+		echo "# Server Settings" >> .env; \
+		echo "WEBSCOUT_HOST=0.0.0.0" >> .env; \
+		echo "WEBSCOUT_PORT=8000" >> .env; \
+		echo "WEBSCOUT_WORKERS=1" >> .env; \
 		echo "WEBSCOUT_LOG_LEVEL=info" >> .env; \
 		echo "WEBSCOUT_DEBUG=false" >> .env; \
+		echo "" >> .env; \
+		echo "# Authentication Settings" >> .env; \
+		echo "WEBSCOUT_NO_AUTH=false" >> .env; \
+		echo "WEBSCOUT_NO_RATE_LIMIT=false" >> .env; \
+		echo "WEBSCOUT_API_KEY=your-secret-api-key" >> .env; \
+		echo "" >> .env; \
+		echo "# Database Settings" >> .env; \
+		echo "# MONGODB_URL=mongodb://localhost:27017/webscout" >> .env; \
+		echo "WEBSCOUT_DATA_DIR=./data" >> .env; \
+		echo "" >> .env; \
+		echo "# Provider Settings" >> .env; \
+		echo "WEBSCOUT_DEFAULT_PROVIDER=ChatGPT" >> .env; \
+		echo "WEBSCOUT_BASE_URL=" >> .env; \
 		echo "$(GREEN).env file created! Please edit it with your configuration.$(NC)"; \
 	else \
 		echo "$(YELLOW).env file already exists$(NC)"; \

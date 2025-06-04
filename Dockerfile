@@ -49,7 +49,9 @@ RUN pip install \
     gunicorn[gthread] \
     uvicorn[standard] \
     prometheus-client \
-    structlog
+    structlog \
+    motor \
+    pymongo
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - Create minimal production image
@@ -89,7 +91,11 @@ ENV PYTHONUNBUFFERED=1 \
     WEBSCOUT_HOST=0.0.0.0 \
     WEBSCOUT_PORT=8000 \
     WEBSCOUT_WORKERS=1 \
-    WEBSCOUT_LOG_LEVEL=info
+    WEBSCOUT_LOG_LEVEL=info \
+    # Authentication settings (new)
+    WEBSCOUT_NO_AUTH=false \
+    WEBSCOUT_NO_RATE_LIMIT=false \
+    WEBSCOUT_DATA_DIR=/app/data
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -125,8 +131,8 @@ EXPOSE $WEBSCOUT_PORT
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${WEBSCOUT_PORT:-8000}/v1/models || exit 1
+    CMD curl -f http://localhost:${WEBSCOUT_PORT:-8000}/health || exit 1
 
-# Default command - start the webscout API server directly
+# Default command - start the webscout API server with new auth system
 # Environment variables will be used by the application
-CMD ["python", "-m", "webscout.Provider.OPENAI.api"]
+CMD ["python", "-m", "webscout.auth.server"]

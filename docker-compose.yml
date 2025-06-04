@@ -30,6 +30,14 @@ services:
       - WEBSCOUT_WORKERS=1
       - WEBSCOUT_LOG_LEVEL=info
 
+      # Authentication settings (NEW!)
+      - WEBSCOUT_NO_AUTH=false
+      - WEBSCOUT_NO_RATE_LIMIT=false
+      - WEBSCOUT_DATA_DIR=/app/data
+
+      # Database settings (NEW!)
+      # - MONGODB_URL=mongodb://mongodb:27017/webscout
+
       # Optional API configuration
       # - WEBSCOUT_API_KEY=your-secret-api-key
       # - WEBSCOUT_DEFAULT_PROVIDER=ChatGPT
@@ -50,12 +58,12 @@ services:
       - webscout-logs:/app/logs
       - webscout-data:/app/data
 
-    # Override default command for basic setup
-    command: ["python", "-m", "webscout.Provider.OPENAI.api"]
+    # Override default command for enhanced auth system
+    command: ["python", "-m", "webscout.auth.server"]
 
     # Health check configuration
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${WEBSCOUT_PORT:-8000}/v1/models"]
+      test: ["CMD", "curl", "-f", "http://localhost:${WEBSCOUT_PORT:-8000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -104,6 +112,10 @@ services:
       - WEBSCOUT_WORKERS=4  # More workers for production
       - WEBSCOUT_LOG_LEVEL=warning
       - WEBSCOUT_DEBUG=false
+      # Authentication enabled by default in production
+      - WEBSCOUT_NO_AUTH=false
+      - WEBSCOUT_NO_RATE_LIMIT=false
+      - WEBSCOUT_DATA_DIR=/app/data
 
     ports:
       - "${WEBSCOUT_PORT:-8000}:${WEBSCOUT_PORT:-8000}"
@@ -121,7 +133,7 @@ services:
       "--access-logfile", "/app/logs/access.log",
       "--error-logfile", "/app/logs/error.log",
       "--preload",
-      "webscout.Provider.OPENAI.api:create_app"
+      "webscout.auth.server:create_app"
     ]
 
     deploy:
@@ -155,6 +167,10 @@ services:
       - WEBSCOUT_WORKERS=1
       - WEBSCOUT_LOG_LEVEL=debug
       - WEBSCOUT_DEBUG=true
+      # No-auth mode for easier development
+      - WEBSCOUT_NO_AUTH=true
+      - WEBSCOUT_NO_RATE_LIMIT=true
+      - WEBSCOUT_DATA_DIR=/app/data
 
     ports:
       - "${WEBSCOUT_PORT:-8000}:${WEBSCOUT_PORT:-8000}"
@@ -170,8 +186,48 @@ services:
       "--port", "${WEBSCOUT_PORT:-8000}",
       "--reload",
       "--log-level", "debug",
-      "webscout.Provider.OPENAI.api:create_app"
+      "webscout.auth.server:create_app"
     ]
+
+  # -----------------------------------------------------------------------------
+  # MongoDB Database (optional)
+  # -----------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7-jammy
+    container_name: webscout-mongodb
+    restart: unless-stopped
+    profiles:
+      - mongodb
+      - production
+
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=webscout
+      - MONGO_INITDB_ROOT_PASSWORD=webscout_password
+      - MONGO_INITDB_DATABASE=webscout
+
+    ports:
+      - "27017:27017"
+
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
   # -----------------------------------------------------------------------------
   # Nginx reverse proxy (optional)
@@ -236,6 +292,10 @@ volumes:
   webscout-logs:
     driver: local
   webscout-data:
+    driver: local
+  mongodb-data:
+    driver: local
+  mongodb-config:
     driver: local
   prometheus-data:
     driver: local

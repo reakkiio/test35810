@@ -78,7 +78,7 @@ dependencies = [
 [project.scripts]
 WEBS = "webscout.cli:main"
 webscout = "webscout.cli:main"
-webscout-server = "webscout.client:start_server"  # Instantly start the OpenAI-compatible API server
+webscout-server = "webscout.auth.server:main"  # Instantly start the OpenAI-compatible API server
 
 [project.urls]
 Source = "https://github.com/OE-LUCIFER/Webscout"
@@ -96,6 +96,7 @@ api = [
     "pydantic",
     "python-multipart",
     "tiktoken",  # Added tiktoken for token counting support
+    "motor",  # MongoDB async driver for enhanced authentication
 ]
 
 [tool.setuptools]

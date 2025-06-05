@@ -354,7 +354,7 @@ class Api:
                         params[param] = value
 
                 # Generate images
-                response = provider.images.generations.create(**params)
+                response = provider.images.create(**params)
 
                 # Standardize response format
                 if hasattr(response, "model_dump"):

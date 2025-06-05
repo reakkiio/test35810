@@ -35,20 +35,11 @@ class YepSearch:
             timeout=timeout # Set timeout directly in session
         )
         self.session.headers.update({
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9,en-IN;q=0.8",
-            "DNT": "1",
+            **LitAgent().generate_fingerprint(),
             "Origin": "https://yep.com",
             "Referer": "https://yep.com/",
-            # Sec-Ch-Ua headers are often handled by impersonate, but keeping them might be safer
-            "Sec-Ch-Ua": '"Not(A:Brand";v="99", "Microsoft Edge";v="133", "Chromium";v="133"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-            "User-Agent": LitAgent().random() # Keep custom User-Agent or rely on impersonate
         })
+
         # Proxies and verify are handled by the Session constructor now
 
     def _remove_html_tags(self, text: str) -> str:

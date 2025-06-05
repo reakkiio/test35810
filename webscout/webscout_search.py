@@ -16,7 +16,7 @@ from types import TracebackType
 from typing import Any, cast
 import os
 from typing import Literal, Iterator
-
+from webscout.litagent import LitAgent
 import curl_cffi.requests  # type: ignore
 
 try:
@@ -83,17 +83,9 @@ class WEBS:
             self.proxy = proxies.get("http") or proxies.get("https") if isinstance(proxies, dict) else proxies
 
         default_headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Referer": "https://duckduckgo.com/",
+            **LitAgent().generate_fingerprint(),
+            "Origin": "https://duckduckgo.com",
+            "Referer": "https://yep.com/",
         }
 
         self.headers = headers if headers else {}

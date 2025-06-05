@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, Request, Body
+from fastapi import FastAPI, Request, Body, Query
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
@@ -41,6 +41,9 @@ from .request_processing import (
     handle_streaming_response, handle_non_streaming_response
 )
 from .auth_system import get_auth_components
+from webscout.DWEBS import GoogleSearch
+from webscout.yep_search import YepSearch
+from webscout.webscout_search import WEBS
 
 # Setup logger
 logger = Logger(
@@ -197,6 +200,7 @@ class Api:
         self._register_chat_routes()
         self._register_image_routes()
         self._register_auth_routes()
+        self._register_websearch_routes()
 
     def _register_model_routes(self):
         """Register model listing routes."""
@@ -464,3 +468,58 @@ class Api:
                 database=db_status,
                 timestamp=datetime.now(timezone.utc)
             )
+
+    def _register_websearch_routes(self):
+        """Register web search endpoint."""
+
+        @self.app.get("/search")
+        async def websearch(
+            q: str = Query(..., description="Search query"),
+            engine: str = Query("google", description="Search engine: google, yep, duckduckgo"),
+            max_results: int = Query(10, description="Maximum number of results"),
+            region: str = Query("all", description="Region code (optional)"),
+            safesearch: str = Query("moderate", description="Safe search: on, moderate, off"),
+            type: str = Query("text", description="Search type: text, news, images, suggestions"),
+        ):
+            """Unified web search endpoint."""
+            try:
+                if engine == "google":
+                    gs = GoogleSearch()
+                    if type == "text":
+                        results = gs.text(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "google", "type": "text", "results": [r.__dict__ for r in results]}
+                    elif type == "news":
+                        results = gs.news(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "google", "type": "news", "results": [r.__dict__ for r in results]}
+                    elif type == "suggestions":
+                        results = gs.suggestions(q, region=region)
+                        return {"engine": "google", "type": "suggestions", "results": results}
+                    else:
+                        return {"error": "Google only supports text, news, and suggestions in this API."}
+                elif engine == "yep":
+                    ys = YepSearch()
+                    if type == "text":
+                        results = ys.text(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "yep", "type": "text", "results": results}
+                    elif type == "images":
+                        results = ys.images(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "yep", "type": "images", "results": results}
+                    elif type == "suggestions":
+                        results = ys.suggestions(q, region=region)
+                        return {"engine": "yep", "type": "suggestions", "results": results}
+                    else:
+                        return {"error": "Yep only supports text, images, and suggestions in this API."}
+                elif engine == "duckduckgo":
+                    ws = WEBS()
+                    if type == "text":
+                        results = ws.text(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "duckduckgo", "type": "text", "results": results}
+                    elif type == "suggestions":
+                        results = ws.suggestions(keywords=q, region=region)
+                        return {"engine": "duckduckgo", "type": "suggestions", "results": results}
+                    else:
+                        return {"error": "DuckDuckGo only supports text and suggestions in this API."}
+                else:
+                    return {"error": "Unknown engine. Use one of: google, yep, duckduckgo."}
+            except Exception as e:
+                return {"error": str(e)}

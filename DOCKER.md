@@ -82,6 +82,12 @@ All environment variables are now fully supported in the API server:
 - `WEBSCOUT_WORKERS` - Number of worker processes (default: 1)
 - `WEBSCOUT_LOG_LEVEL` - Log level: debug, info, warning, error, critical (default: info)
 - `WEBSCOUT_DEBUG` - Enable debug mode (default: false)
+- `WEBSCOUT_API_TITLE` - **NEW!** FastAPI app title (default: Webscout OpenAI API)
+- `WEBSCOUT_API_DESCRIPTION` - **NEW!** FastAPI app description (default: OpenAI API compatible interface for various LLM providers with enhanced authentication)
+- `WEBSCOUT_API_VERSION` - **NEW!** FastAPI app version (default: 0.2.0)
+- `WEBSCOUT_API_DOCS_URL` - **NEW!** FastAPI docs URL (default: /docs)
+- `WEBSCOUT_API_REDOC_URL` - **NEW!** FastAPI redoc URL (default: /redoc)
+- `WEBSCOUT_API_OPENAPI_URL` - **NEW!** FastAPI OpenAPI URL (default: /openapi.json)
 
 #### **Authentication & Security** 🔐
 - `WEBSCOUT_NO_AUTH` - **NEW!** Disable authentication (default: false) 🔓

@@ -201,12 +201,12 @@ class Genspark(AISearch):
                     json={},
                     stream=True,
                     timeout=self.timeout,
-                ) as SearchResponse:
-                    if not SearchResponse.ok:
+                ) as resp:
+                    if not resp.ok:
                         raise exceptions.APIConnectionError(
-                            f"Failed to generate SearchResponse - ({SearchResponse.status_code}, {SearchResponse.reason}) - {SearchResponse.text}"
+                            f"Failed to generate SearchResponse - ({resp.status_code}, {resp.reason}) - {resp.text}"
                         )
-                    for line in SearchResponse.iter_lines(decode_unicode=True):
+                    for line in resp.iter_lines(decode_unicode=True):
                         if not line or not line.startswith("data: "):
                             continue
                         try:
@@ -287,7 +287,7 @@ class Genspark(AISearch):
                                     yield processed_event_payload
                         except json.JSONDecodeError:
                             continue
-            except cloudscraper.exceptions as e:
+            except cloudscraper.exceptions.CloudflareException as e:
                 raise exceptions.APIConnectionError(f"Request failed due to Cloudscraper issue: {e}")
             except requests.exceptions.RequestException as e:
                 raise exceptions.APIConnectionError(f"Request failed: {e}")
@@ -315,8 +315,8 @@ if __name__ == "__main__":
     from rich import print
     ai = Genspark()
     try:
-        SearchResponse = ai.search(input(">>> "), stream=True, raw=False)
-        for chunk in SearchResponse:
+        search_result_stream = ai.search(input(">>> "), stream=True, raw=False)
+        for chunk in search_result_stream:
             print(chunk, end="", flush=True)
     except KeyboardInterrupt:
         print("\nSearch interrupted by user.")

@@ -95,7 +95,14 @@ ENV PYTHONUNBUFFERED=1 \
     # Authentication settings (new)
     WEBSCOUT_NO_AUTH=false \
     WEBSCOUT_NO_RATE_LIMIT=false \
-    WEBSCOUT_DATA_DIR=/app/data
+    WEBSCOUT_DATA_DIR=/app/data \
+    # FastAPI metadata (new)
+    WEBSCOUT_API_TITLE="Webscout OpenAI API" \
+    WEBSCOUT_API_DESCRIPTION="OpenAI API compatible interface for various LLM providers with enhanced authentication" \
+    WEBSCOUT_API_VERSION="0.2.0" \
+    WEBSCOUT_API_DOCS_URL="/docs" \
+    WEBSCOUT_API_REDOC_URL="/redoc" \
+    WEBSCOUT_API_OPENAPI_URL="/openapi.json"
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

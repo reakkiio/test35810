@@ -44,13 +44,21 @@ config = ServerConfig()
 
 def create_app():
     """Create and configure the FastAPI application."""
+    import os
+    app_title = os.getenv("WEBSCOUT_API_TITLE", "Webscout OpenAI API")
+    app_description = os.getenv("WEBSCOUT_API_DESCRIPTION", "OpenAI API compatible interface for various LLM providers with enhanced authentication")
+    app_version = os.getenv("WEBSCOUT_API_VERSION", "0.2.0")
+    app_docs_url = os.getenv("WEBSCOUT_API_DOCS_URL", "/docs")
+    app_redoc_url = os.getenv("WEBSCOUT_API_REDOC_URL", "/redoc")
+    app_openapi_url = os.getenv("WEBSCOUT_API_OPENAPI_URL", "/openapi.json")
+
     app = FastAPI(
-        title="Webscout OpenAI API",
-        description="OpenAI API compatible interface for various LLM providers with enhanced authentication",
-        version="0.2.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        title=app_title,
+        description=app_description,
+        version=app_version,
+        docs_url=app_docs_url,
+        redoc_url=app_redoc_url,
+        openapi_url=app_openapi_url,
     )
     
     # Add CORS middleware

@@ -350,6 +350,12 @@ env: ## Create example environment file
 		echo "WEBSCOUT_WORKERS=1" >> .env; \
 		echo "WEBSCOUT_LOG_LEVEL=info" >> .env; \
 		echo "WEBSCOUT_DEBUG=false" >> .env; \
+		echo "WEBSCOUT_API_TITLE=Webscout OpenAI API" >> .env; \
+		echo "WEBSCOUT_API_DESCRIPTION=OpenAI API compatible interface for various LLM providers with enhanced authentication" >> .env; \
+		echo "WEBSCOUT_API_VERSION=0.2.0" >> .env; \
+		echo "WEBSCOUT_API_DOCS_URL=/docs" >> .env; \
+		echo "WEBSCOUT_API_REDOC_URL=/redoc" >> .env; \
+		echo "WEBSCOUT_API_OPENAPI_URL=/openapi.json" >> .env; \
 		echo "" >> .env; \
 		echo "# Authentication Settings" >> .env; \
 		echo "WEBSCOUT_NO_AUTH=false" >> .env; \

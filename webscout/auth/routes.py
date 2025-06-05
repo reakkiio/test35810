@@ -212,7 +212,7 @@ class Api:
                     "id": model_name,
                     "object": "model",
                     "created": int(time.time()),
-                    "owned_by": provider_class.__name__
+                    # "owned_by": provider_class.__name__
                 })
             # Sort models alphabetically by the part after the first '/'
             models = sorted(models, key=lambda m: m["id"].split("/", 1)[1].lower())
@@ -233,7 +233,7 @@ class Api:
                     "id": model_name,
                     "object": "model",
                     "created": int(time.time()),
-                    "owned_by": provider_class.__name__
+                    # "owned_by": provider_class.__name__
                 })
             # Sort models alphabetically by the part after the first '/'
             models = sorted(models, key=lambda m: m["id"].split("/", 1)[1].lower())

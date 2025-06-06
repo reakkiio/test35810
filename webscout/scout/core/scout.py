@@ -265,7 +265,7 @@ class Scout:
 
         return json.dumps(_tag_to_dict(self._soup), indent=indent)
 
-    def find(self, name=None, attrs={}, recursive=True, text=None, **kwargs) -> ScoutSearchResult:
+    def find(self, name=None, attrs={}, recursive=True, text=None, class_=None, **kwargs) -> ScoutSearchResult:
         """
         Find the first matching element.
 
@@ -278,10 +278,10 @@ class Scout:
         Returns:
             ScoutSearchResult: First matching element
         """
-        result = self._soup.find(name, attrs, recursive, text, **kwargs)
+        result = self._soup.find(name, attrs, recursive, text, limit=1, class_=class_, **kwargs)
         return ScoutSearchResult([result]) if result else ScoutSearchResult([])
 
-    def find_all(self, name=None, attrs={}, recursive=True, text=None, limit=None, **kwargs) -> ScoutSearchResult:
+    def find_all(self, name=None, attrs={}, recursive=True, text=None, limit=None, class_=None, **kwargs) -> ScoutSearchResult:
         """
         Find all matching elements.
 
@@ -295,7 +295,7 @@ class Scout:
         Returns:
             ScoutSearchResult: List of matching elements
         """
-        results = self._soup.find_all(name, attrs, recursive, text, limit, **kwargs)
+        results = self._soup.find_all(name, attrs, recursive, text, limit, class_=class_, **kwargs)
         return ScoutSearchResult(results)
 
     def find_parent(self, name=None, attrs={}, **kwargs) -> Optional[Tag]:
@@ -474,6 +474,19 @@ class Scout:
         sentences = tokenizer.tokenize(text)
         return "\n\n".join(sentences)
 
+    def get_text_robust(self, separator=' ', strip=False, types=None, encoding_fallbacks=None) -> str:
+        """Extract text robustly, trying multiple encodings if needed."""
+        try:
+            return self.get_text(separator, strip, types)
+        except UnicodeDecodeError:
+            if encoding_fallbacks:
+                for enc in encoding_fallbacks:
+                    try:
+                        return self._soup.get_text(separator, strip, types).encode(enc).decode(enc)
+                    except Exception:
+                        continue
+            raise
+
     def remove_tags(self, tags: List[str]) -> None:
         """
         Remove specified tags and their contents from the document.
@@ -543,29 +556,19 @@ class Scout:
         """
         old_tag.replace_with(new_tag)
 
-    def encode(self, encoding='utf-8') -> bytes:
-        """
-        Encode the document to a specific encoding.
+    def encode(self, encoding='utf-8', errors='strict') -> bytes:
+        """Encode the document to a specific encoding with error handling."""
+        try:
+            return str(self._soup).encode(encoding, errors)
+        except Exception:
+            return str(self._soup).encode('utf-8', errors)
 
-        Args:
-            encoding (str, optional): Encoding to use
-
-        Returns:
-            bytes: Encoded document
-        """
-        return str(self._soup).encode(encoding)
-
-    def decode(self, encoding='utf-8') -> str:
-        """
-        Decode the document from a specific encoding.
-
-        Args:
-            encoding (str, optional): Encoding to use
-
-        Returns:
-            str: Decoded document
-        """
-        return str(self._soup)
+    def decode(self, encoding='utf-8', errors='strict') -> str:
+        """Decode the document from a specific encoding with error handling."""
+        try:
+            return str(self._soup).decode(encoding, errors)
+        except Exception:
+            return str(self._soup)
 
     def __str__(self) -> str:
         """
@@ -605,3 +608,78 @@ class Scout:
         decoded_markup = re.sub(r'\s+', ' ', decoded_markup)
 
         return decoded_markup
+
+    def wrap(self, wrapper_tag: Tag) -> Tag:
+        """Wrap the root tag in another tag with error handling."""
+        try:
+            return self._soup.wrap(wrapper_tag)
+        except Exception:
+            return wrapper_tag
+
+    def unwrap(self) -> None:
+        """Unwrap the root tag, keeping its contents in the parent, with error handling."""
+        try:
+            self._soup.unwrap()
+        except Exception:
+            pass
+
+    def insert_before(self, new_element: Tag) -> None:
+        """Insert a tag or string immediately before the root tag with error handling."""
+        try:
+            self._soup.insert_before(new_element)
+        except Exception:
+            pass
+
+    def insert_after(self, new_element: Tag) -> None:
+        """Insert a tag or string immediately after the root tag with error handling."""
+        try:
+            self._soup.insert_after(new_element)
+        except Exception:
+            pass
+
+    def append(self, tag: Tag) -> None:
+        """Append a tag to the root tag with error handling."""
+        try:
+            self._soup.append(tag)
+        except Exception:
+            pass
+
+    @property
+    def descendants(self):
+        """Yield all descendants of the root tag in document order."""
+        return self._soup.descendants
+
+    @property
+    def parents(self):
+        """Yield all parents of the root tag up the tree."""
+        return self._soup.parents
+
+    @property
+    def next_element(self):
+        """Return the next element in document order after the root tag."""
+        return self._soup.next_element
+
+    @property
+    def previous_element(self):
+        """Return the previous element in document order before the root tag."""
+        return self._soup.previous_element
+
+    def fetch_and_parse(self, url: str, requests_session=None, **kwargs) -> 'Scout':
+        """Fetch HTML from a URL using requests and parse it with Scout."""
+        import requests
+        session = requests_session or requests.Session()
+        resp = session.get(url, **kwargs)
+        return Scout(resp.content, features=self.features)
+
+    def tables_to_dataframe(self, table_index=0, pandas_module=None):
+        """Convert the nth table in the document to a pandas DataFrame."""
+        import pandas as pd
+        if pandas_module:
+            pd = pandas_module
+        tables = self.find_all('table')
+        if not tables or table_index >= len(tables):
+            return None
+        table = tables[table_index]
+        rows = table.find_all('tr')
+        data = [[cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])] for row in rows]
+        return pd.DataFrame(data)

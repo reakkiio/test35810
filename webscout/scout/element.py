@@ -151,7 +151,7 @@ class Tag:
         """
         return hash((self.name, frozenset(self.attrs.items()), str(self)))
 
-    def find(self, name=None, attrs={}, recursive=True, text=None, **kwargs) -> Optional['Tag']:
+    def find(self, name=None, attrs={}, recursive=True, text=None, limit=None, class_=None, **kwargs) -> Optional['Tag']:
         """
         Find the first matching child element.
         Enhanced with more flexible matching.
@@ -165,10 +165,26 @@ class Tag:
         Returns:
             Tag or None: First matching element
         """
+        # Merge class_ with attrs['class'] if both are present
+        attrs = dict(attrs) if attrs else {}
+        if class_ is not None:
+            if 'class' in attrs:
+                # Merge both
+                if isinstance(attrs['class'], list):
+                    class_list = attrs['class']
+                else:
+                    class_list = [cls.strip() for cls in re.split(r'[ ,]+', str(attrs['class'])) if cls.strip()]
+                if isinstance(class_, list):
+                    class_list += class_
+                else:
+                    class_list += [cls.strip() for cls in re.split(r'[ ,]+', str(class_)) if cls.strip()]
+                attrs['class'] = class_list
+            else:
+                attrs['class'] = class_
         results = self.find_all(name, attrs, recursive, text, limit=1, **kwargs)
         return results[0] if results else None
 
-    def find_all(self, name=None, attrs={}, recursive=True, text=None, limit=None, **kwargs) -> List['Tag']:
+    def find_all(self, name=None, attrs={}, recursive=True, text=None, limit=None, class_=None, **kwargs) -> List['Tag']:
         """
         Find all matching child elements.
         Enhanced with more flexible matching and BeautifulSoup-like features.
@@ -197,12 +213,17 @@ class Tag:
 
             # Check attributes with more flexible matching
             for k, v in attrs.items():
-                # Handle special attribute matching
                 if k == 'class':
                     tag_classes = tag.get('class', [])
-                    if isinstance(v, str) and v not in tag_classes:
-                        return False
-                    elif isinstance(v, list) and not all(cls in tag_classes for cls in v):
+                    # Support multiple classes separated by space or comma
+                    if isinstance(v, str):
+                        v_classes = [cls.strip() for cls in re.split(r'[ ,]+', v) if cls.strip()]
+                        if not all(cls in tag_classes for cls in v_classes):
+                            return False
+                    elif isinstance(v, list):
+                        if not all(cls in tag_classes for cls in v):
+                            return False
+                    else:
                         return False
                 elif k == 'id':
                     if tag.get('id') != v:
@@ -412,31 +433,131 @@ class Tag:
         """Remove all contents of the tag."""
         self.contents.clear()
 
+    @property
+    def string(self):
+        """
+        Get the string content of the tag.
+        Returns the combined text of the tag's contents.
+        """
+        return self.get_text()
+
+    @string.setter
+    def string(self, value):
+        """
+        Set the string content of the tag.
+        Clears existing contents and sets new string value.
+
+        Args:
+            value (str): New string content
+        """
+        self.clear()
+        if value is not None:
+            self.append(value)
+
     def append(self, new_child: Union['Tag', NavigableString, str]) -> None:
-        """Append a new child to this tag."""
+        """Append a new child to this tag with error handling."""
         if isinstance(new_child, str):
             new_child = NavigableString(new_child)
-        new_child.parent = self
+        if hasattr(new_child, 'parent'):
+            new_child.parent = self
         self.contents.append(new_child)
 
     def insert(self, index: int, new_child: Union['Tag', NavigableString, str]) -> None:
-        """Insert a new child at the given index."""
+        """Insert a new child at the given index with error handling."""
         if isinstance(new_child, str):
             new_child = NavigableString(new_child)
-        new_child.parent = self
+        if hasattr(new_child, 'parent'):
+            new_child.parent = self
         self.contents.insert(index, new_child)
 
     def replace_with(self, new_tag: 'Tag') -> None:
-        """
-        Replace this tag with another tag.
-
-        Args:
-            new_tag (Tag): Tag to replace the current tag
-        """
+        """Replace this tag with another tag with error handling."""
         if self.parent:
-            index = self.parent.contents.index(self)
-            self.parent.contents[index] = new_tag
-            new_tag.parent = self.parent
+            try:
+                index = self.parent.contents.index(self)
+                self.parent.contents[index] = new_tag
+                new_tag.parent = self.parent
+            except ValueError:
+                pass
+
+    def wrap(self, wrapper_tag: 'Tag') -> 'Tag':
+        """Wrap this tag in another tag."""
+        if self.parent:
+            idx = self.parent.contents.index(self)
+            self.parent.contents[idx] = wrapper_tag
+            wrapper_tag.parent = self.parent
+        else:
+            wrapper_tag.parent = None
+        wrapper_tag.contents.append(self)
+        self.parent = wrapper_tag
+        return wrapper_tag
+
+    def unwrap(self) -> None:
+        """Remove this tag but keep its contents in the parent."""
+        if self.parent:
+            idx = self.parent.contents.index(self)
+            for child in reversed(self.contents):
+                child.parent = self.parent
+                self.parent.contents.insert(idx, child)
+            self.parent.contents.remove(self)
+            self.parent = None
+            self.contents = []
+
+    def insert_before(self, new_element: 'Tag') -> None:
+        """Insert a tag or string immediately before this tag."""
+        if self.parent:
+            idx = self.parent.contents.index(self)
+            new_element.parent = self.parent
+            self.parent.contents.insert(idx, new_element)
+
+    def insert_after(self, new_element: 'Tag') -> None:
+        """Insert a tag or string immediately after this tag."""
+        if self.parent:
+            idx = self.parent.contents.index(self)
+            new_element.parent = self.parent
+            self.parent.contents.insert(idx + 1, new_element)
+
+    @property
+    def descendants(self):
+        """Yield all descendants in document order."""
+        for child in self.contents:
+            yield child
+            if isinstance(child, Tag):
+                yield from child.descendants
+
+    @property
+    def parents(self):
+        """Yield all parents up the tree."""
+        current = self.parent
+        while current:
+            yield current
+            current = current.parent
+
+    @property
+    def next_element(self):
+        """Return the next element in document order."""
+        if self.contents:
+            return self.contents[0]
+        current = self
+        while current.parent:
+            idx = current.parent.contents.index(current)
+            if idx + 1 < len(current.parent.contents):
+                return current.parent.contents[idx + 1]
+            current = current.parent
+        return None
+
+    @property
+    def previous_element(self):
+        """Return the previous element in document order."""
+        if not self.parent:
+            return None
+        idx = self.parent.contents.index(self)
+        if idx > 0:
+            prev = self.parent.contents[idx - 1]
+            while isinstance(prev, Tag) and prev.contents:
+                prev = prev.contents[-1]
+            return prev
+        return self.parent
 
     def decode_contents(self, eventual_encoding='utf-8') -> str:
         """

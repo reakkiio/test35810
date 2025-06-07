@@ -12,7 +12,12 @@ class User:
     """User model for authentication system."""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     username: str = ""
-    telegram_id: int = 0  # Required Telegram ID as number only
+    telegram_id: int = field(default_factory=lambda: 0)  # Required Telegram ID as number only
+
+    def validate_telegram_id(self) -> None:
+        """Ensure telegram_id is an integer."""
+        if not isinstance(self.telegram_id, int):
+            raise ValueError("telegram_id must be an integer.")
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True

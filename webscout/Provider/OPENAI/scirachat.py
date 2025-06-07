@@ -6,8 +6,8 @@ import re
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, get_system_prompt, count_tokens
 )
@@ -334,21 +334,37 @@ class SciraChat(OpenAICompatibleProvider):
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
-    
-    AVAILABLE_MODELS = {
-        "scira-default": "Grok3-mini", # thinking model
-        "scira-grok-3": "Grok3",
-        "scira-anthropic": "Claude 4 Sonnet",
-        "scira-anthropic-thinking": "Claude 4 Sonnet Thinking", # thinking model
-        "scira-vision" : "Grok2-Vision", # vision model
-        "scira-4o": "GPT4o",
-        "scira-qwq": "QWQ-32B",
-        "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash Thinking", # thinking model
-        "scira-google-pro": "gemini 2.5 pro",
-        "scira-llama-4": "llama 4 Maverick",
+    # List of model display names for registration (aliases)
+    AVAILABLE_MODELS = [
+        "Grok3-mini (thinking)",
+        "Grok3",
+        "Claude 4 Sonnet",
+        "Claude 4 Sonnet Thinking",
+        "Grok2-Vision (vision)",
+        "GPT4o",
+        "QWQ-32B",
+        "o4-mini",
+        "Gemini 2.5 Flash Thinking",
+        "Gemini 2.5 Pro",
+        "Llama 4 Maverick",
+    ]
+    # Mapping from display name to internal model key
+    MODEL_NAME_MAP = {
+        "Grok3-mini (thinking)": "scira-default",
+        "Grok3": "scira-grok-3",
+        "Claude 4 Sonnet": "scira-anthropic",
+        "Claude 4 Sonnet Thinking": "scira-anthropic-thinking",
+        "Grok2-Vision (vision)": "scira-vision",
+        "GPT4o": "scira-4o",
+        "QWQ-32B": "scira-qwq",
+        "o4-mini": "scira-o4-mini",
+        "Gemini 2.5 Flash Thinking": "scira-google",
+        "Gemini 2.5 Pro": "scira-google-pro",
+        "Llama 4 Maverick": "scira-llama-4",
     }
-    
+    # Optional: pretty display names for UI (reverse mapping)
+    MODEL_DISPLAY_NAMES = {v: k for k, v in MODEL_NAME_MAP.items()}
+
     def __init__(
         self, 
         timeout: Optional[int] = None, 
@@ -460,18 +476,20 @@ class SciraChat(OpenAICompatibleProvider):
     
     def convert_model_name(self, model: str) -> str:
         """
-        Convert model names to ones supported by SciraChat.
+        Convert model display names or internal keys to ones supported by SciraChat.
         
         Args:
-            model: Model name to convert
+            model: Model name or alias to convert
             
         Returns:
             SciraChat model name
         """
-        # If the model is already a valid SciraChat model, return it
-        if model in self.AVAILABLE_MODELS:
+        # If model is a display name (alias), map to internal key
+        if model in self.MODEL_NAME_MAP:
+            return self.MODEL_NAME_MAP[model]
+        # If model is already an internal key, return it if valid
+        if model in self.MODEL_DISPLAY_NAMES:
             return model
-        
         # Default to scira-default if model not found
         print(f"Warning: Unknown model '{model}'. Using 'scira-default' instead.")
         return "scira-default"
@@ -480,5 +498,16 @@ class SciraChat(OpenAICompatibleProvider):
     def models(self):
         class _ModelList:
             def list(inner_self):
+                # Return display names (aliases)
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+
+if __name__ == "__main__":
+    ai = SciraChat()
+    response = ai.chat.completions.create(
+        model="Grok3-mini (thinking)",
+        messages=[
+            {"role": "user", "content": "who is pm of india?"}
+        ]
+    )
+    print(response.choices[0].message.content)

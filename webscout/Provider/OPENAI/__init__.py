@@ -41,3 +41,4 @@ from .Qwen3 import *
 from .FalconH1 import *
 from .PI import *  # Add PI.ai provider
 from .TogetherAI import *  # Add TogetherAI provider
+from .xenai import *  # Add XenAI provider

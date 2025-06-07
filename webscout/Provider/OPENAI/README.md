@@ -68,6 +68,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - TogetherAI
 - PiAI
 - FalconH1
+- XenAI
 ---
 
 

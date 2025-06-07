@@ -83,13 +83,13 @@ from .Flowith import Flowith
 from .samurai import samurai
 from .lmarena import lmarena
 from .oivscode import oivscode
+from .XenAI import XenAI
 
-# Import STT providers
-from .STT import *
 __all__ = [
     'SCNet',
     'oivscode',
     'lmarena',
+    'XenAI',
     'NEMOTRON',
     'Flowith',
     'samurai',

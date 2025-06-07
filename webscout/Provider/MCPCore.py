@@ -1,5 +1,7 @@
 import json
 import uuid
+import random
+import string
 from typing import Any, Dict, Generator, Union
 
 # Use curl_cffi for requests
@@ -21,37 +23,37 @@ class MCPCore(Provider):
 
     # Add more models if known, starting with the one from the example
     AVAILABLE_MODELS = [
-        "google/gemma-7b-it",
-        "deepseek-ai/deepseek-coder-33b-instruct",
-        "deepseek-ai/DeepSeek-R1",
-        "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-        "deepseek-ai/DeepSeek-v3-0324",
-        "fixie-ai/ultravox-v0_4_1-llama-3_1-8b",
-        "meta-llama/Llama-3.3-70B-Instruct",
-        "meta-llama/Llama-4-Maverick-Instruct",
-        "mistralai/Mistral-7B-Instruct-v0.2",
-        "qwen-max-latest",
-        "qwen-plus-latest",
-        "qwen2.5-coder-32b-instruct",
-        "qwen-turbo-latest",
-        "qwen2.5-14b-instruct-1m",
-        "GLM-4-32B",
-        "Z1-32B",
-        "Z1-Rumination",
-        "arena-model",
-        "qvq-72b-preview-0310",
-        "qwq-32b",
-        "qwen3-235b-a22b",
-        "qwen3-30b-a3b",
-        "qwen3-32b",
-        "deepseek-flash",
-        "@cf/meta/llama-4-scout-17b-16e-instruct",
-        "任务专用",
+        "@cf/deepseek-ai/deepseek-math-7b-instruct",
+        "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "@cf/defog/sqlcoder-7b-2",
+        "@cf/fblgit/una-cybertron-7b-v2-bf16",
+        "@cf/google/gemma-3-12b-it",
+        "@cf/meta/llama-2-7b-chat-int8",
+        "@hf/thebloke/llama-2-13b-chat-awq",
+        "@hf/thebloke/llamaguard-7b-awq",
+        "@hf/thebloke/mistral-7b-instruct-v0.1-awq",
+        "@hf/thebloke/neural-chat-7b-v3-1-awq",
+        "anthropic/claude-3.5-haiku",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3.7-sonnet",
+        "anthropic/claude-3.7-sonnet:thinking",
+        "anthropic/claude-opus-4",
+        "anthropic/claude-sonnet-4",
+        "openai/chatgpt-4o-latest",
+        "openai/gpt-3.5-turbo",
+        "openai/gpt-4.1",
+        "openai/gpt-4.1-mini",
+        "openai/gpt-4.1-nano",
+        "openai/gpt-4o-mini-search-preview",
+        "openai/gpt-4o-search-preview",
+        "openai/o1-pro",
+        "openai/o3-mini",
+        "sarvam-m",
+        "x-ai/grok-3-beta",
     ]
 
     def __init__(
         self,
-        cookies_path: str,
         is_conversation: bool = True,
         max_tokens: int = 2048,
         timeout: int = 60,
@@ -70,46 +72,22 @@ class MCPCore(Provider):
 
         self.api_endpoint = "https://chat.mcpcore.xyz/api/chat/completions"
         
-        # Cache the user-agent at the class level
-        if not hasattr(MCPCore, '_cached_user_agent'):
-            MCPCore._cached_user_agent = LitAgent().random()
         self.model = model
         self.system_prompt = system_prompt
-        self.cookies_path = cookies_path
-        self.cookie_string, self.token = self._load_cookies()
 
         # Initialize curl_cffi Session
         self.session = Session()
 
         # Set up headers based on the provided request
         self.headers = {
-            'authority': 'chat.mcpcore.xyz',
-            'accept': '*/*',
-            'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
-            **({'authorization': f'Bearer {self.token}'} if self.token else {}),
-            'content-type': 'application/json',
-            'dnt': '1',
+            **LitAgent().generate_fingerprint(),
             'origin': 'https://chat.mcpcore.xyz',
             'referer': 'https://chat.mcpcore.xyz/',
-            'priority': 'u=1, i',
-            'sec-ch-ua': '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'sec-gpc': '1',
-            'user-agent': self._cached_user_agent,
         }
 
         # Apply headers, proxies, and cookies to the session
         self.session.headers.update(self.headers)
         self.session.proxies = proxies
-        self.cookies = {
-            'token': self.token,
-        }
-        for name, value in self.cookies.items():
-            self.session.cookies.set(name, value, domain="chat.mcpcore.xyz")
 
         # Provider settings
         self.is_conversation = is_conversation
@@ -136,27 +114,54 @@ class MCPCore(Provider):
         )
         self.conversation.history_offset = history_offset
 
-    def _load_cookies(self) -> tuple[str, str]:
-        """Load cookies from a JSON file and build a cookie header string."""
+        # Token handling: always auto-fetch token, no cookies logic
+        self.token = self._auto_fetch_token()
+
+        # Set the Authorization header for the session
+        self.session.headers.update({
+            'authorization': f'Bearer {self.token}',
+        })
+
+    def _auto_fetch_token(self):
+        """Automatically fetch a token from the signup endpoint."""
+        session = Session()
+        def random_string(length=8):
+            return ''.join(random.choices(string.ascii_lowercase, k=length))
+        name = random_string(6)
+        email = f"{random_string(8)}@gmail.com"
+        password = email
+        profile_image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAkRJREFUeF7tmDFOw0AUBdcSiIaKM3CKHIQ7UHEISq5AiUTFHYC0XADoTRsJEZFEjhFIaYAim92fjGFS736/zOTZzjavl0d98oMh0CgE4+IriEJYPhQC86EQhdAIwPL4DFEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg2BCfkAIqwAA94KZ/EAAAAASUVORK5CYII="
+        payload = {
+            "name": name,
+            "email": email,
+            "password": password,
+            "profile_image_url": profile_image_url
+        }
+        headers = {
+            **LitAgent().generate_fingerprint(),
+            'origin': 'https://chat.mcpcore.xyz',
+            'referer': 'https://chat.mcpcore.xyz/auth',
+        }
         try:
-            with open(self.cookies_path, "r") as f:
-                cookies = json.load(f)
-            cookie_string = "; ".join(
-                f"{cookie['name']}={cookie['value']}" for cookie in cookies if 'name' in cookie and 'value' in cookie
+            resp = session.post(
+                "https://chat.mcpcore.xyz/api/v1/auths/signup",
+                headers=headers,
+                json=payload,
+                timeout=30,
+                impersonate="chrome110"
             )
-            token = next(
-                (cookie.get("value") for cookie in cookies if cookie.get("name") == "token"),
-                "",
-            )
-            return cookie_string, token
-        except FileNotFoundError:
-            raise exceptions.FailedToGenerateResponseError(
-                f"Error: Cookies file not found at {self.cookies_path}!"
-            )
-        except json.JSONDecodeError:
-            raise exceptions.FailedToGenerateResponseError(
-                f"Error: Invalid JSON format in cookies file: {self.cookies_path}!"
-            )
+            if resp.ok:
+                data = resp.json()
+                token = data.get("token")
+                if token:
+                    return token
+                # fallback: try to get from set-cookie
+                set_cookie = resp.headers.get("set-cookie", "")
+                if "token=" in set_cookie:
+                    return set_cookie.split("token=")[1].split(";")[0]
+            raise exceptions.FailedToGenerateResponseError(f"Failed to auto-fetch token: {resp.status_code} {resp.text}")
+        except Exception as e:
+            raise exceptions.FailedToGenerateResponseError(f"Token auto-fetch failed: {e}")
 
     def ask(
         self,
@@ -286,11 +291,9 @@ class MCPCore(Provider):
         assert isinstance(response, dict), "Response should be of dict data-type only"
         return response.get("text", "")
 
-# Example usage (remember to create a cookies.json file)
+# Example usage (no cookies file needed)
 if __name__ == "__main__":
     from rich import print
-
-    cookies_file_path = "cookies.json"
 
     print("-" * 80)
     print(f"{'Model':<50} {'Status':<10} {'Response'}")
@@ -298,7 +301,7 @@ if __name__ == "__main__":
 
     for model in MCPCore.AVAILABLE_MODELS:
         try:
-            test_ai = MCPCore(cookies_path=cookies_file_path, model=model, timeout=60)
+            test_ai = MCPCore(model=model, timeout=60)
             response = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
             # Accumulate the response text without printing in the loop

@@ -1,6 +1,8 @@
 import time
 import uuid
 import json
+import random
+import string
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Use curl_cffi for requests
@@ -8,8 +10,8 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage
 )
@@ -274,11 +276,8 @@ class MCPCore(OpenAICompatibleProvider):
     """
     OpenAI-compatible client for the MCPCore API (chat.mcpcore.xyz).
 
-    Requires cookies to be stored in a JSON file (e.g., 'cookies.json').
-    The JSON file should contain a list of cookie objects, including one named 'token'.
-
     Usage:
-        client = MCPCore(cookies_path="path/to/your/cookies.json")
+        client = MCPCore()
         response = client.chat.completions.create(
             model="google/gemma-7b-it",
             messages=[{"role": "user", "content": "Hello!"}]
@@ -286,71 +285,96 @@ class MCPCore(OpenAICompatibleProvider):
         print(response.choices[0].message.content)
     """
     AVAILABLE_MODELS = [
-        "google/gemma-7b-it",
-        "deepseek-ai/deepseek-coder-33b-instruct",
-        "deepseek-ai/DeepSeek-R1",
-        "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-        "deepseek-ai/DeepSeek-v3-0324",
-        "fixie-ai/ultravox-v0_4_1-llama-3_1-8b",
-        "meta-llama/Llama-3.3-70B-Instruct",
-        "meta-llama/Llama-4-Maverick-Instruct",
-        "mistralai/Mistral-7B-Instruct-v0.2",
-        "qwen-max-latest",
-        "qwen-plus-latest",
-        "qwen2.5-coder-32b-instruct",
-        "qwen-turbo-latest",
-        "qwen2.5-14b-instruct-1m",
-        "GLM-4-32B",
-        "Z1-32B",
-        "Z1-Rumination",
-        "arena-model",
-        "qvq-72b-preview-0310",
-        "qwq-32b",
-        "qwen3-235b-a22b",
-        "qwen3-30b-a3b",
-        "qwen3-32b",
-        "deepseek-flash",
-        "@cf/meta/llama-4-scout-17b-16e-instruct",
-        "任务专用",
+        "@cf/deepseek-ai/deepseek-math-7b-instruct",
+        "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "@cf/defog/sqlcoder-7b-2",
+        "@cf/fblgit/una-cybertron-7b-v2-bf16",
+        "@cf/google/gemma-3-12b-it",
+        "@cf/meta/llama-2-7b-chat-int8",
+        "@hf/thebloke/llama-2-13b-chat-awq",
+        "@hf/thebloke/llamaguard-7b-awq",
+        "@hf/thebloke/mistral-7b-instruct-v0.1-awq",
+        "@hf/thebloke/neural-chat-7b-v3-1-awq",
+        "anthropic/claude-3.5-haiku",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3.7-sonnet",
+        "anthropic/claude-3.7-sonnet:thinking",
+        "anthropic/claude-opus-4",
+        "anthropic/claude-sonnet-4",
+        "openai/chatgpt-4o-latest",
+        "openai/gpt-3.5-turbo",
+        "openai/gpt-4.1",
+        "openai/gpt-4.1-mini",
+        "openai/gpt-4.1-nano",
+        "openai/gpt-4o-mini-search-preview",
+        "openai/gpt-4o-search-preview",
+        "openai/o1-pro",
+        "openai/o3-mini",
+        "sarvam-m",
+        "x-ai/grok-3-beta",
     ]
+
+    def _auto_fetch_token(self):
+        """Automatically fetch a token from the signup endpoint."""
+        session = Session()
+        def random_string(length=8):
+            return ''.join(random.choices(string.ascii_lowercase, k=length))
+        name = random_string(6)
+        email = f"{random_string(8)}@gmail.com"
+        password = email
+        profile_image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAkRJREFUeF7tmDFOw0AUBdcSiIaKM3CKHIQ7UHEISq5AiUTFHYC0XADoTRsJEZFEjhFIaYAim92fjGFS736/zOTZzjavl0d98oMh0CgE4+IriEJYPhQC86EQhdAIwPL4DFEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg1RCIwALI4NUQiMACyODVEIjAAsjg2BCfkAIqwAA94KZ/EAAAAASUVORK5CYII="
+        payload = {
+            "name": name,
+            "email": email,
+            "password": password,
+            "profile_image_url": profile_image_url
+        }
+        headers = {
+            **LitAgent().generate_fingerprint(),
+            'origin': 'https://chat.mcpcore.xyz',
+            'referer': 'https://chat.mcpcore.xyz/auth',
+        }
+        try:
+            resp = session.post(
+                "https://chat.mcpcore.xyz/api/v1/auths/signup",
+                headers=headers,
+                json=payload,
+                timeout=30,
+                impersonate="chrome110"
+            )
+            if resp.ok:
+                data = resp.json()
+                token = data.get("token")
+                if token:
+                    return token
+                # fallback: try to get from set-cookie
+                set_cookie = resp.headers.get("set-cookie", "")
+                if "token=" in set_cookie:
+                    return set_cookie.split("token=")[1].split(";")[0]
+            raise RuntimeError(f"Failed to auto-fetch token: {resp.status_code} {resp.text}")
+        except Exception as e:
+            raise RuntimeError(f"Token auto-fetch failed: {e}")
 
     def __init__(
         self,
-        cookies_path: str, # Make cookies path mandatory for authentication
         timeout: int = 60,
     ):
         """
         Initializes the MCPCore OpenAI-compatible client.
 
         Args:
-            cookies_path: Path to the JSON file containing cookies (must include 'token').
             timeout: Request timeout in seconds.
-            proxies: Optional proxy configuration.
-            system_prompt: Default system prompt to use if none is provided in messages.
         """
         self.api_endpoint = "https://chat.mcpcore.xyz/api/chat/completions"
         self.timeout = timeout
-        self.cookies_path = cookies_path
-
-        try:
-            self.token = self._load_token_from_cookies()
-            if not self.token:
-                raise ValueError("Could not find 'token' cookie in the provided file.")
-        except Exception as e:
-             raise ValueError(f"Failed to load authentication token from cookies file '{cookies_path}': {e}") from e
-
+        self.token = self._auto_fetch_token()
         self.session = Session() # Use curl_cffi Session
 
         # Basic headers + Authorization
         self.headers = {
-            'authority': 'chat.mcpcore.xyz',
-            'accept': '*/*', # Accept anything, let the server decide
-            'accept-language': 'en-US,en;q=0.9',
-            'authorization': f'Bearer {self.token}',
-            'content-type': 'application/json',
+            **LitAgent().generate_fingerprint(),
             'origin': 'https://chat.mcpcore.xyz',
-            'referer': 'https://chat.mcpcore.xyz/',
-            'user-agent': LitAgent().random(), # Use LitAgent for User-Agent
+            'referer': 'https://chat.mcpcore.xyz/auth',
         }
         # Add more headers mimicking browser behavior if needed, e.g., sec-ch-ua, etc.
         # Example:
@@ -366,27 +390,42 @@ class MCPCore(OpenAICompatibleProvider):
         self.session.headers.update(self.headers)
         self.chat = Chat(self) # Initialize chat interface
 
-    def _load_token_from_cookies(self) -> Optional[str]:
-        """Load the 'token' value from a JSON cookies file."""
-        try:
-            with open(self.cookies_path, "r") as f:
-                cookies = json.load(f)
-            # Find the cookie named 'token'
-            token_cookie = next((cookie for cookie in cookies if cookie.get("name") == "token"), None)
-            return token_cookie.get("value") if token_cookie else None
-        except FileNotFoundError:
-            print(f"{RED}Error: Cookies file not found at {self.cookies_path}!{RESET}")
-            return None
-        except json.JSONDecodeError:
-            print(f"{RED}Error: Invalid JSON format in cookies file: {self.cookies_path}!{RESET}")
-            return None
-        except Exception as e:
-            print(f"{RED}An unexpected error occurred loading cookies: {e}{RESET}")
-            return None
-
     @property
     def models(self):
         class _ModelList:
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+
+if __name__ == "__main__":
+    print("-" * 100)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 100)
+
+    test_prompt = "Say 'Hello' in one word"
+
+    client = MCPCore()
+    for model in client.models.list():
+        print(f"\rTesting {model}...", end="")
+        try:
+            presp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": test_prompt}]
+            )
+            # Try to get the response text (truncate to 100 chars)
+            if hasattr(presp, "choices") and presp.choices and hasattr(presp.choices[0], "message"):
+                content = presp.choices[0].message.content or ""
+                clean_text = content.strip().encode('utf-8', errors='ignore').decode('utf-8')
+                display_text = clean_text[:100] + "..." if len(clean_text) > 100 else clean_text
+                status = "✓" if clean_text else "✗"
+                if not clean_text:
+                    display_text = "Empty or invalid response"
+            else:
+                status = "✗"
+                display_text = "Empty or invalid response"
+            print(f"\r{model:<50} {status:<10} {display_text}")
+        except Exception as e:
+            error_msg = str(e)
+            if len(error_msg) > 100:
+                error_msg = error_msg[:97] + "..."
+            print(f"\r{model:<50} {'✗':<10} Error: {error_msg}")

@@ -237,7 +237,7 @@ def run_api(
         "host": host,
         "port": int(port),
         "factory": True,
-        "reload": True,
+        "reload": debug,
         "log_level": log_level.lower() if log_level else ("debug" if debug else "info"),
     }
 

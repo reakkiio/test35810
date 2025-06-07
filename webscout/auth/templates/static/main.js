@@ -339,29 +339,20 @@ window.WebScoutApp = {
         }
     },
 
-    // Test chat completion endpoint with all parameters
+    // Test chat completion endpoint with simplified parameters
     async testChatCompletion(event) {
         event.preventDefault();
 
         const startTime = Date.now();
 
-        // Get all form values
+        // Get form values
         const model = document.getElementById('chat-model').value;
         const messages = document.getElementById('chat-messages').value;
-        const temperature = parseFloat(document.getElementById('chat-temperature').value);
-        const maxTokens = parseInt(document.getElementById('chat-max-tokens').value);
-        const topP = parseFloat(document.getElementById('chat-top-p').value);
-        const frequencyPenalty = parseFloat(document.getElementById('chat-frequency-penalty').value);
-        const presencePenalty = parseFloat(document.getElementById('chat-presence-penalty').value);
-        const n = parseInt(document.getElementById('chat-n').value);
+        const maxTokens = parseInt(document.getElementById('chat-max-tokens').value) || null;
+        const temperature = parseFloat(document.getElementById('chat-temperature').value) || null;
+        const topP = parseFloat(document.getElementById('chat-top-p').value) || null;
+        const timeout = parseInt(document.getElementById('chat-timeout').value) || null;
         const stream = document.getElementById('chat-stream').checked;
-        const echo = document.getElementById('chat-echo').checked;
-
-        // Advanced parameters
-        const stop = document.getElementById('chat-stop').value;
-        const user = document.getElementById('chat-user').value;
-        const seed = document.getElementById('chat-seed').value;
-        const logitBias = document.getElementById('chat-logit-bias').value;
 
         if (!messages.trim()) {
             this.showToast('Please enter messages', 'error');
@@ -376,37 +367,28 @@ window.WebScoutApp = {
             return;
         }
 
-        // Build request data
+        // Build request data with simplified parameters
         const requestData = {
             model: model,
             messages: parsedMessages,
-            temperature: temperature,
-            max_tokens: maxTokens,
-            top_p: topP,
-            frequency_penalty: frequencyPenalty,
-            presence_penalty: presencePenalty,
-            n: n,
             stream: stream
         };
 
-        // Add optional parameters if provided
-        if (echo) requestData.echo = echo;
-        if (stop && stop.trim()) {
-            try {
-                requestData.stop = JSON.parse(stop);
-            } catch (error) {
-                requestData.stop = stop.split(',').map(s => s.trim());
-            }
+        // Add optional parameters only if they have valid values
+        if (maxTokens && maxTokens > 0) {
+            requestData.max_tokens = maxTokens;
         }
-        if (user && user.trim()) requestData.user = user;
-        if (seed && seed.trim()) requestData.seed = parseInt(seed);
-        if (logitBias && logitBias.trim()) {
-            try {
-                requestData.logit_bias = JSON.parse(logitBias);
-            } catch (error) {
-                this.showToast('Invalid JSON format for logit bias', 'error');
-                return;
-            }
+
+        if (temperature !== null && temperature >= 0 && temperature <= 2) {
+            requestData.temperature = temperature;
+        }
+
+        if (topP !== null && topP >= 0 && topP <= 1) {
+            requestData.top_p = topP;
+        }
+
+        if (timeout && timeout > 0) {
+            requestData.timeout = timeout;
         }
 
         const responseDiv = document.getElementById('chat-response');

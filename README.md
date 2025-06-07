@@ -152,14 +152,14 @@ uv add "webscout[api]"
 uv run webscout --help
 
 # Run with API dependencies
-uv run --extra api webscout-server
+uv run webscout --extra api webscout-server
 
 # Install as a UV tool for global access
 uv tool install webscout
 
 # Use UV tool commands
 webscout --help
-webscout-server --help
+webscout-server
 ```
 
 ### 🔧 Development Installation
@@ -328,13 +328,19 @@ webscout-server --port 8080
 # Start with API key authentication
 webscout-server --api-key "your-secret-key"
 
+# Start in no-auth mode using command line flag (no API key required)
+webscout-server --no-auth
+
+# Start in no-auth mode using environment variable
+$env:WEBSCOUT_NO_AUTH='true'; webscout-server
+
 # Specify a default provider
 webscout-server --default-provider "Claude"
 
 # Run in debug mode
 webscout-server --debug
 
-# Get help for all options
+# Get help for all options (includes authentication options)
 webscout-server --help
 ```
 
@@ -346,8 +352,25 @@ uv run --extra api webscout-server
 
 # Using Python module
 python -m webscout.auth.server
-
 ```
+
+#### Environment Variables
+
+Webscout server supports configuration through environment variables:
+
+```bash
+# Start server in no-auth mode (no API key required)
+$env:WEBSCOUT_NO_AUTH='true'; webscout-server
+
+# Disable rate limiting
+$env:WEBSCOUT_NO_RATE_LIMIT='true'; webscout-server
+
+# Start with custom port using environment variable
+$env:WEBSCOUT_PORT='7860'; webscout-server
+```
+
+For a complete list of supported environment variables and Docker deployment options, see [DOCKER.md](DOCKER.md).
+
 
 #### From Python Code
 
@@ -364,6 +387,9 @@ start_server()
 
 # Start with custom settings
 start_server(port=8080, api_key="your-secret-key", default_provider="Claude")
+
+# Start in no-auth mode (no API key required)
+start_server(no_auth=True)
 
 # Method 2: Advanced usage with run_api
 from webscout.client import run_api

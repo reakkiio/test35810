@@ -233,7 +233,7 @@ uv run --extra api webscout-server
 ```bash
 # Traditional Python module execution
 python -m webscout --help
-python -m webscout.client  # Start API server
+python -m webscout-server
 ```
 
 <details open>
@@ -345,17 +345,19 @@ webscout-server --help
 uv run --extra api webscout-server
 
 # Using Python module
-python -m webscout.client
+python -m webscout.auth.server
 
-# Legacy method (still supported)
-python -m webscout.Provider.OPENAI.api
 ```
 
 #### From Python Code
 
+> **Recommended:**  
+> Use `start_server` from `webscout.client` for the simplest programmatic startup.  
+> For advanced control (custom host, debug, etc.), use `run_api`.
+
 ```python
-# Method 1: Using the helper function
-from webscout.client import start_server  # <--- Now recommended
+# Method 1: Using the helper function (recommended)
+from webscout.client import start_server
 
 # Start with default settings
 start_server()
@@ -363,7 +365,7 @@ start_server()
 # Start with custom settings
 start_server(port=8080, api_key="your-secret-key", default_provider="Claude")
 
-# Method 2: Using the run_api function for more control
+# Method 2: Advanced usage with run_api
 from webscout.client import run_api
 
 run_api(

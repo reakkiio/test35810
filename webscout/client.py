@@ -29,22 +29,52 @@ Exports:
 """
 
 from webscout.Provider.OPENAI import *
-from webscout.Provider.OPENAI.api import start_server, run_api
+
+# Import server utilities from the FastAPI-compatible backend
+try:
+    from webscout.auth.server import run_api
+    # Provide a simple alias for starting the server with default settings
+    def start_server(**kwargs):
+        """Start the Webscout OpenAI-compatible API server (FastAPI backend)."""
+        run_api(**kwargs)
+except ImportError:
+    # Fallback for environments where the backend is not available
+    def run_api(*args, **kwargs):
+        raise ImportError("webscout.auth.server.run_api is not available in this environment.")
+    def start_server(*args, **kwargs):
+        raise ImportError("webscout.auth.server.start_server is not available in this environment.")
 
 # ---
 # API Documentation
 #
 # start_server
 # -------------
-# def start_server(port: int = 8000, api_key: str = None, default_provider: str = None, base_url: str = None):
+# def start_server(
+#     port: int = 8000,
+#     host: str = "0.0.0.0",
+#     api_key: str = None,
+#     default_provider: str = None,
+#     base_url: str = None,
+#     workers: int = 1,
+#     log_level: str = 'info',
+#     debug: bool = False,
+#     no_auth: bool = False,
+#     no_rate_limit: bool = False
+# ):
 #     """
 #     Start the OpenAI-compatible API server with optional configuration.
 #
 #     Parameters:
 #         port (int, optional): The port to run the server on. Defaults to 8000.
+#         host (str, optional): Host address to bind the server. Defaults to '0.0.0.0'.
 #         api_key (str, optional): API key for authentication. If None, authentication is disabled.
 #         default_provider (str, optional): The default provider to use. If None, uses the package default.
 #         base_url (str, optional): Base URL prefix for the API (e.g., '/api/v1'). If None, no prefix is used.
+#         workers (int, optional): Number of worker processes. Defaults to 1.
+#         log_level (str, optional): Log level for the server ('debug', 'info', etc.). Defaults to 'info'.
+#         debug (bool, optional): Run the server in debug mode with auto-reload. Defaults to False.
+#         no_auth (bool, optional): Disable authentication (no API keys required). Defaults to False.
+#         no_rate_limit (bool, optional): Disable rate limiting (unlimited requests). Defaults to False.
 #
 #     Returns:
 #         None
@@ -52,7 +82,19 @@ from webscout.Provider.OPENAI.api import start_server, run_api
 #
 # run_api
 # -------
-# def run_api(host: str = '0.0.0.0', port: int = None, api_key: str = None, default_provider: str = None, base_url: str = None, debug: bool = False, show_available_providers: bool = True):
+# def run_api(
+#     host: str = '0.0.0.0',
+#     port: int = None,
+#     api_key: str = None,
+#     default_provider: str = None,
+#     base_url: str = None,
+#     debug: bool = False,
+#     workers: int = 1,
+#     log_level: str = 'info',
+#     show_available_providers: bool = True,
+#     no_auth: bool = False,
+#     no_rate_limit: bool = False,
+# ) -> None:
 #     """
 #     Advanced server startup for the OpenAI-compatible API server.
 #
@@ -63,7 +105,11 @@ from webscout.Provider.OPENAI.api import start_server, run_api
 #         default_provider (str, optional): The default provider to use. If None, uses the package default.
 #         base_url (str, optional): Base URL prefix for the API (e.g., '/api/v1'). If None, no prefix is used.
 #         debug (bool, optional): Run the server in debug mode with auto-reload. Defaults to False.
+#         workers (int, optional): Number of worker processes. Defaults to 1.
+#         log_level (str, optional): Log level for the server ('debug', 'info', etc.). Defaults to 'info'.
 #         show_available_providers (bool, optional): Print available providers on startup. Defaults to True.
+#         no_auth (bool, optional): Disable authentication (no API keys required). Defaults to False.
+#         no_rate_limit (bool, optional): Disable rate limiting (unlimited requests). Defaults to False.
 #
 #     Returns:
 #         None

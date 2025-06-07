@@ -1044,6 +1044,3 @@ if __name__ == "__main__":
     )
     for chunk in response:
         print(chunk.choices[0].delta.content, end='', flush=True)
-    print()
-    print("Proxies on instance:", client.proxies)
-    print("Proxies on session:", client.session.proxies)

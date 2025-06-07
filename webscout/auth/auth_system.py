@@ -32,6 +32,14 @@ def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_
     """Initialize the authentication system."""
     global db_manager, api_key_manager, rate_limiter, auth_middleware
 
+    if not auth_required:
+        logger.info("Auth system is disabled (no-auth mode): skipping DB and API key manager initialization.")
+        db_manager = None
+        api_key_manager = None
+        rate_limiter = None
+        auth_middleware = None
+        return
+
     try:
         # Initialize database manager
         mongo_url = os.getenv("MONGODB_URL")
@@ -76,6 +84,14 @@ def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_
 
 def get_auth_components():
     """Get the initialized authentication components."""
+    if db_manager is None:
+        return {
+            "db_manager": None,
+            "api_key_manager": None,
+            "rate_limiter": None,
+            "auth_middleware": None
+        }
+
     return {
         "db_manager": db_manager,
         "api_key_manager": api_key_manager,

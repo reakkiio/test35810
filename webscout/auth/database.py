@@ -165,6 +165,12 @@ class JSONDatabase:
         rate_limits.append(entry.to_dict())
         self._write_json(self.rate_limits_file, rate_limits)
         return entry
+    
+    async def get_all_rate_limit_entries(self) -> list:
+        """Return all rate limit entries (for maintenance/cleanup)."""
+        # Only for JSONDatabase
+        entries = self._read_json(self.rate_limits_file)
+        return [RateLimitEntry.from_dict(e) for e in entries]
 
 
 class MongoDatabase:
@@ -300,6 +306,16 @@ class MongoDatabase:
             upsert=True
         )
         return entry
+    
+    async def get_all_rate_limit_entries(self) -> list:
+        """Return all rate limit entries (for maintenance/cleanup) from MongoDB."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        entries = []
+        cursor = self.db.rate_limits.find({})
+        async for entry_data in cursor:
+            entries.append(RateLimitEntry.from_dict(entry_data))
+        return entries
 
 
 class DatabaseManager:

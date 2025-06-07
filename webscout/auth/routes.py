@@ -216,7 +216,7 @@ class Api:
                     "id": model_name,
                     "object": "model",
                     "created": int(time.time()),
-                    "owned_by": ''
+                    "owned_by": 'webscout'  # Set owned_by to webscout
                 })
             # Sort models alphabetically by the part after the first '/'
             models = sorted(models, key=lambda m: m["id"].split("/", 1)[1].lower())
@@ -237,7 +237,7 @@ class Api:
                     "id": model_name,
                     "object": "model",
                     "created": int(time.time()),
-                    "owned_by": ''
+                    "owned_by": 'webscout'  # Set owned_by to webscout
                 })
             # Sort models alphabetically by the part after the first '/'
             models = sorted(models, key=lambda m: m["id"].split("/", 1)[1].lower())
@@ -390,6 +390,10 @@ class Api:
 
     def _register_auth_routes(self):
         """Register authentication routes."""
+        # Only register auth endpoints if authentication is required
+        if not AppConfig.auth_required:
+            logger.info("Auth endpoints are disabled (no-auth mode)")
+            return
         auth_components = get_auth_components()
         api_key_manager = auth_components.get("api_key_manager")
 

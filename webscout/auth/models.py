@@ -12,7 +12,7 @@ class User:
     """User model for authentication system."""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     username: str = ""
-    telegram_id: str = ""  # Required Telegram ID
+    telegram_id: int = 0  # Required Telegram ID as number only
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
@@ -36,7 +36,7 @@ class User:
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             username=data.get("username", ""),
-            telegram_id=data.get("telegram_id", ""),
+            telegram_id=int(data.get("telegram_id", 0)),
             created_at=datetime.fromisoformat(data.get("created_at", datetime.now(timezone.utc).isoformat())),
             updated_at=datetime.fromisoformat(data.get("updated_at", datetime.now(timezone.utc).isoformat())),
             is_active=data.get("is_active", True),

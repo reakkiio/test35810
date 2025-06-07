@@ -149,11 +149,30 @@ class RateLimiter:
     
     async def cleanup_old_entries(self) -> int:
         """Clean up old rate limit entries (maintenance function)."""
-        # This would require getting all rate limit entries and cleaning them
-        # For now, we'll just return 0 as this is a maintenance function
-        # In production, you'd implement this to run periodically
-        logger.info("Cleanup old rate limit entries called (not implemented)")
-        return 0
+        # Remove requests older than the window_size for all rate limit entries
+        try:
+            # Try to get all rate limit entries from the database
+            if hasattr(self.db, 'get_all_rate_limit_entries'):
+                entries = await self.db.get_all_rate_limit_entries()
+            else:
+                logger.warning("Database does not support get_all_rate_limit_entries; cleanup skipped.")
+                return 0
+
+            now = datetime.now(timezone.utc)
+            window_start = now - timedelta(seconds=self.window_size)
+            cleaned = 0
+
+            for entry in entries:
+                old_count = len(entry.requests)
+                entry.requests = [req for req in entry.requests if req > window_start]
+                if len(entry.requests) < old_count:
+                    await self.db.update_rate_limit_entry(entry)
+                    cleaned += 1
+            logger.info(f"Cleaned up {cleaned} old rate limit entries.")
+            return cleaned
+        except Exception as e:
+            logger.error(f"Error cleaning up old rate limit entries: {e}")
+            return 0
 
     async def check_ip_rate_limit(self, client_ip: str) -> Tuple[bool, dict]:
         """

@@ -1,6 +1,6 @@
-from pkg_resources import get_distribution, DistributionNotFound as PackageNotFoundError
+import importlib.metadata
 def get_package_version(package_name: str) -> str:
-    return get_distribution(package_name).version
+    return importlib.metadata.version(package_name)
 """
 Webscout Update Checker
 >>> from webscout import check_for_updates
@@ -36,7 +36,7 @@ def get_installed_version() -> Optional[str]:
     """
     try:
         return get_package_version('webscout')
-    except PackageNotFoundError:
+    except importlib.metadata.PackageNotFoundError:
         return None
 
 def get_pypi_version() -> Optional[str]:
@@ -99,9 +99,11 @@ def get_update_message(installed: str, latest: str) -> Optional[str]:
     """
     comparison_result = version_compare(installed, latest)
     if comparison_result < 0:
-        return f"New Webscout version available: {latest} - Update with: pip install --upgrade webscout"
+        # ANSI escape code for bold red: \033[1;31m ... \033[0m
+        return f"\033[1;31mNew Webscout version available: {latest} - Update with: pip install --upgrade webscout\033[0m"
     elif comparison_result > 0:
-        return f"You're running a development version ({installed}) ahead of latest release ({latest})"
+        # ANSI escape code for bold yellow: \033[1;33m ... \033[0m
+        return f"\033[1;33mYou're running a development version ({installed}) ahead of latest release ({latest})\033[0m"
     return None  # Already on the latest version
 
 def check_for_updates() -> Optional[str]:

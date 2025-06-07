@@ -198,13 +198,12 @@ class Api:
         """Register all API routes."""
         self._register_model_routes()
         self._register_chat_routes()
-        self._register_image_routes()
         self._register_auth_routes()
         self._register_websearch_routes()
 
     def _register_model_routes(self):
-        """Register model listing routes."""
-        @self.app.get("/v1/models", response_model=ModelListResponse)
+        """Register model listing routes."""        
+        @self.app.get("/v1/models", response_model=ModelListResponse, tags=["Chat Completions"])
         async def list_models():
             models = []
             for model_name, provider_class in AppConfig.provider_map.items():
@@ -223,9 +222,8 @@ class Api:
             return {
                 "object": "list",
                 "data": models
-            }
-
-        @self.app.get("/v1/TTI/models", response_model=ModelListResponse)
+            }        
+        @self.app.get("/v1/TTI/models", response_model=ModelListResponse, tags=["Image Generation"])
         async def list_tti_models():
             models = []
             for model_name, provider_class in AppConfig.tti_provider_map.items():
@@ -313,9 +311,8 @@ class Api:
                     "internal_error"
                 )
 
-    def _register_image_routes(self):
-        """Register image generation routes."""
-        @self.app.post("/v1/images/generations")
+
+        @self.app.post("/v1/images/generations", tags=["Image Generation"])
         async def image_generations(
             image_request: ImageGenerationRequest = Body(...)
         ):

@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from webscout.Litlogger import Logger, LogLevel, LogFormat, ConsoleHandler
+from webscout.auth.swagger_ui import CustomSwaggerUI
 from .config import ServerConfig, AppConfig
 from .routes import Api
 from .providers import initialize_provider_map, initialize_tti_provider_map
@@ -56,7 +57,7 @@ def create_app():
         title=app_title,
         description=app_description,
         version=app_version,
-        docs_url=app_docs_url,
+        docs_url=None,  # Disable default docs
         redoc_url=app_redoc_url,
         openapi_url=app_openapi_url,
     )
@@ -76,7 +77,11 @@ def create_app():
         auth_required=AppConfig.auth_required,
         rate_limit_enabled=AppConfig.rate_limit_enabled
     )
-
+    # Use custom Swagger UI (disable default docs)
+    app.docs_url = None
+    app.redoc_url = "/redoc"  # keep ReDoc if desired
+    app.openapi_url = "/openapi.json"
+    CustomSwaggerUI(app)
     # Add startup event handler
     @app.on_event("startup")
     async def startup():

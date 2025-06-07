@@ -97,6 +97,7 @@ api = [
     "python-multipart",
     "tiktoken",  # Added tiktoken for token counting support
     "motor",  # MongoDB async driver for enhanced authentication
+    "jinja2",  # Template engine for custom Swagger UI
 ]
 
 [tool.setuptools]

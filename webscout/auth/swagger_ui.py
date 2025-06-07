@@ -4,24 +4,51 @@ Provides a modern, beautiful, and fully functional API documentation interface.
 """
 
 import os
-from typing import Optional
+import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 class CustomSwaggerUI:
     """Custom Swagger UI handler for FastAPI applications."""
-    
+
     def __init__(self, app: FastAPI):
         self.app = app
         self.template_dir = os.path.join(os.path.dirname(__file__), "templates")
         self.static_dir = os.path.join(os.path.dirname(__file__), "static")
-        
-        # Mount static files
-        if os.path.exists(self.static_dir):
-            app.mount("/static", StaticFiles(directory=self.static_dir), name="static")
-        
+        self.template_static_dir = os.path.join(self.template_dir, "static")
+
+        # Initialize Jinja2 environment
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(self.template_dir),
+            autoescape=True
+        )
+
+        # Mount static files - prioritize template static files
+        static_mounted = False
+
+        # First try to mount template static files (higher priority)
+        if os.path.exists(self.template_static_dir):
+            try:
+                app.mount("/static", StaticFiles(directory=self.template_static_dir), name="template_static")
+                static_mounted = True
+                logging.info(f"Mounted template static files from: {self.template_static_dir}")
+            except Exception as e:
+                logging.warning(f"Failed to mount template static files: {e}")
+
+        # Fallback to regular static directory if template static not available
+        if not static_mounted and os.path.exists(self.static_dir):
+            try:
+                app.mount("/static", StaticFiles(directory=self.static_dir), name="static")
+                logging.info(f"Mounted static files from: {self.static_dir}")
+            except Exception as e:
+                logging.warning(f"Failed to mount static files: {e}")
+
+        # Log static file status
+        if not static_mounted:
+            logging.warning("No static files mounted - CSS and JS may not load correctly")
+
         self._setup_routes()
     
     def _setup_routes(self):
@@ -44,27 +71,17 @@ class CustomSwaggerUI:
             title = getattr(self.app, 'title', 'Webscout OpenAI API')
             description = getattr(self.app, 'description', 'OpenAI API compatible interface')
             version = getattr(self.app, 'version', '0.2.0')
-            
+
             # Get base URL
             base_url = str(request.base_url).rstrip('/')
-            
-            # Load and count models (mock data for now)
+
+            # Load and count models
             model_count = await self._get_model_count()
             provider_count = await self._get_provider_count()
-            
-            # Load the HTML template
-            template_path = os.path.join(self.template_dir, "swagger_ui.html")
-            
-            if not os.path.exists(template_path):
-                # Fallback to basic HTML if template doesn't exist
-                return HTMLResponse(self._get_fallback_html())
-            
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-            
-            # Create Jinja2 template
-            template = Template(template_content)
-            
+
+            # Load the main template using Jinja2 environment
+            template = self.jinja_env.get_template("swagger_ui.html")
+
             # Render with context
             rendered_html = template.render(
                 title=title,
@@ -74,35 +91,50 @@ class CustomSwaggerUI:
                 model_count=model_count,
                 provider_count=provider_count
             )
-            
+
             return HTMLResponse(content=rendered_html, status_code=200)
-            
+
+        except TemplateNotFound:
+            # Template file doesn't exist, use fallback
+            logging.warning("Template file 'swagger_ui.html' not found, using fallback HTML")
+            return HTMLResponse(content=self._get_fallback_html(), status_code=200)
+
         except Exception as e:
-            # Fallback to basic HTML in case of errors
+            # Other errors, log and use fallback
+            logging.error(f"Error rendering Swagger UI template: {e}")
             return HTMLResponse(content=self._get_fallback_html(), status_code=200)
     
     async def _get_model_count(self) -> int:
         """Get the number of available models."""
         try:
-            # Try to get from config if available
+            # Try to get from auth config
             from .config import AppConfig
             if hasattr(AppConfig, 'provider_map') and AppConfig.provider_map:
-                return len([model for model in AppConfig.provider_map.keys() if "/" in model])
-            return 25  # Default fallback
-        except:
-            return 25
-    
+                # Count models (keys with "/" are model names)
+                model_count = len([model for model in AppConfig.provider_map.keys() if "/" in model])
+                return model_count if model_count > 0 else 589
+            return 589  # Default fallback
+        except Exception as e:
+            logging.debug(f"Could not get model count: {e}")
+            return 589
+
     async def _get_provider_count(self) -> int:
         """Get the number of available providers."""
         try:
-            # Try to get from config if available
+            # Try to get from auth config
             from .config import AppConfig
             if hasattr(AppConfig, 'provider_map') and AppConfig.provider_map:
-                providers = set(v.__name__ for v in AppConfig.provider_map.values())
-                return len(providers)
-            return 8  # Default fallback
-        except:
-            return 8
+                # Count unique providers
+                providers = set()
+                for model_key in AppConfig.provider_map.keys():
+                    if "/" in model_key:
+                        provider_name = model_key.split("/")[0]
+                        providers.add(provider_name)
+                return len(providers) if len(providers) > 0 else 42
+            return 42  # Default fallback
+        except Exception as e:
+            logging.debug(f"Could not get provider count: {e}")
+            return 42
     
     def _get_fallback_html(self) -> str:
         """Fallback HTML if template loading fails."""

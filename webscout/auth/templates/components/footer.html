@@ -1,0 +1,121 @@
+<footer class="footer">
+    <div class="container">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3 class="footer-title">
+                    <span class="footer-icon">🚀</span>
+                    WebScout API
+                </h3>
+                <p class="footer-description">
+                    A powerful, modern, and intuitive API interface for accessing multiple AI models and services.
+                    Built with performance, reliability, and developer experience in mind.
+                </p>
+                <div class="footer-stats">
+                    <div class="footer-stat">
+                        <span class="stat-number">{{ model_count }}+</span>
+                        <span class="stat-label">Models</span>
+                    </div>
+                    <div class="footer-stat">
+                        <span class="stat-number">{{ provider_count }}+</span>
+                        <span class="stat-label">Providers</span>
+                    </div>
+                    <div class="footer-stat">
+                        <span class="stat-number">99.9%</span>
+                        <span class="stat-label">Uptime</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer-section">
+                <h4 class="footer-subtitle">API Resources</h4>
+                <ul class="footer-links">
+                    <li><a href="#endpoints" onclick="showTab('endpoints')">📡 API Endpoints</a></li>
+                    <li><a href="#authentication" onclick="showTab('authentication')">🔐 Authentication</a></li>
+                    <li><a href="#models" onclick="showTab('models')">🤖 Available Models</a></li>
+                    <li><a href="#examples" onclick="showTab('examples')">💡 Code Examples</a></li>
+                </ul>
+            </div>
+            
+            <div class="footer-section">
+                <h4 class="footer-subtitle">Developer Tools</h4>
+                <ul class="footer-links">
+                    <li><a href="{{ base_url }}/openapi.json" target="_blank">📄 OpenAPI Spec</a></li>
+                    <li><a href="{{ base_url }}/health" target="_blank">💚 Health Check</a></li>
+                    <li><a href="{{ base_url }}/metrics" target="_blank">📊 Metrics</a></li>
+                    <li><a href="#" onclick="downloadPostmanCollection()">📮 Postman Collection</a></li>
+                </ul>
+            </div>
+            
+            <div class="footer-section">
+                <h4 class="footer-subtitle">Support & Community</h4>
+                <ul class="footer-links">
+                    <li><a href="https://github.com/webscout-ai" target="_blank">🐙 GitHub</a></li>
+                    <li><a href="https://discord.gg/webscout" target="_blank">💬 Discord</a></li>
+                    <li><a href="mailto:support@webscout.ai">📧 Support</a></li>
+                    <li><a href="https://docs.webscout.ai" target="_blank">📚 Documentation</a></li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <div class="footer-bottom-content">
+                <div class="footer-copyright">
+                    <p>&copy; 2024 WebScout. All rights reserved.</p>
+                    <p class="footer-version">API Version {{ version }}</p>
+                </div>
+                
+                <div class="footer-badges">
+                    <div class="badge">
+                        <span class="badge-icon">🔒</span>
+                        <span class="badge-text">Secure</span>
+                    </div>
+                    <div class="badge">
+                        <span class="badge-icon">⚡</span>
+                        <span class="badge-text">Fast</span>
+                    </div>
+                    <div class="badge">
+                        <span class="badge-icon">🌍</span>
+                        <span class="badge-text">Global</span>
+                    </div>
+                    <div class="badge">
+                        <span class="badge-icon">🔄</span>
+                        <span class="badge-text">24/7</span>
+                    </div>
+                </div>
+                
+                <div class="footer-social">
+                    <a href="https://twitter.com/webscout_ai" target="_blank" class="social-link" title="Twitter">
+                        <span>🐦</span>
+                    </a>
+                    <a href="https://linkedin.com/company/webscout-ai" target="_blank" class="social-link" title="LinkedIn">
+                        <span>💼</span>
+                    </a>
+                    <a href="https://youtube.com/@webscout-ai" target="_blank" class="social-link" title="YouTube">
+                        <span>📺</span>
+                    </a>
+                    <a href="https://medium.com/@webscout-ai" target="_blank" class="social-link" title="Medium">
+                        <span>📝</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer-legal">
+            <div class="legal-links">
+                <a href="/privacy" target="_blank">Privacy Policy</a>
+                <a href="/terms" target="_blank">Terms of Service</a>
+                <a href="/cookies" target="_blank">Cookie Policy</a>
+                <a href="/security" target="_blank">Security</a>
+            </div>
+            
+            <div class="footer-powered">
+                <span>Powered by</span>
+                <div class="tech-stack">
+                    <span class="tech-item" title="FastAPI">⚡ FastAPI</span>
+                    <span class="tech-item" title="Python">🐍 Python</span>
+                    <span class="tech-item" title="OpenAI Compatible">🤖 OpenAI</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>

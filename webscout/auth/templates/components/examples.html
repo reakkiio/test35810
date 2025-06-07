@@ -1,0 +1,492 @@
+<div id="examples-panel" class="tab-content" role="tabpanel" aria-labelledby="examples-tab">
+    <div class="endpoint-section">
+        <h2 class="section-title">Code Examples</h2>
+        <p class="section-description">
+            Get started quickly with these comprehensive code examples in multiple programming languages. 
+            Each example includes error handling, best practices, and real-world usage patterns.
+        </p>
+        
+        <div class="examples-nav">
+            <button class="example-tab active" data-language="python">
+                <span class="tab-icon">🐍</span>
+                Python
+            </button>
+            <button class="example-tab" data-language="javascript">
+                <span class="tab-icon">🟨</span>
+                JavaScript
+            </button>
+            <button class="example-tab" data-language="curl">
+                <span class="tab-icon">🌐</span>
+                cURL
+            </button>
+            <button class="example-tab" data-language="php">
+                <span class="tab-icon">🐘</span>
+                PHP
+            </button>
+            <button class="example-tab" data-language="go">
+                <span class="tab-icon">🔷</span>
+                Go
+            </button>
+        </div>
+        
+        <div class="example-content">
+            <!-- Python Examples -->
+            <div id="python-examples" class="language-examples active">
+                <div class="example-card">
+                    <div class="example-header">
+                        <h3>🐍 Python - Chat Completion</h3>
+                        <button class="copy-code-btn" onclick="copyCode('python-chat-code')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="code-block">
+                        <pre id="python-chat-code"><code class="language-python">import requests
+import json
+
+# Configuration
+API_KEY = "your-api-key-here"
+BASE_URL = "{{ base_url }}"
+
+def chat_completion(messages, model="gpt-3.5-turbo", stream=False):
+    """
+    Send a chat completion request to the WebScout API
+    """
+    url = f"{BASE_URL}/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": stream,
+        "temperature": 0.7,
+        "max_tokens": 150
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        if stream:
+            # Handle streaming response
+            for line in response.iter_lines():
+                if line:
+                    line = line.decode('utf-8')
+                    if line.startswith('data: '):
+                        data = line[6:]
+                        if data != '[DONE]':
+                            chunk = json.loads(data)
+                            if 'choices' in chunk and chunk['choices']:
+                                delta = chunk['choices'][0].get('delta', {})
+                                if 'content' in delta:
+                                    print(delta['content'], end='', flush=True)
+        else:
+            # Handle regular response
+            result = response.json()
+            return result['choices'][0]['message']['content']
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        return None
+
+# Example usage
+if __name__ == "__main__":
+    messages = [
+        {"role": "user", "content": "Hello, how are you today?"}
+    ]
+    
+    # Non-streaming example
+    response = chat_completion(messages)
+    if response:
+        print("Response:", response)
+    
+    # Streaming example
+    print("\nStreaming response:")
+    chat_completion(messages, stream=True)</code></pre>
+                    </div>
+                </div>
+                
+                <div class="example-card">
+                    <div class="example-header">
+                        <h3>🎨 Python - Image Generation</h3>
+                        <button class="copy-code-btn" onclick="copyCode('python-image-code')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="code-block">
+                        <pre id="python-image-code"><code class="language-python">import requests
+import json
+from pathlib import Path
+
+def generate_image(prompt, model="dall-e-2", size="512x512", n=1):
+    """
+    Generate images using the WebScout API
+    """
+    url = f"{BASE_URL}/v1/images/generations"
+    
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "prompt": prompt,
+        "model": model,
+        "size": size,
+        "n": n
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result['data']
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error generating image: {e}")
+        return None
+
+def download_image(image_url, filename):
+    """
+    Download an image from URL
+    """
+    try:
+        response = requests.get(image_url)
+        response.raise_for_status()
+        
+        with open(filename, 'wb') as f:
+            f.write(response.content)
+        
+        print(f"Image saved as {filename}")
+        return True
+        
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        return False
+
+# Example usage
+if __name__ == "__main__":
+    prompt = "A beautiful sunset over a mountain landscape"
+    
+    images = generate_image(prompt)
+    if images:
+        for i, image in enumerate(images):
+            filename = f"generated_image_{i+1}.png"
+            download_image(image['url'], filename)</code></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- JavaScript Examples -->
+            <div id="javascript-examples" class="language-examples">
+                <div class="example-card">
+                    <div class="example-header">
+                        <h3>🟨 JavaScript - Chat Completion</h3>
+                        <button class="copy-code-btn" onclick="copyCode('js-chat-code')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="code-block">
+                        <pre id="js-chat-code"><code class="language-javascript">// Configuration
+const API_KEY = 'your-api-key-here';
+const BASE_URL = '{{ base_url }}';
+
+class WebScoutAPI {
+    constructor(apiKey, baseUrl) {
+        this.apiKey = apiKey;
+        this.baseUrl = baseUrl;
+    }
+    
+    async chatCompletion(messages, options = {}) {
+        const {
+            model = 'gpt-3.5-turbo',
+            stream = false,
+            temperature = 0.7,
+            maxTokens = 150
+        } = options;
+        
+        const url = `${this.baseUrl}/v1/chat/completions`;
+        
+        const payload = {
+            model,
+            messages,
+            stream,
+            temperature,
+            max_tokens: maxTokens
+        };
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            if (stream) {
+                return this.handleStreamingResponse(response);
+            } else {
+                const result = await response.json();
+                return result.choices[0].message.content;
+            }
+            
+        } catch (error) {
+            console.error('Error making chat completion request:', error);
+            throw error;
+        }
+    }
+    
+    async *handleStreamingResponse(response) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') return;
+                        
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.choices && parsed.choices[0].delta.content) {
+                                yield parsed.choices[0].delta.content;
+                            }
+                        } catch (e) {
+                            // Skip invalid JSON
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    }
+    
+    async generateImage(prompt, options = {}) {
+        const {
+            model = 'dall-e-2',
+            size = '512x512',
+            n = 1
+        } = options;
+        
+        const url = `${this.baseUrl}/v1/images/generations`;
+        
+        const payload = {
+            prompt,
+            model,
+            size,
+            n
+        };
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            return result.data;
+            
+        } catch (error) {
+            console.error('Error generating image:', error);
+            throw error;
+        }
+    }
+}
+
+// Example usage
+async function main() {
+    const api = new WebScoutAPI(API_KEY, BASE_URL);
+    
+    // Chat completion example
+    const messages = [
+        { role: 'user', content: 'Hello, how are you today?' }
+    ];
+    
+    try {
+        // Non-streaming
+        const response = await api.chatCompletion(messages);
+        console.log('Response:', response);
+        
+        // Streaming
+        console.log('Streaming response:');
+        for await (const chunk of api.chatCompletion(messages, { stream: true })) {
+            process.stdout.write(chunk);
+        }
+        
+        // Image generation
+        const images = await api.generateImage('A beautiful sunset over mountains');
+        console.log('Generated images:', images);
+        
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+// Run the example
+main();</code></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- cURL Examples -->
+            <div id="curl-examples" class="language-examples">
+                <div class="example-card">
+                    <div class="example-header">
+                        <h3>🌐 cURL - Chat Completion</h3>
+                        <button class="copy-code-btn" onclick="copyCode('curl-chat-code')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="code-block">
+                        <pre id="curl-chat-code"><code class="language-bash"># Chat Completion Request
+curl -X POST "{{ base_url }}/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello, how are you today?"
+      }
+    ],
+    "temperature": 0.7,
+    "max_tokens": 150
+  }'
+
+# Streaming Chat Completion
+curl -X POST "{{ base_url }}/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Tell me a story"
+      }
+    ],
+    "stream": true,
+    "temperature": 0.8
+  }' \
+  --no-buffer</code></pre>
+                    </div>
+                </div>
+                
+                <div class="example-card">
+                    <div class="example-header">
+                        <h3>🎨 cURL - Image Generation</h3>
+                        <button class="copy-code-btn" onclick="copyCode('curl-image-code')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="code-block">
+                        <pre id="curl-image-code"><code class="language-bash"># Image Generation Request
+curl -X POST "{{ base_url }}/v1/images/generations" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A beautiful sunset over a mountain landscape",
+    "model": "dall-e-2",
+    "size": "512x512",
+    "n": 1
+  }'
+
+# List Available Models
+curl -X GET "{{ base_url }}/v1/models" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Generate API Key
+curl -X POST "{{ base_url }}/v1/auth/generate-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "your-username",
+    "name": "My API Key",
+    "rate_limit": 60
+  }'</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="integration-guides">
+            <h2 class="section-title">Integration Guides</h2>
+            
+            <div class="guides-grid">
+                <div class="guide-card">
+                    <div class="guide-icon">⚡</div>
+                    <h3>Quick Start</h3>
+                    <p>Get up and running with the WebScout API in under 5 minutes.</p>
+                    <ul>
+                        <li>Generate your API key</li>
+                        <li>Make your first request</li>
+                        <li>Handle responses</li>
+                    </ul>
+                </div>
+                
+                <div class="guide-card">
+                    <div class="guide-icon">🔄</div>
+                    <h3>Streaming</h3>
+                    <p>Learn how to implement real-time streaming responses.</p>
+                    <ul>
+                        <li>Server-sent events</li>
+                        <li>Chunk processing</li>
+                        <li>Error handling</li>
+                    </ul>
+                </div>
+                
+                <div class="guide-card">
+                    <div class="guide-icon">⚠️</div>
+                    <h3>Error Handling</h3>
+                    <p>Best practices for handling API errors and edge cases.</p>
+                    <ul>
+                        <li>HTTP status codes</li>
+                        <li>Rate limiting</li>
+                        <li>Retry strategies</li>
+                    </ul>
+                </div>
+                
+                <div class="guide-card">
+                    <div class="guide-icon">🔧</div>
+                    <h3>Advanced Usage</h3>
+                    <p>Advanced techniques for power users and enterprise applications.</p>
+                    <ul>
+                        <li>Batch processing</li>
+                        <li>Custom models</li>
+                        <li>Performance optimization</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

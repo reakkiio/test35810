@@ -1,0 +1,866 @@
+<div id="endpoints-panel" class="tab-content active" role="tabpanel" aria-labelledby="endpoints-tab">
+    <div class="endpoint-section">
+        <h2 class="section-title">Chat Completions</h2>
+        <p class="section-description">
+            Create chat completions using various AI models. This endpoint is compatible with OpenAI's chat completions API.
+        </p>
+        
+        <div class="endpoint-card">
+            <div class="endpoint-header hover-lift">
+                <div class="endpoint-method">
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/v1/chat/completions</span>
+                    <span class="endpoint-summary">Generate chat completions</span>
+                </div>
+                <span class="expand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6,9 12,15 18,9"/>
+                    </svg>
+                </span>
+            </div>
+            
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Creates a model response for the given chat conversation. Supports streaming and non-streaming responses.
+                </div>
+                
+                <div class="parameter-section">
+                    <h4>Request Parameters</h4>
+                    <div class="parameter-list">
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">model</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                ID of the model to use. See available models in the Models tab.
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">messages</span>
+                                <span class="parameter-type">array</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                A list of messages comprising the conversation so far.
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">stream</span>
+                                <span class="parameter-type">boolean</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                If set, partial message deltas will be sent as server-sent events.
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">temperature</span>
+                                <span class="parameter-type">number</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Controls randomness in the output. Range: 0.0 to 2.0. Default: 1.0
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">max_tokens</span>
+                                <span class="parameter-type">integer</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                The maximum number of tokens to generate in the completion.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="try-it-section glass-effect">
+                    <h4 class="try-it-title gradient-text">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                        Try it out
+                    </h4>
+
+                    <!-- Model Selection -->
+                    <div class="form-group">
+                        <label class="form-label" for="chat-model">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                <rect x="3" y="11" width="18" height="10" rx="2" ry="2"/>
+                                <circle cx="12" cy="5" r="2"/>
+                                <path d="M12 7v4"/>
+                                <line x1="8" y1="16" x2="8" y2="16"/>
+                                <line x1="16" y1="16" x2="16" y2="16"/>
+                            </svg>
+                            Model
+                        </label>
+                        <input type="text" id="chat-model" class="form-input modern-input" value="Cloudflare/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b" placeholder="Enter model name">
+                        <small class="form-hint">Enter the model identifier you want to use</small>
+                    </div>
+
+                    <!-- Messages -->
+                    <div class="form-group">
+                        <label class="form-label" for="chat-messages">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Messages (JSON)
+                        </label>
+                        <textarea id="chat-messages" class="form-textarea modern-input" rows="4">[{"role": "user", "content": "Hello, how are you?"}]</textarea>
+                    </div>
+
+                    <!-- Core Parameters Grid -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="chat-temperature">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>
+                                </svg>
+                                Temperature
+                            </label>
+                            <input type="number" id="chat-temperature" class="form-input modern-input" value="1.0" min="0" max="2" step="0.1">
+                            <small class="form-hint">Controls randomness (0.0 - 2.0)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="chat-max-tokens">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/>
+                                    <polyline points="14,2 14,8 20,8"/>
+                                </svg>
+                                Max Tokens
+                            </label>
+                            <input type="number" id="chat-max-tokens" class="form-input modern-input" value="150" min="1" max="4000">
+                            <small class="form-hint">Maximum tokens to generate</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="chat-top-p">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                                </svg>
+                                Top P
+                            </label>
+                            <input type="number" id="chat-top-p" class="form-input modern-input" value="1.0" min="0" max="1" step="0.1">
+                            <small class="form-hint">Nucleus sampling (0.0 - 1.0)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="chat-frequency-penalty">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M3 3v18h18"/>
+                                    <path d="M18.7 8a4 4 0 0 0-7.4 0"/>
+                                </svg>
+                                Frequency Penalty
+                            </label>
+                            <input type="number" id="chat-frequency-penalty" class="form-input modern-input" value="0" min="-2" max="2" step="0.1">
+                            <small class="form-hint">Penalize frequent tokens (-2.0 to 2.0)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="chat-presence-penalty">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                    <line x1="12" y1="19" x2="12" y2="22"/>
+                                </svg>
+                                Presence Penalty
+                            </label>
+                            <input type="number" id="chat-presence-penalty" class="form-input modern-input" value="0" min="-2" max="2" step="0.1">
+                            <small class="form-hint">Penalize new topics (-2.0 to 2.0)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="chat-n">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                                </svg>
+                                N (Choices)
+                            </label>
+                            <input type="number" id="chat-n" class="form-input modern-input" value="1" min="1" max="10">
+                            <small class="form-hint">Number of completions to generate</small>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Parameters -->
+                    <div class="advanced-section">
+                        <button type="button" class="advanced-toggle" onclick="toggleAdvanced('chat')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                <polyline points="6,9 12,15 18,9"/>
+                            </svg>
+                            Advanced Parameters
+                        </button>
+
+                        <div id="chat-advanced" class="advanced-params">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label" for="chat-stop">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                            <rect x="6" y="4" width="4" height="16"/>
+                                            <rect x="14" y="4" width="4" height="16"/>
+                                        </svg>
+                                        Stop Sequences
+                                    </label>
+                                    <input type="text" id="chat-stop" class="form-input modern-input" placeholder='["\\n", "Human:", "AI:"]'>
+                                    <small class="form-hint">JSON array of stop sequences</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="chat-user">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                            <circle cx="12" cy="7" r="4"/>
+                                        </svg>
+                                        User ID
+                                    </label>
+                                    <input type="text" id="chat-user" class="form-input modern-input" placeholder="user-123">
+                                    <small class="form-hint">Unique identifier for the user</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="chat-seed">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                        </svg>
+                                        Seed
+                                    </label>
+                                    <input type="number" id="chat-seed" class="form-input modern-input" placeholder="42">
+                                    <small class="form-hint">Seed for deterministic outputs</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="chat-logit-bias">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                            <path d="M3 3v18h18"/>
+                                            <path d="M18.7 8a4 4 0 0 0-7.4 0"/>
+                                        </svg>
+                                        Logit Bias
+                                    </label>
+                                    <textarea id="chat-logit-bias" class="form-textarea modern-input" rows="2" placeholder='{"50256": -100}'></textarea>
+                                    <small class="form-hint">JSON object to bias token probabilities</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checkboxes -->
+                    <div class="checkbox-grid">
+                        <label class="modern-checkbox">
+                            <input type="checkbox" id="chat-stream" class="form-checkbox">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                                    <path d="M21 5c0 1.66-4 3-9 3S3 6.66 3 5"/>
+                                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                                </svg>
+                                Stream Response
+                            </span>
+                        </label>
+
+                        <label class="modern-checkbox">
+                            <input type="checkbox" id="chat-echo" class="form-checkbox">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                    <path d="M21 3v5h-5"/>
+                                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                    <path d="M8 16H3v5"/>
+                                </svg>
+                                Echo Prompt
+                            </span>
+                        </label>
+                    </div>
+
+                    <button class="btn btn-primary modern-btn hover-lift" onclick="testChatCompletion(event)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+                            <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
+                            <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
+                            <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+                        </svg>
+                        Send Request
+                    </button>
+
+                    <div id="chat-response" class="response-display modern-response"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="endpoint-section">
+        <h2 class="section-title">Image Generation</h2>
+        <p class="section-description">
+            Generate images from text descriptions using various AI image generation models.
+        </p>
+        
+        <div class="endpoint-card">
+            <div class="endpoint-header hover-lift">
+                <div class="endpoint-method">
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/v1/images/generations</span>
+                    <span class="endpoint-summary">Generate images from text</span>
+                </div>
+                <span class="expand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6,9 12,15 18,9"/>
+                    </svg>
+                </span>
+            </div>
+            
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Creates an image given a text prompt. Compatible with OpenAI's image generation API.
+                </div>
+                
+                <div class="parameter-section">
+                    <h4>Request Parameters</h4>
+                    <div class="parameter-list">
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">prompt</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                A text description of the desired image(s). Maximum length is 1000 characters.
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">model</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                The model to use for image generation. Defaults to dall-e-2.
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">n</span>
+                                <span class="parameter-type">integer</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                The number of images to generate. Must be between 1 and 10. Default: 1
+                            </div>
+                        </div>
+                        
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">size</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                The size of the generated images. Options: "256x256", "512x512", "1024x1024"
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="try-it-section glass-effect">
+                    <h4 class="try-it-title gradient-text">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="9" cy="9" r="2"/>
+                            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                        </svg>
+                        Try it out
+                    </h4>
+
+                    <!-- Model Selection -->
+                    <div class="form-group">
+                        <label class="form-label" for="image-model">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                <rect x="3" y="11" width="18" height="10" rx="2" ry="2"/>
+                                <circle cx="12" cy="5" r="2"/>
+                                <path d="M12 7v4"/>
+                                <line x1="8" y1="16" x2="8" y2="16"/>
+                                <line x1="16" y1="16" x2="16" y2="16"/>
+                            </svg>
+                            Model
+                        </label>
+                        <input type="text" id="image-model" class="form-input modern-input" value="TogetherImage/black-forest-labs/FLUX.1-pro" placeholder="Enter image generation model">
+                        <small class="form-hint">Enter the image generation model identifier</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="image-prompt">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/>
+                                <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>
+                            </svg>
+                            Prompt
+                        </label>
+                        <textarea id="image-prompt" class="form-textarea modern-input" placeholder="A beautiful sunset over a mountain landscape"></textarea>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="image-size">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                </svg>
+                                Size
+                            </label>
+                            <select id="image-size" class="form-input modern-input">
+                                <option value="256x256">256x256</option>
+                                <option value="512x512">512x512</option>
+                                <option value="1024x1024">1024x1024</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="image-count">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                                </svg>
+                                Count
+                            </label>
+                            <input type="number" id="image-count" class="form-input modern-input" value="1" min="1" max="10">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary modern-btn hover-lift" onclick="testImageGeneration(event)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="9" cy="9" r="2"/>
+                            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                        </svg>
+                        Generate Image
+                    </button>
+
+                    <div id="image-response" class="response-display modern-response"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="endpoint-section">
+        <h2 class="section-title">Models</h2>
+        <p class="section-description">
+            List and retrieve information about available AI models.
+        </p>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/v1/models</span>
+                    <span class="endpoint-summary">List available models</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Lists the currently available models, and provides basic information about each one.
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>📋</span>
+                        Try it out
+                    </h4>
+
+                    <button class="btn btn-primary" onclick="testListModels(event)">
+                        <span>📋</span>
+                        List Models
+                    </button>
+
+                    <div id="models-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/v1/TTI/models</span>
+                    <span class="endpoint-summary">List TTI models</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Lists the currently available Text-to-Image (TTI) models for image generation.
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>🎨</span>
+                        Try it out
+                    </h4>
+
+                    <button class="btn btn-primary" onclick="testListTTIModels(event)">
+                        <span>🎨</span>
+                        List TTI Models
+                    </button>
+
+                    <div id="tti-models-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="endpoint-section">
+        <h2 class="section-title">Authentication</h2>
+        <p class="section-description">
+            Manage API keys and authentication for the WebScout API.
+        </p>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-post">POST</span>
+                    <span class="endpoint-path">/v1/auth/generate-key</span>
+                    <span class="endpoint-summary">Generate API key</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Generate a new API key for accessing the WebScout API.
+                </div>
+
+                <div class="parameter-section">
+                    <h4>Request Parameters</h4>
+                    <div class="parameter-list">
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">username</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                Username for the API key.
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">name</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Friendly name for the API key.
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">rate_limit</span>
+                                <span class="parameter-type">integer</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Rate limit for the API key (requests per minute). Default: 10
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">expires_in_days</span>
+                                <span class="parameter-type">integer</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Number of days until the API key expires.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>🔑</span>
+                        Try it out
+                    </h4>
+
+                    <div class="form-group">
+                        <label class="form-label" for="auth-username">Username</label>
+                        <input type="text" id="auth-username" class="form-input" placeholder="your-username">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="auth-name">Name (optional)</label>
+                        <input type="text" id="auth-name" class="form-input" placeholder="My API Key">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="auth-rate-limit">Rate Limit</label>
+                            <input type="number" id="auth-rate-limit" class="form-input" value="10" min="1" max="1000">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="auth-expires">Expires (days)</label>
+                            <input type="number" id="auth-expires" class="form-input" placeholder="30" min="1" max="365">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="testGenerateApiKey(event)">
+                        <span>🔑</span>
+                        Generate API Key
+                    </button>
+
+                    <div id="auth-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/v1/auth/validate</span>
+                    <span class="endpoint-summary">Validate API key</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Validate an API key and get information about its usage and limits.
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>✅</span>
+                        Try it out
+                    </h4>
+
+                    <div class="form-group">
+                        <label class="form-label" for="validate-api-key">API Key</label>
+                        <input type="password" id="validate-api-key" class="form-input" placeholder="your-api-key">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="testValidateApiKey(event)">
+                        <span>✅</span>
+                        Validate API Key
+                    </button>
+
+                    <div id="validate-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="endpoint-section">
+        <h2 class="section-title">Web Search</h2>
+        <p class="section-description">
+            Search the web using various search engines including Google, Yep, and DuckDuckGo.
+        </p>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/search</span>
+                    <span class="endpoint-summary">Unified web search</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Perform web searches across multiple search engines with support for different content types.
+                </div>
+
+                <div class="parameter-section">
+                    <h4>Query Parameters</h4>
+                    <div class="parameter-list">
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">q</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                Search query string.
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">engine</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Search engine: google, yep, duckduckgo. Default: google
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">max_results</span>
+                                <span class="parameter-type">integer</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Maximum number of results. Default: 10
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">type</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Search type: text, news, images, suggestions. Default: text
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">region</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Region code for localized results. Default: all
+                            </div>
+                        </div>
+
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">safesearch</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-optional">optional</span>
+                            </div>
+                            <div class="parameter-description">
+                                Safe search setting: on, moderate, off. Default: moderate
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>🔍</span>
+                        Try it out
+                    </h4>
+
+                    <div class="form-group">
+                        <label class="form-label" for="search-query">Search Query</label>
+                        <input type="text" id="search-query" class="form-input" placeholder="artificial intelligence">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="search-engine">Engine</label>
+                            <select id="search-engine" class="form-input">
+                                <option value="google">Google</option>
+                                <option value="yep">Yep</option>
+                                <option value="duckduckgo">DuckDuckGo</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="search-type">Type</label>
+                            <select id="search-type" class="form-input">
+                                <option value="text">Text</option>
+                                <option value="news">News</option>
+                                <option value="images">Images</option>
+                                <option value="suggestions">Suggestions</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="search-max-results">Max Results</label>
+                            <input type="number" id="search-max-results" class="form-input" value="10" min="1" max="50">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="search-region">Region</label>
+                            <input type="text" id="search-region" class="form-input" value="all" placeholder="us, uk, de, etc.">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="search-safesearch">Safe Search</label>
+                            <select id="search-safesearch" class="form-input">
+                                <option value="moderate">Moderate</option>
+                                <option value="on">On</option>
+                                <option value="off">Off</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="testWebSearch(event)">
+                        <span>🔍</span>
+                        Search Web
+                    </button>
+
+                    <div id="search-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="endpoint-section">
+        <h2 class="section-title">System</h2>
+        <p class="section-description">
+            System health and status endpoints.
+        </p>
+
+        <div class="endpoint-card">
+            <div class="endpoint-header">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/health</span>
+                    <span class="endpoint-summary">Health check</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Check the health status of the API server and its components.
+                </div>
+
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>💚</span>
+                        Try it out
+                    </h4>
+
+                    <button class="btn btn-primary" onclick="testHealthCheck(event)">
+                        <span>💚</span>
+                        Check Health
+                    </button>
+
+                    <div id="health-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

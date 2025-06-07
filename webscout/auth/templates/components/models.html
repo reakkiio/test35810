@@ -1,0 +1,287 @@
+<div id="models-panel" class="tab-content" role="tabpanel" aria-labelledby="models-tab">
+    <div class="endpoint-section">
+        <h2 class="section-title">Available Models</h2>
+        <p class="section-description">
+            Explore the comprehensive collection of AI models available through the WebScout API. 
+            Each model has unique capabilities and is optimized for different use cases.
+        </p>
+        
+        <div class="models-controls">
+            <div class="search-container">
+                <input type="text" id="model-search" class="search-input" placeholder="🔍 Search models...">
+            </div>
+            
+            <div class="filter-container">
+                <select id="model-filter" class="filter-select">
+                    <option value="all">All Models</option>
+                    <option value="chat">Chat Models</option>
+                    <option value="image">Image Models</option>
+                    <option value="embedding">Embedding Models</option>
+                </select>
+            </div>
+            
+            <div class="view-toggle">
+                <button class="view-btn active" data-view="grid" title="Grid View">
+                    <span>⊞</span>
+                </button>
+                <button class="view-btn" data-view="list" title="List View">
+                    <span>☰</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="models-stats">
+            <div class="stat-item">
+                <span class="stat-number" id="total-models">Loading...</span>
+                <span class="stat-text">Total Models</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number" id="chat-models">-</span>
+                <span class="stat-text">Chat Models</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number" id="image-models">-</span>
+                <span class="stat-text">Image Models</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number" id="providers-count">-</span>
+                <span class="stat-text">Providers</span>
+            </div>
+        </div>
+        
+        <div id="models-loading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading available models...</p>
+        </div>
+        
+        <div id="models-error" class="error-container" style="display: none;">
+            <div class="error-icon">⚠️</div>
+            <h3>Failed to Load Models</h3>
+            <p>Unable to fetch the list of available models. Please try again.</p>
+            <button class="btn btn-primary" onclick="loadModels()">
+                <span>🔄</span>
+                Retry
+            </button>
+        </div>
+        
+        <div id="models-container" class="models-grid">
+            <!-- Models will be loaded here dynamically -->
+        </div>
+        
+        <div id="no-models" class="no-results" style="display: none;">
+            <div class="no-results-icon">🔍</div>
+            <h3>No Models Found</h3>
+            <p>No models match your current search criteria.</p>
+        </div>
+    </div>
+    
+    <div class="endpoint-section">
+        <h2 class="section-title">Model Information</h2>
+        <p class="section-description">
+            Get detailed information about a specific model, including its capabilities, parameters, and usage guidelines.
+        </p>
+        
+        <div class="endpoint-card">
+            <div class="endpoint-header" onclick="toggleEndpoint(this)">
+                <div class="endpoint-method">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="endpoint-path">/v1/models/{model_id}</span>
+                    <span class="endpoint-summary">Get model details</span>
+                </div>
+                <span class="expand-icon">▼</span>
+            </div>
+            
+            <div class="endpoint-body">
+                <div class="endpoint-description">
+                    Retrieve detailed information about a specific model by its ID.
+                </div>
+                
+                <div class="parameter-section">
+                    <h4>Path Parameters</h4>
+                    <div class="parameter-list">
+                        <div class="parameter-item">
+                            <div class="parameter-header">
+                                <span class="parameter-name">model_id</span>
+                                <span class="parameter-type">string</span>
+                                <span class="parameter-required">required</span>
+                            </div>
+                            <div class="parameter-description">
+                                The ID of the model to retrieve information for.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="try-it-section">
+                    <h4 class="try-it-title">
+                        <span>🔍</span>
+                        Get Model Info
+                    </h4>
+                    
+                    <div class="form-group">
+                        <label class="form-label" for="model-id-input">Model ID</label>
+                        <input type="text" id="model-id-input" class="form-input" placeholder="gpt-3.5-turbo">
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="testGetModel()">
+                        <span>🔍</span>
+                        Get Model Info
+                    </button>
+                    
+                    <div id="model-info-response" class="response-display"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="model-categories">
+        <h2 class="section-title">Model Categories</h2>
+        
+        <div class="categories-grid">
+            <div class="category-card">
+                <div class="category-icon">💬</div>
+                <h3>Chat Models</h3>
+                <p>Conversational AI models optimized for dialogue and text generation.</p>
+                <div class="category-examples">
+                    <span class="example-tag">GPT-4</span>
+                    <span class="example-tag">Claude-3</span>
+                    <span class="example-tag">Gemini</span>
+                </div>
+            </div>
+            
+            <div class="category-card">
+                <div class="category-icon">🎨</div>
+                <h3>Image Generation</h3>
+                <p>AI models specialized in creating images from text descriptions.</p>
+                <div class="category-examples">
+                    <span class="example-tag">DALL-E</span>
+                    <span class="example-tag">Midjourney</span>
+                    <span class="example-tag">Stable Diffusion</span>
+                </div>
+            </div>
+            
+            <div class="category-card">
+                <div class="category-icon">🔤</div>
+                <h3>Text Embedding</h3>
+                <p>Models that convert text into numerical vectors for similarity and search.</p>
+                <div class="category-examples">
+                    <span class="example-tag">text-embedding-ada-002</span>
+                    <span class="example-tag">sentence-transformers</span>
+                </div>
+            </div>
+            
+            <div class="category-card">
+                <div class="category-icon">🔧</div>
+                <h3>Specialized</h3>
+                <p>Task-specific models for code generation, translation, and analysis.</p>
+                <div class="category-examples">
+                    <span class="example-tag">Codex</span>
+                    <span class="example-tag">Whisper</span>
+                    <span class="example-tag">GPT-3.5-Instruct</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="model-comparison">
+        <h2 class="section-title">Model Comparison</h2>
+        <p class="section-description">
+            Compare different models to choose the best one for your specific use case.
+        </p>
+        
+        <div class="comparison-table">
+            <div class="table-header">
+                <div class="table-cell">Model</div>
+                <div class="table-cell">Type</div>
+                <div class="table-cell">Max Tokens</div>
+                <div class="table-cell">Speed</div>
+                <div class="table-cell">Quality</div>
+                <div class="table-cell">Cost</div>
+            </div>
+            
+            <div class="table-row">
+                <div class="table-cell">
+                    <strong>GPT-4</strong>
+                    <small>OpenAI</small>
+                </div>
+                <div class="table-cell">Chat</div>
+                <div class="table-cell">8,192</div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">☆</span>
+                        <span class="star">☆</span>
+                    </div>
+                </div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                    </div>
+                </div>
+                <div class="table-cell">High</div>
+            </div>
+            
+            <div class="table-row">
+                <div class="table-cell">
+                    <strong>GPT-3.5-Turbo</strong>
+                    <small>OpenAI</small>
+                </div>
+                <div class="table-cell">Chat</div>
+                <div class="table-cell">4,096</div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                    </div>
+                </div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">☆</span>
+                    </div>
+                </div>
+                <div class="table-cell">Medium</div>
+            </div>
+            
+            <div class="table-row">
+                <div class="table-cell">
+                    <strong>Claude-3-Sonnet</strong>
+                    <small>Anthropic</small>
+                </div>
+                <div class="table-cell">Chat</div>
+                <div class="table-cell">200,000</div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">☆</span>
+                    </div>
+                </div>
+                <div class="table-cell">
+                    <div class="rating">
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                        <span class="star">★</span>
+                    </div>
+                </div>
+                <div class="table-cell">High</div>
+            </div>
+        </div>
+    </div>
+</div>

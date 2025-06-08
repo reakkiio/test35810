@@ -5,8 +5,8 @@ import json
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, get_system_prompt, count_tokens  # Import count_tokens
 )
@@ -315,6 +315,12 @@ class YEPCHAT(OpenAICompatibleProvider):
             "Sec-CH-UA-Mobile": "?0",
             "Sec-CH-UA-Platform": f'"{fingerprint["platform"]}"',
             "User-Agent": fingerprint["user_agent"],
+            "x-forwarded-for": fingerprint["x-forwarded-for"],
+            "x-real-ip": fingerprint["x-real-ip"],
+            "x-client-ip": fingerprint["x-client-ip"],
+            "forwarded": fingerprint["forwarded"],
+            "x-forwarded-proto": "https",
+            "x-request-id": fingerprint["x-request-id"],
         }
         self.session.headers.update(self.headers)
 

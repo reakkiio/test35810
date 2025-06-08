@@ -16,20 +16,7 @@ from webscout.Provider.OPENAI.utils import (
 try:
     from webscout.litagent import LitAgent
 except ImportError:
-    # Define a dummy LitAgent if webscout is not installed or accessible
-    class LitAgent:
-        def generate_fingerprint(self, browser: str = "chrome") -> Dict[str, Any]:
-            # Return minimal default headers if LitAgent is unavailable
-            print("Warning: LitAgent not found. Using default minimal headers.")
-            return {
-                "accept": "*/*",
-                "accept_language": "en-US,en;q=0.9",
-                "platform": "Windows",
-                "sec_ch_ua": '"Not/A)Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-                "browser_type": browser,
-            }
-
+    pass
 # --- SciraChat Client ---
 
 class Completions(BaseCompletions):
@@ -387,19 +374,9 @@ class SciraChat(OpenAICompatibleProvider):
         
         # Use the fingerprint for headers
         self.headers = {
-            "Accept": self.fingerprint["accept"],
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": self.fingerprint["accept_language"],
-            "Content-Type": "application/json",
+            **self.fingerprint,
             "Origin": "https://scira.ai",
             "Referer": "https://scira.ai/",
-            "Sec-CH-UA": self.fingerprint["sec_ch_ua"] or '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
-            "Sec-CH-UA-Mobile": "?0",
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "User-Agent": self.fingerprint["user_agent"],
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin"
         }
         
         self.session.headers.update(self.headers)
@@ -423,11 +400,7 @@ class SciraChat(OpenAICompatibleProvider):
         
         # Update headers with new fingerprint
         self.headers.update({
-            "Accept": self.fingerprint["accept"],
-            "Accept-Language": self.fingerprint["accept_language"],
-            "Sec-CH-UA": self.fingerprint["sec_ch_ua"] or self.headers["Sec-CH-UA"],
-            "Sec-CH-UA-Platform": f'"{self.fingerprint["platform"]}"',
-            "User-Agent": self.fingerprint["user_agent"],
+            **self.fingerprint,
         })
         
         # Update session headers

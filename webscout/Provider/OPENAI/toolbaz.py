@@ -337,18 +337,11 @@ class Toolbaz(OpenAICompatibleProvider):
         
         # Set up headers
         self.session.headers.update({
-            "user-agent": LitAgent().generate_fingerprint(browser=browser)["user_agent"],
-            "accept": "*/*",
-            "accept-language": "en-US",
-            "cache-control": "no-cache",
-            "connection": "keep-alive",
-            "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "origin": "https://toolbaz.com",
+            **LitAgent().generate_fingerprint(browser=browser),
             "pragma": "no-cache",
             "referer": "https://toolbaz.com/",
-            "sec-fetch-mode": "cors"
         })
-        
+
         # Initialize chat property
         self.chat = Chat(self)
 

@@ -862,35 +862,39 @@ This repository is licensed under the same terms as the original model.
             # Check if repository already exists
             try:
                 api.repo_info(repo_id=repo_id)
-                console.print(f"[green]Repository {repo_id} already exists")
+                console.print(f"[green]✓ Repository {repo_id} already exists")
                 return
             except Exception:
                 # Repository doesn't exist, create it
                 pass
 
-            console.print(f"[yellow]Creating repository: {repo_id}")
+            console.print(f"[bold green]Creating new repository: {repo_id}")
             api.create_repo(
                 repo_id=repo_id,
                 exist_ok=True,
                 private=False,
                 repo_type="model"
             )
-            console.print(f"[green]Repository {repo_id} created successfully!")
+            console.print(f"[green]✓ Successfully created repository: {repo_id}")
+            console.print(f"[cyan]Repository URL: https://huggingface.co/{repo_id}")
         except Exception as e:
+            console.print(f"[red]✗ Failed to create repository: {e}")
             raise ConversionError(f"Error creating repository {repo_id}: {e}")
 
     def upload_readme(self, readme_content: str, repo_id: str) -> None:
         """Upload README.md to Hugging Face Hub."""
         api = HfApi(token=self.token)
+        console.print("[bold green]Uploading README.md with model documentation")
         try:
             api.upload_file(
                 path_or_fileobj=readme_content.encode(),
                 path_in_repo="README.md",
                 repo_id=repo_id,
             )
-            console.print("[green]README.md uploaded successfully!")
+            console.print("[green]✓ Successfully uploaded: README.md")
         except Exception as e:
-            console.print(f"[yellow]Warning: Failed to upload README.md: {e}")
+            console.print(f"[red]✗ Failed to upload README.md: {e}")
+            raise ConversionError(f"Error uploading README.md: {e}")
 
     def convert(self) -> None:
         """Performs the model conversion process."""
@@ -1010,12 +1014,27 @@ This repository is licensed under the same terms as the original model.
             quantized_files = [f"{self.model_name}.fp16.gguf"]
             if self.username and self.token:
                 repo_id = f"{self.username}/{self.model_name}-GGUF"
+
+                # Step 1: Create repository
                 self.create_repository(repo_id)
-                api.upload_file(
-                    path_or_fileobj=fp16,
-                    path_in_repo=f"{self.model_name}.fp16.gguf",
-                    repo_id=repo_id
-                )
+
+                # Step 2: Upload README first
+                readme_content = self.generate_readme(quantized_files)
+                self.upload_readme(readme_content, repo_id)
+
+                # Step 3: Upload model GGUF file
+                file_name = f"{self.model_name}.fp16.gguf"
+                console.print(f"[bold green]Uploading model file: {file_name}")
+                try:
+                    api.upload_file(
+                        path_or_fileobj=fp16,
+                        path_in_repo=file_name,
+                        repo_id=repo_id
+                    )
+                    console.print(f"[green]✓ Successfully uploaded: {file_name}")
+                except Exception as e:
+                    console.print(f"[red]✗ Failed to upload {file_name}: {e}")
+                    raise ConversionError(f"Error uploading model file: {e}")
             return
             
         # Generate importance matrix if needed
@@ -1068,17 +1087,26 @@ This repository is licensed under the same terms as the original model.
             quantized_files.append(f"{quantized_name}.gguf")
             console.print(f"[green]Successfully quantized with {method}: {quantized_name}.gguf")
         
-        # Create repository and upload files if credentials provided
+        # Upload to Hugging Face if credentials provided
         if self.username and self.token:
             repo_id = f"{self.username}/{self.model_name}-GGUF"
+
+            # Step 1: Create repository
+            console.print(f"[bold blue]Step 1: Creating repository {repo_id}")
             self.create_repository(repo_id)
 
-            # Split model if requested
+            # Step 2: Generate and upload README first
+            console.print("[bold blue]Step 2: Uploading README.md")
+            readme_content = self.generate_readme(quantized_files)
+            self.upload_readme(readme_content, repo_id)
+
+            # Step 3: Upload model GGUF files
+            console.print("[bold blue]Step 3: Uploading model files")
             if self.split_model:
                 split_files = self.split_model(quantized_path, outdir)
                 self.upload_split_files(split_files, outdir, repo_id)
             else:
-                # Upload single file
+                # Upload single quantized file
                 file_name = f"{self.model_name.lower()}-{self.quantization_methods[0].lower()}.gguf"
                 console.print(f"[bold green]Uploading quantized model: {file_name}")
                 try:
@@ -1092,8 +1120,9 @@ This repository is licensed under the same terms as the original model.
                     console.print(f"[red]✗ Failed to upload {file_name}: {e}")
                     raise ConversionError(f"Error uploading quantized model: {e}")
 
-            # Upload imatrix if generated
+            # Step 4: Upload imatrix if generated (optional)
             if imatrix_path:
+                console.print("[bold blue]Step 4: Uploading importance matrix")
                 console.print("[bold green]Uploading importance matrix: imatrix.dat")
                 try:
                     api.upload_file(
@@ -1105,9 +1134,9 @@ This repository is licensed under the same terms as the original model.
                 except Exception as e:
                     console.print(f"[yellow]Warning: Failed to upload imatrix.dat: {e}")
 
-            # Generate and upload README
-            readme_content = self.generate_readme(quantized_files)
-            self.upload_readme(readme_content, repo_id)
+            # Final success message
+            console.print(f"[bold green]🎉 All files uploaded successfully to {repo_id}!")
+            console.print(f"[cyan]Repository URL: https://huggingface.co/{repo_id}")
 
 # Initialize CLI with HAI vibes
 app = CLI(

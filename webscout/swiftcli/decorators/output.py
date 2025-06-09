@@ -5,15 +5,61 @@ from typing import Any, Callable, List, Optional, Union
 
 from rich.console import Console
 from rich.table import Table
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-    TimeRemainingColumn
-)
 from rich.panel import Panel
+
+# Handle different versions of rich
+try:
+    from rich.progress import (
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        BarColumn,
+        TaskProgressColumn,
+        TimeRemainingColumn
+    )
+except ImportError:
+    # Fallback for older versions of rich
+    try:
+        from rich.progress import (
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+            BarColumn,
+            TimeRemainingColumn
+        )
+        # Create a simple TaskProgressColumn replacement for older versions
+        class TaskProgressColumn:
+            def __init__(self):
+                pass
+
+            def __call__(self, task):
+                return f"{task.percentage:.1f}%"
+
+    except ImportError:
+        # If rich is too old, create minimal fallbacks
+        class Progress:
+            def __init__(self, *args, **kwargs):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def add_task(self, description, total=None):
+                return 0
+            def update(self, task_id, **kwargs):
+                pass
+
+        class SpinnerColumn:
+            pass
+        class TextColumn:
+            def __init__(self, text):
+                pass
+        class BarColumn:
+            pass
+        class TaskProgressColumn:
+            pass
+        class TimeRemainingColumn:
+            pass
 
 console = Console()
 
@@ -111,7 +157,11 @@ def progress(
             if show_bar:
                 columns.append(BarColumn())
             if show_percentage:
-                columns.append(TaskProgressColumn())
+                try:
+                    columns.append(TaskProgressColumn())
+                except:
+                    # Fallback for older rich versions
+                    columns.append(TextColumn("[progress.percentage]{task.percentage:>3.0f}%"))
             if show_time:
                 columns.append(TimeRemainingColumn())
             

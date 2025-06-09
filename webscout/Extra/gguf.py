@@ -26,7 +26,7 @@ from webscout.zeroart import figlet_format
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from ..swiftcli import CLI, option
+from webscout.swiftcli import CLI, option
 
 console = Console()
 
@@ -131,147 +131,347 @@ class ModelConverter:
                 
     @staticmethod
     def check_dependencies() -> Dict[str, bool]:
-        """Check if all required dependencies are installed."""
+        """Check if all required dependencies are installed with cross-platform support."""
+        system = platform.system()
+
         dependencies: Dict[str, str] = {
             'git': 'Git version control',
-            'pip3': 'Python package installer',
-            'huggingface-cli': 'Hugging Face CLI',
             'cmake': 'CMake build system',
             'ninja': 'Ninja build system (optional)'
         }
-        
+
+        # Add platform-specific dependencies
+        if system != 'Windows':
+            dependencies['pip3'] = 'Python package installer'
+        else:
+            dependencies['pip'] = 'Python package installer'
+
         status: Dict[str, bool] = {}
+
         for cmd, desc in dependencies.items():
-            status[cmd] = subprocess.run(['which', cmd], capture_output=True, text=True).returncode == 0
-            
+            try:
+                if system == 'Windows':
+                    # Use 'where' command on Windows
+                    result = subprocess.run(['where', cmd], capture_output=True, text=True)
+                    status[cmd] = result.returncode == 0
+                else:
+                    # Use 'which' command on Unix-like systems
+                    result = subprocess.run(['which', cmd], capture_output=True, text=True)
+                    status[cmd] = result.returncode == 0
+            except (FileNotFoundError, subprocess.SubprocessError):
+                status[cmd] = False
+
+        # Special check for Python - try different variants
+        python_variants = ['python3', 'python', 'py'] if system != 'Windows' else ['python', 'py', 'python3']
+        status['python'] = False
+        for variant in python_variants:
+            try:
+                if system == 'Windows':
+                    result = subprocess.run(['where', variant], capture_output=True)
+                else:
+                    result = subprocess.run(['which', variant], capture_output=True)
+                if result.returncode == 0:
+                    status['python'] = True
+                    break
+            except:
+                continue
+
+        # Check for C++ compiler
+        cpp_compilers = ['cl', 'g++', 'clang++'] if system == 'Windows' else ['g++', 'clang++']
+        status['cpp_compiler'] = False
+        for compiler in cpp_compilers:
+            try:
+                if system == 'Windows':
+                    result = subprocess.run(['where', compiler], capture_output=True)
+                else:
+                    result = subprocess.run(['which', compiler], capture_output=True)
+                if result.returncode == 0:
+                    status['cpp_compiler'] = True
+                    break
+            except:
+                continue
+
+        dependencies['python'] = 'Python interpreter'
+        dependencies['cpp_compiler'] = 'C++ compiler (g++, clang++, or MSVC)'
+
         return status
     
     def detect_hardware(self) -> Dict[str, bool]:
-        """Detect available hardware acceleration."""
+        """Detect available hardware acceleration with improved cross-platform support."""
         hardware: Dict[str, bool] = {
             'cuda': False,
             'metal': False,
             'opencl': False,
             'vulkan': False,
-            'rocm': False
+            'rocm': False,
+            'blas': False,
+            'accelerate': False
         }
-        
+
+        system = platform.system()
+
         # Check CUDA
         try:
-            if subprocess.run(['nvcc', '--version'], capture_output=True).returncode == 0:
+            # Check for nvcc compiler
+            if subprocess.run(['nvcc', '--version'], capture_output=True, shell=(system == 'Windows')).returncode == 0:
                 hardware['cuda'] = True
-        except FileNotFoundError:
-            pass
-            
+            # Also check for nvidia-smi as fallback
+            elif subprocess.run(['nvidia-smi'], capture_output=True, shell=(system == 'Windows')).returncode == 0:
+                hardware['cuda'] = True
+        except (FileNotFoundError, subprocess.SubprocessError):
+            # Check for CUDA libraries on Windows
+            if system == 'Windows':
+                cuda_paths = [
+                    os.environ.get('CUDA_PATH'),
+                    'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA',
+                    'C:\\Program Files (x86)\\NVIDIA GPU Computing Toolkit\\CUDA'
+                ]
+                for cuda_path in cuda_paths:
+                    if cuda_path and os.path.exists(cuda_path):
+                        hardware['cuda'] = True
+                        break
+
         # Check Metal (macOS)
-        if platform.system() == 'Darwin':
+        if system == 'Darwin':
             try:
+                # Check for Xcode command line tools
                 if subprocess.run(['xcrun', '--show-sdk-path'], capture_output=True).returncode == 0:
                     hardware['metal'] = True
-            except FileNotFoundError:
+                # Check for Metal framework
+                if os.path.exists('/System/Library/Frameworks/Metal.framework'):
+                    hardware['metal'] = True
+                # macOS also supports Accelerate framework
+                if os.path.exists('/System/Library/Frameworks/Accelerate.framework'):
+                    hardware['accelerate'] = True
+            except (FileNotFoundError, subprocess.SubprocessError):
                 pass
-                
+
         # Check OpenCL
         try:
-            if subprocess.run(['clinfo'], capture_output=True).returncode == 0:
-                hardware['opencl'] = True
-        except FileNotFoundError:
+            if system == 'Windows':
+                # Check for OpenCL on Windows
+                opencl_paths = [
+                    'C:\\Windows\\System32\\OpenCL.dll',
+                    'C:\\Windows\\SysWOW64\\OpenCL.dll'
+                ]
+                if any(os.path.exists(path) for path in opencl_paths):
+                    hardware['opencl'] = True
+            else:
+                if subprocess.run(['clinfo'], capture_output=True).returncode == 0:
+                    hardware['opencl'] = True
+        except (FileNotFoundError, subprocess.SubprocessError):
             pass
-            
+
         # Check Vulkan
         try:
-            if subprocess.run(['vulkaninfo'], capture_output=True).returncode == 0:
-                hardware['vulkan'] = True
-        except FileNotFoundError:
+            if system == 'Windows':
+                # Check for Vulkan on Windows
+                vulkan_paths = [
+                    'C:\\Windows\\System32\\vulkan-1.dll',
+                    'C:\\Windows\\SysWOW64\\vulkan-1.dll'
+                ]
+                if any(os.path.exists(path) for path in vulkan_paths):
+                    hardware['vulkan'] = True
+            else:
+                if subprocess.run(['vulkaninfo'], capture_output=True).returncode == 0:
+                    hardware['vulkan'] = True
+        except (FileNotFoundError, subprocess.SubprocessError):
             pass
-            
-        # Check ROCm
+
+        # Check ROCm (AMD)
         try:
-            if subprocess.run(['rocm-smi'], capture_output=True).returncode == 0:
+            if subprocess.run(['rocm-smi'], capture_output=True, shell=(system == 'Windows')).returncode == 0:
                 hardware['rocm'] = True
-        except FileNotFoundError:
+            elif system == 'Linux':
+                # Check for ROCm installation
+                rocm_paths = ['/opt/rocm', '/usr/lib/x86_64-linux-gnu/librocm-smi64.so']
+                if any(os.path.exists(path) for path in rocm_paths):
+                    hardware['rocm'] = True
+        except (FileNotFoundError, subprocess.SubprocessError):
             pass
-            
+
+        # Check for BLAS libraries
+        try:
+            import numpy as np
+            # Check if numpy is linked with optimized BLAS
+            config = np.__config__.show()
+            if any(lib in str(config).lower() for lib in ['openblas', 'mkl', 'atlas', 'blis']):
+                hardware['blas'] = True
+        except (ImportError, AttributeError):
+            # Fallback: check for common BLAS libraries
+            if system == 'Linux':
+                blas_libs = ['/usr/lib/x86_64-linux-gnu/libopenblas.so', '/usr/lib/x86_64-linux-gnu/libblas.so']
+                if any(os.path.exists(lib) for lib in blas_libs):
+                    hardware['blas'] = True
+            elif system == 'Windows':
+                # Check for Intel MKL or OpenBLAS on Windows
+                mkl_paths = ['C:\\Program Files (x86)\\Intel\\oneAPI\\mkl']
+                if any(os.path.exists(path) for path in mkl_paths):
+                    hardware['blas'] = True
+
         return hardware
     
     def setup_llama_cpp(self) -> None:
-        """Sets up and builds llama.cpp repository."""
+        """Sets up and builds llama.cpp repository with robust error handling."""
         llama_path = self.workspace / "llama.cpp"
-        
+        system = platform.system()
+
         with console.status("[bold green]Setting up llama.cpp...") as status:
             # Clone llama.cpp if not exists
             if not llama_path.exists():
-                subprocess.run(['git', 'clone', 'https://github.com/ggerganov/llama.cpp'], check=True)
-            
-            os.chdir(llama_path)
-            
-            # Check if we're in a Nix environment
-            is_nix = platform.system() == "Linux" and os.path.exists("/nix/store")
-            
-            if is_nix:
-                console.print("[yellow]Detected Nix environment. Using system Python packages...")
-                # In Nix, we need to use the system Python packages
                 try:
-                    # Try to import required packages to check if they're available
-                    import torch # type: ignore
-                    import numpy # type: ignore 
-                    import sentencepiece # type: ignore
-                    import transformers # type: ignore
-                    console.print("[green]Required Python packages are already installed.")
-                except ImportError as e:
-                    console.print("[red]Missing required Python packages in Nix environment.")
-                    console.print("[yellow]Please install them using:")
-                    console.print("nix-shell -p python3Packages.torch python3Packages.numpy python3Packages.sentencepiece python3Packages.transformers")
-                    raise ConversionError("Missing required Python packages in Nix environment")
-            else:
-                # In non-Nix environments, install requirements
-                try:
-                    subprocess.run(['pip3', 'install', '-r', 'requirements.txt'], check=True)
+                    subprocess.run(['git', 'clone', 'https://github.com/ggerganov/llama.cpp'], check=True)
                 except subprocess.CalledProcessError as e:
-                    if "externally-managed-environment" in str(e):
-                        console.print("[yellow]Detected externally managed Python environment.")
-                        console.print("[yellow]Please install the required packages manually:")
-                        console.print("pip install torch numpy sentencepiece transformers")
-                        raise ConversionError("Failed to install requirements in externally managed environment")
-                    raise
-            
-            # Detect available hardware
-            hardware = self.detect_hardware()
-            console.print("[bold green]Detected hardware acceleration:")
-            for hw, available in hardware.items():
-                console.print(f"  {'✓' if available else '✗'} {hw.upper()}")
-            
-            # Configure CMake build
-            cmake_args: List[str] = ['cmake', '-B', 'build']
-            
-            # Add hardware acceleration options
-            if hardware['cuda']:
-                cmake_args.extend(['-DLLAMA_CUBLAS=ON'])
-            if hardware['metal']:
-                cmake_args.extend(['-DLLAMA_METAL=ON'])
-            if hardware['opencl']:
-                cmake_args.extend(['-DLLAMA_CLBLAST=ON'])
-            if hardware['vulkan']:
-                cmake_args.extend(['-DLLAMA_VULKAN=ON'])
-            if hardware['rocm']:
-                cmake_args.extend(['-DLLAMA_HIPBLAS=ON'])
-                
-            # Use Ninja if available
-            if subprocess.run(['which', 'ninja'], capture_output=True).returncode == 0:
-                cmake_args.extend(['-G', 'Ninja'])
-                
-            # Configure the build
-            subprocess.run(cmake_args, check=True)
-            
-            # Build the project
-            if any(hardware.values()):
-                status.update("[bold green]Building with hardware acceleration...")
-            else:
-                status.update("[bold yellow]Building for CPU only...")
-                
-            subprocess.run(['cmake', '--build', 'build', '-j', str(os.cpu_count() or 1)], check=True)
-            
-            os.chdir(self.workspace)
+                    raise ConversionError(f"Failed to clone llama.cpp repository: {e}")
+
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(llama_path)
+
+                # Update to latest version
+                try:
+                    subprocess.run(['git', 'pull'], capture_output=True, check=False)
+                except subprocess.CalledProcessError:
+                    console.print("[yellow]Warning: Could not update llama.cpp repository")
+
+                # Check if we're in a Nix environment
+                is_nix = system == "Linux" and os.path.exists("/nix/store")
+
+                if is_nix:
+                    console.print("[yellow]Detected Nix environment. Using system Python packages...")
+                    # In Nix, we need to use the system Python packages
+                    try:
+                        # Try to import required packages to check if they're available
+                        import torch # type: ignore
+                        import numpy # type: ignore
+                        import sentencepiece # type: ignore
+                        import transformers # type: ignore
+                        console.print("[green]Required Python packages are already installed.")
+                    except ImportError as e:
+                        console.print("[red]Missing required Python packages in Nix environment.")
+                        console.print("[yellow]Please install them using:")
+                        console.print("nix-shell -p python3Packages.torch python3Packages.numpy python3Packages.sentencepiece python3Packages.transformers")
+                        raise ConversionError("Missing required Python packages in Nix environment")
+                else:
+                    # In non-Nix environments, install requirements if they exist
+                    if os.path.exists('requirements.txt'):
+                        try:
+                            pip_cmd = 'pip' if system == 'Windows' else 'pip3'
+                            subprocess.run([pip_cmd, 'install', '-r', 'requirements.txt'], check=True)
+                        except subprocess.CalledProcessError as e:
+                            if "externally-managed-environment" in str(e):
+                                console.print("[yellow]Detected externally managed Python environment.")
+                                console.print("[yellow]Please install the required packages manually:")
+                                console.print("pip install torch numpy sentencepiece transformers")
+                                raise ConversionError("Failed to install requirements in externally managed environment")
+                            else:
+                                console.print(f"[yellow]Warning: Failed to install requirements: {e}")
+
+                # Detect available hardware
+                hardware = self.detect_hardware()
+                console.print("[bold green]Detected hardware acceleration:")
+                for hw, available in hardware.items():
+                    console.print(f"  {'✓' if available else '✗'} {hw.upper()}")
+
+                # Configure CMake build with robust options
+                cmake_args: List[str] = ['cmake', '-B', 'build']
+
+                # Add basic CMake options
+                cmake_args.extend([
+                    '-DCMAKE_BUILD_TYPE=Release',
+                    '-DLLAMA_BUILD_TESTS=OFF',
+                    '-DLLAMA_BUILD_EXAMPLES=ON',
+                    '-DLLAMA_BUILD_SERVER=OFF'
+                ])
+
+                # Add hardware acceleration options with updated flags
+                if hardware['cuda']:
+                    cmake_args.extend(['-DLLAMA_CUDA=ON'])
+                    console.print("[green]Enabling CUDA acceleration")
+                elif hardware['metal']:
+                    cmake_args.extend(['-DLLAMA_METAL=ON'])
+                    console.print("[green]Enabling Metal acceleration")
+                elif hardware['opencl']:
+                    cmake_args.extend(['-DLLAMA_CLBLAST=ON'])
+                    console.print("[green]Enabling OpenCL acceleration")
+                elif hardware['vulkan']:
+                    cmake_args.extend(['-DLLAMA_VULKAN=ON'])
+                    console.print("[green]Enabling Vulkan acceleration")
+                elif hardware['rocm']:
+                    cmake_args.extend(['-DLLAMA_HIPBLAS=ON'])
+                    console.print("[green]Enabling ROCm acceleration")
+                elif hardware['blas']:
+                    cmake_args.extend(['-DLLAMA_BLAS=ON'])
+                    console.print("[green]Enabling BLAS acceleration")
+                elif hardware['accelerate']:
+                    cmake_args.extend(['-DLLAMA_ACCELERATE=ON'])
+                    console.print("[green]Enabling Accelerate framework")
+                else:
+                    console.print("[yellow]No hardware acceleration available, using CPU only")
+
+                # Platform-specific optimizations
+                if system == 'Windows':
+                    # Use Visual Studio generator on Windows if available
+                    try:
+                        vs_result = subprocess.run(['where', 'msbuild'], capture_output=True)
+                        if vs_result.returncode == 0:
+                            cmake_args.extend(['-G', 'Visual Studio 17 2022'])
+                        else:
+                            cmake_args.extend(['-G', 'MinGW Makefiles'])
+                    except:
+                        cmake_args.extend(['-G', 'MinGW Makefiles'])
+                else:
+                    # Use Ninja if available on Unix systems
+                    try:
+                        ninja_cmd = 'ninja' if system != 'Windows' else 'ninja.exe'
+                        if subprocess.run(['which', ninja_cmd], capture_output=True).returncode == 0:
+                            cmake_args.extend(['-G', 'Ninja'])
+                    except:
+                        pass  # Fall back to default generator
+
+                # Configure the build with error handling
+                status.update("[bold green]Configuring CMake build...")
+                try:
+                    result = subprocess.run(cmake_args, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        console.print(f"[red]CMake configuration failed: {result.stderr}")
+                        # Try fallback configuration without hardware acceleration
+                        console.print("[yellow]Attempting fallback configuration...")
+                        fallback_args = ['cmake', '-B', 'build', '-DCMAKE_BUILD_TYPE=Release']
+                        result = subprocess.run(fallback_args, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            raise ConversionError(f"CMake configuration failed: {result.stderr}")
+                except subprocess.CalledProcessError as e:
+                    raise ConversionError(f"CMake configuration failed: {e}")
+
+                # Build the project
+                status.update("[bold green]Building llama.cpp...")
+                build_cmd = ['cmake', '--build', 'build', '--config', 'Release']
+
+                # Add parallel build option
+                cpu_count = os.cpu_count() or 1
+                if system == 'Windows':
+                    build_cmd.extend(['--parallel', str(cpu_count)])
+                else:
+                    build_cmd.extend(['-j', str(cpu_count)])
+
+                try:
+                    result = subprocess.run(build_cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        console.print(f"[red]Build failed: {result.stderr}")
+                        # Try single-threaded build as fallback
+                        console.print("[yellow]Attempting single-threaded build...")
+                        fallback_build = ['cmake', '--build', 'build', '--config', 'Release']
+                        result = subprocess.run(fallback_build, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            raise ConversionError(f"Build failed: {result.stderr}")
+                except subprocess.CalledProcessError as e:
+                    raise ConversionError(f"Build failed: {e}")
+
+                console.print("[green]llama.cpp built successfully!")
+
+            finally:
+                os.chdir(original_cwd)
     
     def display_config(self) -> None:
         """Displays the current configuration in a formatted table."""
@@ -290,10 +490,40 @@ class ModelConverter:
         
         console.print(Panel(table))
     
+    def get_binary_path(self, binary_name: str) -> str:
+        """Get the correct path to llama.cpp binaries based on platform."""
+        system = platform.system()
+
+        # Possible binary locations
+        possible_paths = [
+            f"./llama.cpp/build/bin/{binary_name}",  # Standard build location
+            f"./llama.cpp/build/{binary_name}",      # Alternative build location
+            f"./llama.cpp/{binary_name}",            # Root directory
+            f"./llama.cpp/build/Release/{binary_name}",  # Windows Release build
+            f"./llama.cpp/build/Debug/{binary_name}",    # Windows Debug build
+        ]
+
+        # Add .exe extension on Windows
+        if system == 'Windows':
+            possible_paths = [path + '.exe' for path in possible_paths]
+
+        # Find the first existing binary
+        for path in possible_paths:
+            if os.path.isfile(path):
+                return path
+
+        # If not found, return the most likely path and let it fail with a clear error
+        default_path = f"./llama.cpp/build/bin/{binary_name}"
+        if system == 'Windows':
+            default_path += '.exe'
+        return default_path
+
     def generate_importance_matrix(self, model_path: str, train_data_path: str, output_path: str) -> None:
-        """Generates importance matrix for quantization."""
+        """Generates importance matrix for quantization with improved error handling."""
+        imatrix_binary = self.get_binary_path("llama-imatrix")
+
         imatrix_command: List[str] = [
-            "./llama.cpp/build/bin/llama-imatrix",
+            imatrix_binary,
             "-m", model_path,
             "-f", train_data_path,
             "-ngl", "99",
@@ -304,32 +534,52 @@ class ModelConverter:
         if not os.path.isfile(model_path):
             raise ConversionError(f"Model file not found: {model_path}")
 
+        if not os.path.isfile(train_data_path):
+            raise ConversionError(f"Training data file not found: {train_data_path}")
+
+        if not os.path.isfile(imatrix_binary):
+            raise ConversionError(f"llama-imatrix binary not found at: {imatrix_binary}")
+
         console.print("[bold green]Generating importance matrix...")
-        process = subprocess.Popen(imatrix_command, shell=False)
+        console.print(f"[cyan]Command: {' '.join(imatrix_command)}")
 
         try:
-            process.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            console.print("[yellow]Imatrix computation timed out. Sending SIGINT...")
-            process.send_signal(signal.SIGINT)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                console.print("[red]Imatrix process still running. Force terminating...")
-                process.kill()
+            process = subprocess.Popen(
+                imatrix_command,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
 
-        if process.returncode != 0:
-            raise ConversionError("Failed to generate importance matrix")
+            try:
+                stdout, stderr = process.communicate(timeout=300)  # 5 minute timeout
+                if process.returncode != 0:
+                    raise ConversionError(f"Failed to generate importance matrix: {stderr}")
+            except subprocess.TimeoutExpired:
+                console.print("[yellow]Imatrix computation timed out. Sending SIGINT...")
+                process.send_signal(signal.SIGINT)
+                try:
+                    stdout, stderr = process.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    console.print("[red]Imatrix process still running. Force terminating...")
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                raise ConversionError(f"Imatrix generation timed out: {stderr}")
+        except FileNotFoundError:
+            raise ConversionError(f"Could not execute llama-imatrix binary: {imatrix_binary}")
 
         console.print("[green]Importance matrix generation completed.")
     
     def split_model(self, model_path: str, outdir: str) -> List[str]:
-        """Splits the model into smaller chunks."""
+        """Splits the model into smaller chunks with improved error handling."""
+        split_binary = self.get_binary_path("llama-gguf-split")
+
         split_cmd: List[str] = [
-            "./llama.cpp/build/bin/llama-gguf-split",
+            split_binary,
             "--split",
         ]
-        
+
         if self.split_max_size:
             split_cmd.extend(["--split-max-size", self.split_max_size])
         else:
@@ -338,23 +588,36 @@ class ModelConverter:
         model_path_prefix = '.'.join(model_path.split('.')[:-1])
         split_cmd.extend([model_path, model_path_prefix])
 
+        if not os.path.isfile(model_path):
+            raise ConversionError(f"Model file not found: {model_path}")
+
+        if not os.path.isfile(split_binary):
+            raise ConversionError(f"llama-gguf-split binary not found at: {split_binary}")
+
         console.print(f"[bold green]Splitting model with command: {' '.join(split_cmd)}")
-        
-        result = subprocess.run(split_cmd, shell=False, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise ConversionError(f"Error splitting model: {result.stderr}")
-            
+
+        try:
+            result = subprocess.run(split_cmd, shell=False, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                raise ConversionError(f"Error splitting model: {result.stderr}")
+        except FileNotFoundError:
+            raise ConversionError(f"Could not execute llama-gguf-split binary: {split_binary}")
+
         console.print("[green]Model split successfully!")
-        
+
         # Get list of split files
-        model_file_prefix = model_path_prefix.split('/')[-1]
-        split_files = [f for f in os.listdir(outdir) 
-                      if f.startswith(model_file_prefix) and f.endswith(".gguf")]
-        
+        model_file_prefix = os.path.basename(model_path_prefix)
+        try:
+            split_files = [f for f in os.listdir(outdir)
+                          if f.startswith(model_file_prefix) and f.endswith(".gguf")]
+        except OSError as e:
+            raise ConversionError(f"Error reading output directory: {e}")
+
         if not split_files:
-            raise ConversionError("No split files found")
-            
+            raise ConversionError(f"No split files found in {outdir} with prefix {model_file_prefix}")
+
+        console.print(f"[green]Found {len(split_files)} split files: {', '.join(split_files)}")
         return split_files
     
     def upload_split_files(self, split_files: List[str], outdir: str, repo_id: str) -> None:
@@ -527,15 +790,47 @@ This repository is licensed under the same terms as the original model.
         
         # Convert to fp16
         console.print("[bold green]Converting to fp16...")
-        result = subprocess.run([
-            "python", "llama.cpp/convert_hf_to_gguf.py",
+
+        # Find the conversion script
+        conversion_scripts = [
+            "llama.cpp/convert_hf_to_gguf.py",
+            "llama.cpp/convert-hf-to-gguf.py",
+            "llama.cpp/convert.py"
+        ]
+
+        conversion_script = None
+        for script in conversion_scripts:
+            if os.path.isfile(script):
+                conversion_script = script
+                break
+
+        if not conversion_script:
+            raise ConversionError("Could not find HuggingFace to GGUF conversion script")
+
+        # Use the appropriate Python executable
+        python_cmd = "python" if platform.system() == "Windows" else "python3"
+
+        convert_cmd = [
+            python_cmd, conversion_script,
             str(local_dir),
             "--outtype", "f16",
             "--outfile", fp16
-        ], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise ConversionError(f"Error converting to fp16: {result.stderr}")
+        ]
+
+        console.print(f"[cyan]Conversion command: {' '.join(convert_cmd)}")
+
+        try:
+            result = subprocess.run(convert_cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                raise ConversionError(f"Error converting to fp16: {result.stderr}")
+        except FileNotFoundError as e:
+            raise ConversionError(f"Could not execute conversion script: {e}")
+
+        if not os.path.isfile(fp16):
+            raise ConversionError(f"Conversion completed but output file not found: {fp16}")
+
+        console.print("[green]Model converted to fp16 successfully!")
             
         # If fp16_only is True, we're done after fp16 conversion
         if self.fp16_only:
@@ -558,29 +853,45 @@ This repository is licensed under the same terms as the original model.
         # Quantize model
         console.print("[bold green]Quantizing model...")
         quantized_files: List[str] = []
+        quantize_binary = self.get_binary_path("llama-quantize")
+
+        if not os.path.isfile(quantize_binary):
+            raise ConversionError(f"llama-quantize binary not found at: {quantize_binary}")
+
         for method in self.quantization_methods:
             quantized_name = f"{self.model_name.lower()}-{method.lower()}"
             if self.use_imatrix:
                 quantized_name += "-imat"
             quantized_path = str(Path(outdir)/f"{quantized_name}.gguf")
-            
-            if self.use_imatrix:
+
+            console.print(f"[cyan]Quantizing with method: {method}")
+
+            if self.use_imatrix and imatrix_path:
                 quantize_cmd: List[str] = [
-                    "./llama.cpp/build/bin/llama-quantize",
-                    "--imatrix", imatrix_path,
+                    quantize_binary,
+                    "--imatrix", str(imatrix_path),
                     fp16, quantized_path, method
                 ]
             else:
                 quantize_cmd = [
-                    "./llama.cpp/build/bin/llama-quantize",
+                    quantize_binary,
                     fp16, quantized_path, method
                 ]
-            
-            result = subprocess.run(quantize_cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise ConversionError(f"Error quantizing with {method}: {result.stderr}")
-            
+
+            console.print(f"[cyan]Quantization command: {' '.join(quantize_cmd)}")
+
+            try:
+                result = subprocess.run(quantize_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise ConversionError(f"Error quantizing with {method}: {result.stderr}")
+            except FileNotFoundError:
+                raise ConversionError(f"Could not execute llama-quantize binary: {quantize_binary}")
+
+            if not os.path.isfile(quantized_path):
+                raise ConversionError(f"Quantization completed but output file not found: {quantized_path}")
+
             quantized_files.append(f"{quantized_name}.gguf")
+            console.print(f"[green]Successfully quantized with {method}: {quantized_name}.gguf")
         
         # Split model if requested
         if self.split_model:

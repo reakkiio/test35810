@@ -223,9 +223,20 @@ class CLI:
         # Handle options
         if hasattr(func, '_options'):
             for opt in func._options:
-                name = opt['param_decls'][0].lstrip('-').replace('-', '_')
-                if name in parsed_args:
-                    value = parsed_args[name]
+                # Use the longest parameter name (usually the --long-form) for the parameter name
+                param_names = [p.lstrip('-').replace('-', '_') for p in opt['param_decls']]
+                name = max(param_names, key=len)  # Use the longest name
+
+                # Check all possible parameter names in parsed args
+                value = None
+                found = False
+                for param_name in param_names:
+                    if param_name in parsed_args:
+                        value = parsed_args[param_name]
+                        found = True
+                        break
+
+                if found:
                     if 'type' in opt:
                         value = convert_type(value, opt['type'], name)
                     if 'choices' in opt and opt['choices']:

@@ -43,3 +43,15 @@ from .PI import *  # Add PI.ai provider
 from .TogetherAI import *  # Add TogetherAI provider
 from .xenai import *  # Add XenAI provider
 from .GeminiProxy import *  # Add GeminiProxy provider
+
+# Export auto-proxy functionality
+from .autoproxy import (
+    get_auto_proxy,
+    get_proxy_dict,
+    get_working_proxy,
+    test_proxy,
+    get_proxy_stats,
+    refresh_proxy_cache,
+    set_proxy_cache_duration,
+    ProxyAutoMeta
+)

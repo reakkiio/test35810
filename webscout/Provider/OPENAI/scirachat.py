@@ -478,9 +478,15 @@ class SciraChat(OpenAICompatibleProvider):
 if __name__ == "__main__":
     ai = SciraChat()
     response = ai.chat.completions.create(
-        model="Grok3-mini (thinking)",
+        model="Gemini 2.5 Pro",
         messages=[
             {"role": "user", "content": "who is pm of india?"}
-        ]
+        ],
+        stream=True
     )
-    print(response.choices[0].message.content)
+    for chunk in response:
+        if hasattr(chunk, "choices") and chunk.choices and hasattr(chunk.choices[0], "delta"):
+            content = getattr(chunk.choices[0].delta, "content", None)
+            if content:
+                print(content, end="", flush=True)
+    print()

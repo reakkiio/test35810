@@ -1,9 +1,19 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union, Generator, Any, TypedDict, Callable
 import json
-import logging
 from dataclasses import dataclass
-logger = logging.getLogger(__name__)
+
+# Import WebScout Litlogger instead of standard logging
+from webscout.Litlogger import Logger, LogLevel
+
+logger = Logger(name="OpenAIBase", level=LogLevel.INFO)
+
+# Import the ProxyAutoMeta metaclass
+try:
+    from .autoproxy import ProxyAutoMeta
+except ImportError:
+    # Fallback if autoproxy is not available
+    ProxyAutoMeta = type
 
 
 # Import the utils for response structures
@@ -243,8 +253,7 @@ class BaseChat(ABC):
 #         instance.get_proxied_curl_async_session = get_proxied_curl_async_session
 
 #         return instance
-# class OPENAICompatibleMeta(ABC, metaclass=ProxyAutoMeta):
-class OpenAICompatibleProvider(ABC):
+class OpenAICompatibleProvider(ABC, metaclass=ProxyAutoMeta):
     """
     Abstract Base Class for providers mimicking the OpenAI Python client structure.
     Requires a nested 'chat.completions' structure with tool support.
@@ -267,13 +276,14 @@ class OpenAICompatibleProvider(ABC):
     supports_tool_choice: bool = False  # Whether the provider supports tool_choice
 
     @abstractmethod
-    def __init__(self, api_key: Optional[str] = None, tools: Optional[List[Tool]] = None, proxies: Optional[dict] = None, **kwargs: Any):
+    def __init__(self, api_key: Optional[str] = None, tools: Optional[List[Tool]] = None, proxies: Optional[dict] = None, disable_auto_proxy: bool = False, **kwargs: Any):
         self.available_tools = {}
         if tools:
             self.register_tools(tools)
         # self.proxies is set by ProxyAutoMeta
         # Subclasses should use self.proxies for all network requests
         # Optionally, use self.get_proxied_session() for a requests.Session with proxies
+        # The disable_auto_proxy parameter is handled by ProxyAutoMeta
         # raise NotImplementedError  # <-- Commented out for metaclass test
 
     @property

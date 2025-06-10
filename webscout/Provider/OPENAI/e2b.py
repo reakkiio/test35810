@@ -1609,6 +1609,5 @@ if __name__ == "__main__":
         print("\n--- End of Stream ---")
         if not full_stream_response:
              print(f"{RED}Stream test failed: No content received.{RESET}")
-
     except Exception as e:
         print(f"{RED}Streaming Test Failed: {e}{RESET}")

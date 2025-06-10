@@ -86,9 +86,11 @@ from .oivscode import oivscode
 from .XenAI import XenAI
 from .deepseek_assistant import DeepSeekAssistant
 from .GeminiProxy import GeminiProxy
+from .TogetherAI import TogetherAI
 __all__ = [
     'SCNet',
     'GeminiProxy',
+    'TogetherAI',
     'oivscode',
     'DeepSeekAssistant',
     'lmarena',

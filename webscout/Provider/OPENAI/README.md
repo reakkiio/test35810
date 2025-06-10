@@ -69,6 +69,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - PiAI
 - FalconH1
 - XenAI
+- GeminiProxy
 ---
 
 

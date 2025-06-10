@@ -1,15 +1,12 @@
 ##################################################################################
 ##  Modified version of code written by t.me/infip1217                          ##
 ##################################################################################
-import time
 import requests
 import pathlib
 import tempfile
-from io import BytesIO
 from webscout import exceptions
 from webscout.litagent import LitAgent
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from webscout.Provider.TTS import utils
+from webscout.Litlogger import Logger, LogLevel
 from webscout.Provider.TTS.base import BaseTTSProvider
 
 class SpeechMaTTS(BaseTTSProvider):
@@ -18,12 +15,11 @@ class SpeechMaTTS(BaseTTSProvider):
     """
     # Request headers
     headers = {
-        "accept": "*/*",
-        "accept-language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,en-AU;q=0.6",
-        "content-type": "application/json",
+        "authority": "speechma.com",
         "origin": "https://speechma.com",
-        "priority": "u=1, i",
-        "User-Agent": LitAgent().random()
+        "referer": "https://speechma.com/",
+        "content-type": "application/json",
+        **LitAgent().generate_fingerprint()
     }
 
     # Available voices with their IDs
@@ -496,8 +492,9 @@ class SpeechMaTTS(BaseTTSProvider):
         if proxies:
             self.session.proxies.update(proxies)
         self.timeout = timeout
+        self.logger = Logger(name="SpeechMaTTS", level=LogLevel.INFO)
 
-    def tts(self, text: str, voice: str = "Emma", pitch: int = 0, rate: int = 0) -> str:
+    def tts(self, text: str, voice: str = "Emma", pitch: int = 0, rate: int = 0, verbose: bool = False) -> str:
         """
         Converts text to speech using the SpeechMa API and saves it to a file.
 
@@ -506,6 +503,7 @@ class SpeechMaTTS(BaseTTSProvider):
             voice (str): The voice to use for TTS (default: "Emma")
             pitch (int): Voice pitch adjustment (-10 to 10, default: 0)
             rate (int): Voice rate/speed adjustment (-10 to 10, default: 0)
+            verbose (bool): Whether to print debug information (default: False)
 
         Returns:
             str: Path to the generated audio file
@@ -517,10 +515,13 @@ class SpeechMaTTS(BaseTTSProvider):
             voice in self.all_voices
         ), f"Voice '{voice}' not one of [{', '.join(self.all_voices.keys())}]"
 
+        if not text or text.strip() == '':
+            raise exceptions.FailedToGenerateResponseError("Text is empty")
+
         filename = pathlib.Path(tempfile.mktemp(suffix=".mp3", dir=self.temp_dir))
         voice_id = self.all_voices[voice]
 
-        # Prepare payload for the job-based API
+        # Prepare payload for the API
         payload = {
             "text": text,
             "voice": voice_id,
@@ -530,44 +531,49 @@ class SpeechMaTTS(BaseTTSProvider):
         }
 
         try:
+            # Set logger level based on verbose flag
+            if verbose:
+                self.logger.level = LogLevel.DEBUG
+                self.logger.debug(f"Generating audio for voice: {voice} ({voice_id})")
+                self.logger.debug(f"Text length: {len(text)} characters")
+            else:
+                self.logger.level = LogLevel.INFO
+
+            # Make the request to the SpeechMa API
             response = self.session.post(
                 self.api_url,
                 headers=self.headers,
                 json=payload,
                 timeout=self.timeout
             )
-            response.raise_for_status()
-            resp_json = response.json()
-            if not resp_json.get("success") or "data" not in resp_json or "job_id" not in resp_json["data"]:
-                raise exceptions.FailedToGenerateResponseError(f"SpeechMa API error: {resp_json}")
-            job_id = resp_json["data"]["job_id"]
 
-            # Poll for job completion
-            status_url = f"https://speechma.com/com.api/tts-api.php/status/{job_id}"
-            for _ in range(30):  # up to ~30 seconds
-                status_resp = self.session.get(
-                    status_url,
-                    headers=self.headers,
-                    timeout=self.timeout
-                )
-                status_resp.raise_for_status()
-                status_json = status_resp.json()
-                if status_json.get("success") and status_json.get("data", {}).get("status") == "completed":
-                    break
-                time.sleep(1)
+            if response.status_code != 200:
+                if verbose:
+                    self.logger.error(f"API error: Status {response.status_code}")
+                raise exceptions.FailedToGenerateResponseError(f"API returned status {response.status_code}: {response.text[:500]}")
+
+            # Check if response is audio data (content-type should be audio/mpeg)
+            content_type = response.headers.get('content-type', '').lower()
+            if verbose:
+                self.logger.debug(f"Response content type: {content_type}")
+                self.logger.debug(f"Response size: {len(response.content)} bytes")
+
+            if 'audio' in content_type or response.content.startswith(b'\xff\xfb') or response.content.startswith(b'ID3') or b'LAME' in response.content[:100]:
+                # This is audio data, save it directly
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+                if verbose:
+                    self.logger.debug(f"Audio saved to: {filename}")
+                return filename.as_posix()
             else:
-                raise exceptions.FailedToGenerateResponseError("TTS job did not complete in time.")
-
-            # Download the audio file (API provides a URL in the status response)
-            data = status_json["data"]
-            audio_url = f"https://speechma.com/com.api/tts-api.php/audio/{job_id}"
-            audio_resp = self.session.get(audio_url, timeout=self.timeout)
-            audio_resp.raise_for_status()
-            with open(filename, 'wb') as f:
-                f.write(audio_resp.content)
-            return filename.as_posix()
+                # Unexpected response format
+                if verbose:
+                    self.logger.error(f"Unexpected response format: {content_type}")
+                raise exceptions.FailedToGenerateResponseError(f"Unexpected response format. Content-Type: {content_type}, Content: {response.text[:200]}")
 
         except requests.exceptions.RequestException as e:
+            if verbose:
+                self.logger.error(f"Request failed: {e}")
             raise exceptions.FailedToGenerateResponseError(
                 f"Failed to perform the operation: {e}"
             )

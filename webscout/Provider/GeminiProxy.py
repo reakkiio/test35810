@@ -7,7 +7,7 @@ from webscout.AIutel import Conversation
 from webscout.AIbase import Provider
 from webscout import exceptions
 
-class GeminiProxyLegacy(Provider):
+class GeminiProxy(Provider):
     """
     GeminiProxy is a provider class for interacting with the Gemini API via a proxy endpoint.
     """
@@ -135,9 +135,6 @@ class GeminiProxyLegacy(Provider):
             return str(response)
 
 if __name__ == "__main__":
-    ai = GeminiProxyLegacy(timeout=30, model="gemini-2.5-flash-preview-05-20")
+    ai = GeminiProxy(timeout=30, model="gemini-2.5-flash-preview-05-20")
     response = ai.chat("write a poem about AI")
     print(response)
-
-# Keep the old class name for backward compatibility
-GeminiProxy = GeminiProxyLegacy

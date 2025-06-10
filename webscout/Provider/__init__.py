@@ -84,10 +84,13 @@ from .samurai import samurai
 from .lmarena import lmarena
 from .oivscode import oivscode
 from .XenAI import XenAI
-
+from .deepseek_assistant import DeepSeekAssistant
+from .GeminiProxy import GeminiProxy
 __all__ = [
     'SCNet',
+    'GeminiProxy',
     'oivscode',
+    'DeepSeekAssistant',
     'lmarena',
     'XenAI',
     'NEMOTRON',

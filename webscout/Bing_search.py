@@ -175,8 +175,7 @@ class BingSearch:
         url = self._first_page(keywords)['url']
         urls_to_fetch = [url]
         while len(fetched_results) < max_results and urls_to_fetch:
-            with self._executor as executor:
-                html_pages = list(executor.map(fetch_page, urls_to_fetch))
+            html_pages = list(self._executor.map(fetch_page, urls_to_fetch))
             urls_to_fetch = []
             for html in html_pages:
                 soup = BeautifulSoup(html, "html.parser")

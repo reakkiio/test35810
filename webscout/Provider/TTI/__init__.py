@@ -8,3 +8,4 @@ from .gpt1image import *
 from .imagen import *
 from .together import *
 from .bing import *
+from .infip import *

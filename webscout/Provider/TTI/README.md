@@ -14,14 +14,15 @@ These providers allow you to easily generate AI‑created art from text prompts 
 
 ## 📦 Supported Providers
 
-| Provider        | Available Models (examples)                        |
-|-----------------|----------------------------------------------------|
-| `AIArta`        | `flux`, `medieval`, `dreamshaper_xl`, ...          |
-| `FastFluxAI`    | `flux_1_schnell`                                   |
-| `MagicStudioAI` | `magicstudio`                                      |
-| `PixelMuse`     | `flux-schnell`, `imagen-3`, `recraft-v3`           |
-| `PiclumenAI`    | `piclumen-v1`                                      |
-| `PollinationsAI`| `flux`, `turbo`, `gptimage`                         |
+| Provider         | Available Models (examples)               |
+| ---------------- | ----------------------------------------- |
+| `AIArta`         | `flux`, `medieval`, `dreamshaper_xl`, ... |
+| `FastFluxAI`     | `flux_1_schnell`                          |
+| `InfipAI`        | `img3`, `img4`, `uncen`                   |
+| `MagicStudioAI`  | `magicstudio`                             |
+| `PixelMuse`      | `flux-schnell`, `imagen-3`, `recraft-v3`  |
+| `PiclumenAI`     | `piclumen-v1`                             |
+| `PollinationsAI` | `flux`, `turbo`, `gptimage`               |
 
 > **Note**: Some providers require the `Pillow` package for image processing.
 
@@ -72,6 +73,7 @@ response = client.images.create(
 
 - **AIArta** – Uses Firebase authentication tokens and supports many tattoo‑style models.
 - **FastFluxAI** – Simple API for quick image generation.
+- **InfipAI** – Offers various models for different image styles.
 - **MagicStudioAI** – Generates images through MagicStudio's public endpoint.
 - **PixelMuse** – Supports several models and converts images from WebP.
 - **PiclumenAI** – Returns JPEG images directly from the API.

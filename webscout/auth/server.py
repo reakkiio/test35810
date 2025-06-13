@@ -18,6 +18,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from starlette.responses import HTMLResponse
 
 from webscout.Litlogger import Logger, LogLevel, LogFormat, ConsoleHandler
 from .config import ServerConfig, AppConfig
@@ -45,7 +47,7 @@ config = ServerConfig()
 def create_app():
     """Create and configure the FastAPI application."""
     import os
-    app_title = os.getenv("WEBSCOUT_API_TITLE", "Webscout OpenAI API")
+    app_title = os.getenv("WEBSCOUT_API_TITLE", "Webscout API")
     app_description = os.getenv("WEBSCOUT_API_DESCRIPTION", "OpenAI API compatible interface for various LLM providers")
     app_version = os.getenv("WEBSCOUT_API_VERSION", "0.2.0")
     app_docs_url = os.getenv("WEBSCOUT_API_DOCS_URL", "/docs")
@@ -56,11 +58,25 @@ def create_app():
         title=app_title,
         description=app_description,
         version=app_version,
-        docs_url=app_docs_url,  # Enable default docs
+        docs_url=None,  # Disable default docs
         redoc_url=app_redoc_url,
         openapi_url=app_openapi_url,
     )
-    
+
+    # Custom Swagger UI with footer
+    @app.get(app_docs_url, include_in_schema=False)
+    async def custom_swagger_ui_html():
+        html = get_swagger_ui_html(
+            openapi_url=app.openapi_url,
+            title=app.title + " - Swagger UI",
+        ).body.decode("utf-8")
+        # Inject custom footer with link before </body>
+        footer_html = ("<div style='text-align:center;padding:16px;font-size:14px;color:#888;'>"
+                      "Powered by <a href='https://github.com/OEvortex/Webscout' target='_blank' style='color:#6366f1;text-decoration:none;font-weight:bold;'>WebScout</a>"
+                      "</div>")
+        html = html.replace("</body>", f"{footer_html}</body>")
+        return HTMLResponse(content=html)
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,

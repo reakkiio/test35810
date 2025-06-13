@@ -253,8 +253,7 @@ class AIArta(TTICompatibleProvider):
     token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
     image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
     status_check_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
-    working = True
-    models = [
+    AVAILABLE_MODELS = [
         "Anything-xl",
         "High GPT4o",
         "On limbs black",
@@ -309,9 +308,6 @@ class AIArta(TTICompatibleProvider):
         "Red and Black",
     ]
 
-    # Add AVAILABLE_MODELS for TTI provider map discovery
-    AVAILABLE_MODELS = models
-
     def __init__(self):
         self.session = requests.Session()
         self.user_agent = LitAgent().random()
@@ -326,10 +322,11 @@ class AIArta(TTICompatibleProvider):
         self.images = Images(self)
 
     def get_auth_file(self) -> str:
-        path = Path.home() / ".ai_arta_cookies"
-        path.mkdir(exist_ok=True)
+        import tempfile
+        # Use a temp file in the system's temp directory, unique per class
         filename = f"auth_{self.__class__.__name__}.json"
-        return str(path / filename)
+        temp_dir = tempfile.gettempdir()
+        return os.path.join(temp_dir, filename)
 
     def create_token(self, path: str) -> Dict[str, Any]:
         auth_payload = {"clientType": "CLIENT_TYPE_ANDROID"}

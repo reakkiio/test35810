@@ -85,114 +85,78 @@ class Api:
 
     def register_validation_exception_handler(self):
         """Register comprehensive exception handlers."""
+        from fastapi.exceptions import RequestValidationError
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY, HTTP_500_INTERNAL_SERVER_ERROR
+        from .exceptions import APIError
+        
+        github_footer = "If you believe this is a bug, please pull an issue at https://github.com/OEvortex/Webscout."
 
         @self.app.exception_handler(APIError)
-        async def api_error_handler(request: Request, exc: APIError):
-            """Handle custom API errors."""
+        async def api_error_handler(request, exc: APIError):
             logger.error(f"API Error: {exc.message} (Status: {exc.status_code})")
-            return exc.to_response()
+            # Patch: add footer to error content before creating JSONResponse
+            error_response = exc.to_response()
+            # If the response is a JSONResponse, patch its content dict before returning
+            if hasattr(error_response, 'body') and hasattr(error_response, 'media_type'):
+                # Try to decode the body to dict and add footer if possible
+                try:
+                    import json
+                    content_dict = json.loads(error_response.body.decode())
+                    if "error" in content_dict:
+                        content_dict["error"]["footer"] = github_footer
+                        return JSONResponse(status_code=error_response.status_code, content=content_dict)
+                except Exception:
+                    pass
+            return error_response
 
         @self.app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        async def validation_exception_handler(request, exc: RequestValidationError):
             errors = exc.errors()
             error_messages = []
             body = await request.body()
             is_empty_body = not body or body.strip() in (b"", b"null", b"{}")
-            
             for error in errors:
                 loc = error.get("loc", [])
-                # Ensure loc_str is user-friendly
-                loc_str_parts = []
-                for item in loc:
-                    if item == "body":  # Skip "body" part if it's the first element of a longer path
-                        if len(loc) > 1: 
-                            continue
-                    loc_str_parts.append(str(item))
-                loc_str = " -> ".join(loc_str_parts)
-
+                loc_str = " -> ".join(str(item) for item in loc)
                 msg = error.get("msg", "Validation error")
-
-                # Check if this error is for the 'content' field specifically due to multimodal input
-                if len(loc) >= 3 and loc[0] == 'body' and loc[1] == 'messages' and loc[-1] == 'content':
-                    # Check if the error type suggests a string was expected but a list (or vice-versa) was given for content
-                    if "Input should be a valid string" in msg and error.get("input_type") == "list":
-                        error_messages.append({
-                            "loc": loc,
-                            "message": f"Invalid message content: {msg}. Ensure content matches the expected format (string or list of content parts). Path: {loc_str}",
-                            "type": error.get("type", "validation_error")
-                        })
-                        continue  # Skip default message formatting for this specific case
-                    elif "Input should be a valid list" in msg and error.get("input_type") == "string":
-                        error_messages.append({
-                            "loc": loc,
-                            "message": f"Invalid message content: {msg}. Ensure content matches the expected format (string or list of content parts). Path: {loc_str}",
-                            "type": error.get("type", "validation_error")
-                        })
-                        continue
-
-                if "body" in loc:
-                    if len(loc) > 1 and loc[1] == "messages":
-                        error_messages.append({
-                            "loc": loc,
-                            "message": "The 'messages' field is required and must be a non-empty array of message objects. " + f"Error: {msg} at {loc_str}",
-                            "type": error.get("type", "validation_error")
-                        })
-                    elif len(loc) > 1 and loc[1] == "model":
-                        error_messages.append({
-                            "loc": loc,
-                            "message": "The 'model' field is required and must be a string. " + f"Error: {msg} at {loc_str}",
-                            "type": error.get("type", "validation_error")
-                        })
-                    else:
-                        error_messages.append({
-                            "loc": loc,
-                            "message": f"{msg} at {loc_str}",
-                            "type": error.get("type", "validation_error")
-                        })
-                else:
-                    error_messages.append({
-                        "loc": loc,
-                        "message": f"{msg} at {loc_str}",
-                        "type": error.get("type", "validation_error")
-                    })
-            
-            if request.url.path == "/v1/chat/completions":
-                example = ChatCompletionRequest.Config.schema_extra["example"]
-                if is_empty_body:
-                    return JSONResponse(
-                        status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                        content={
-                            "error": {
-                                "message": "Request body is required and must include 'model' and 'messages'.",
-                                "type": "invalid_request_error",
-                                "param": None,
-                                "code": "body_missing"
-                            },
-                            "example": example
-                        }
-                    )
-                return JSONResponse(
-                    status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                    content={"detail": error_messages, "example": example}
-                )
-            return JSONResponse(
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-                content={"detail": error_messages}
-            )
+                error_messages.append({
+                    "loc": loc,
+                    "message": f"{msg} at {loc_str}",
+                    "type": error.get("type", "validation_error")
+                })
+            content = {
+                "error": {
+                    "message": "Request validation error.",
+                    "details": error_messages,
+                    "type": "validation_error",
+                    "footer": github_footer
+                }
+            }
+            return JSONResponse(status_code=HTTP_422_UNPROCESSABLE_ENTITY, content=content)
 
         @self.app.exception_handler(StarletteHTTPException)
-        async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-            return JSONResponse(
-                status_code=exc.status_code,
-                content={"detail": exc.detail}
-            )
+        async def http_exception_handler(request, exc: StarletteHTTPException):
+            content = {
+                "error": {
+                    "message": exc.detail or "HTTP error occurred.",
+                    "type": "http_error",
+                    "footer": github_footer
+                }
+            }
+            return JSONResponse(status_code=exc.status_code, content=content)
 
         @self.app.exception_handler(Exception)
-        async def general_exception_handler(request: Request, exc: Exception):
-            return JSONResponse(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"detail": f"Internal server error: {str(exc)}"}
-            )
+        async def general_exception_handler(request, exc: Exception):
+            logger.error(f"Unhandled server error: {exc}")
+            content = {
+                "error": {
+                    "message": f"Internal server error: {str(exc)}",
+                    "type": "server_error",
+                    "footer": github_footer
+                }
+            }
+            return JSONResponse(status_code=HTTP_500_INTERNAL_SERVER_ERROR, content=content)
 
     def register_routes(self):
         """Register all API routes."""
@@ -483,6 +447,7 @@ class Api:
             type: str = Query("text", description="Search type: text, news, images, suggestions"),
         ):
             """Unified web search endpoint."""
+            github_footer = "If you believe this is a bug, please pull an issue at https://github.com/OEvortex/Webscout."
             try:
                 if engine == "google":
                     gs = GoogleSearch()
@@ -496,7 +461,7 @@ class Api:
                         results = gs.suggestions(q, region=region)
                         return {"engine": "google", "type": "suggestions", "results": results}
                     else:
-                        return {"error": "Google only supports text, news, and suggestions in this API."}
+                        return {"error": "Google only supports text, news, and suggestions in this API.", "footer": github_footer}
                 elif engine == "yep":
                     ys = YepSearch()
                     if type == "text":
@@ -509,7 +474,7 @@ class Api:
                         results = ys.suggestions(q, region=region)
                         return {"engine": "yep", "type": "suggestions", "results": results}
                     else:
-                        return {"error": "Yep only supports text, images, and suggestions in this API."}
+                        return {"error": "Yep only supports text, images, and suggestions in this API.", "footer": github_footer}
                 elif engine == "duckduckgo":
                     ws = WEBS()
                     if type == "text":
@@ -519,8 +484,20 @@ class Api:
                         results = ws.suggestions(keywords=q, region=region)
                         return {"engine": "duckduckgo", "type": "suggestions", "results": results}
                     else:
-                        return {"error": "DuckDuckGo only supports text and suggestions in this API."}
+                        return {"error": "DuckDuckGo only supports text and suggestions in this API.", "footer": github_footer}
                 else:
-                    return {"error": "Unknown engine. Use one of: google, yep, duckduckgo."}
+                    return {"error": "Unknown engine. Use one of: google, yep, duckduckgo.", "footer": github_footer}
             except Exception as e:
-                return {"error": str(e)}
+                # Special handling for rate limit errors
+                msg = str(e)
+                if "429" in msg or "rate limit" in msg.lower():
+                    return {
+                        "error": "You have hit the search rate limit. Please try again later.",
+                        "details": msg,
+                        "code": 429,
+                        "footer": github_footer
+                    }
+                return {
+                    "error": f"Search request failed: {msg}",
+                    "footer": github_footer
+                }

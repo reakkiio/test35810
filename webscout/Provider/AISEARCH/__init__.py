@@ -1,3 +1,4 @@
+from .stellar_search import *
 from .felo_search import *
 from .DeepFind import *
 from .genspark_search import *

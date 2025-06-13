@@ -167,7 +167,12 @@ class Api:
 
     def _register_model_routes(self):
         """Register model listing routes."""        
-        @self.app.get("/v1/models", response_model=ModelListResponse, tags=["Chat Completions"])
+        @self.app.get(
+            "/v1/models",
+            response_model=ModelListResponse,
+            tags=["Chat Completions"],
+            description="List all available chat completion models."
+        )
         async def list_models():
             models = []
             for model_name, provider_class in AppConfig.provider_map.items():
@@ -187,7 +192,12 @@ class Api:
                 "object": "list",
                 "data": models
             }        
-        @self.app.get("/v1/TTI/models", response_model=ModelListResponse, tags=["Image Generation"])
+        @self.app.get(
+            "/v1/TTI/models",
+            response_model=ModelListResponse,
+            tags=["Image Generation"],
+            description="List all available text-to-image (TTI) models."
+        )
         async def list_tti_models():
             models = []
             for model_name, provider_class in AppConfig.tti_provider_map.items():
@@ -215,6 +225,7 @@ class Api:
             response_model_exclude_none=True,
             response_model_exclude_unset=True,
             tags=["Chat Completions"],
+            description="Generate chat completions using the specified model.",
             openapi_extra={
                 "requestBody": {
                     "content": {
@@ -277,7 +288,11 @@ class Api:
                 )
 
 
-        @self.app.post("/v1/images/generations", tags=["Image Generation"])
+        @self.app.post(
+            "/v1/images/generations",
+            tags=["Image Generation"],
+            description="Generate images from text prompts using the specified TTI model."
+        )
         async def image_generations(
             image_request: ImageGenerationRequest = Body(...)
         ):
@@ -359,7 +374,12 @@ class Api:
         auth_components = get_auth_components()
         api_key_manager = auth_components.get("api_key_manager")
 
-        @self.app.post("/v1/auth/generate-key", response_model=APIKeyCreateResponse)
+        @self.app.post(
+            "/v1/auth/generate-key",
+            response_model=APIKeyCreateResponse,
+            tags=["Authentication"],
+            description="Generate a new API key for a user."
+        )
         async def generate_api_key(request: APIKeyCreateRequest = Body(...)):
             """Generate a new API key."""
             if not api_key_manager:
@@ -387,7 +407,12 @@ class Api:
                 logger.error(f"Error generating API key: {e}")
                 raise APIError(f"Failed to generate API key: {str(e)}", HTTP_500_INTERNAL_SERVER_ERROR)
 
-        @self.app.get("/v1/auth/validate", response_model=APIKeyValidationResponse)
+        @self.app.get(
+            "/v1/auth/validate",
+            response_model=APIKeyValidationResponse,
+            tags=["Authentication"],
+            description="Validate an API key and return its status."
+        )
         async def validate_api_key(request: Request):
             """Validate an API key."""
             if not api_key_manager:
@@ -420,7 +445,12 @@ class Api:
                 logger.error(f"Error validating API key: {e}")
                 return APIKeyValidationResponse(valid=False, error="Internal validation error")
 
-        @self.app.get("/health", response_model=HealthCheckResponse)
+        @self.app.get(
+            "/health",
+            response_model=HealthCheckResponse,
+            tags=["Health"],
+            description="Health check endpoint for the API and database."
+        )
         async def health_check():
             """Health check endpoint."""
             db_status = "unknown"
@@ -438,7 +468,11 @@ class Api:
     def _register_websearch_routes(self):
         """Register web search endpoint."""
 
-        @self.app.get("/search", tags=["Web search"])
+        @self.app.get(
+            "/search",
+            tags=["Web search"],
+            description="Unified web search endpoint supporting Google, Yep, and DuckDuckGo with text, news, images, and suggestions search types."
+        )
         async def websearch(
             q: str = Query(..., description="Search query"),
             engine: str = Query("google", description="Search engine: google, yep, duckduckgo"),

@@ -20,7 +20,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from webscout.Litlogger import Logger, LogLevel, LogFormat, ConsoleHandler
-from webscout.auth.swagger_ui import CustomSwaggerUI
 from .config import ServerConfig, AppConfig
 from .routes import Api
 from .providers import initialize_provider_map, initialize_tti_provider_map
@@ -47,7 +46,7 @@ def create_app():
     """Create and configure the FastAPI application."""
     import os
     app_title = os.getenv("WEBSCOUT_API_TITLE", "Webscout OpenAI API")
-    app_description = os.getenv("WEBSCOUT_API_DESCRIPTION", "OpenAI API compatible interface for various LLM providers with enhanced authentication")
+    app_description = os.getenv("WEBSCOUT_API_DESCRIPTION", "OpenAI API compatible interface for various LLM providers")
     app_version = os.getenv("WEBSCOUT_API_VERSION", "0.2.0")
     app_docs_url = os.getenv("WEBSCOUT_API_DOCS_URL", "/docs")
     app_redoc_url = os.getenv("WEBSCOUT_API_REDOC_URL", "/redoc")
@@ -57,7 +56,7 @@ def create_app():
         title=app_title,
         description=app_description,
         version=app_version,
-        docs_url=None,  # Disable default docs
+        docs_url=app_docs_url,  # Enable default docs
         redoc_url=app_redoc_url,
         openapi_url=app_openapi_url,
     )
@@ -77,11 +76,6 @@ def create_app():
         auth_required=AppConfig.auth_required,
         rate_limit_enabled=AppConfig.rate_limit_enabled
     )
-    # Use custom Swagger UI (disable default docs)
-    app.docs_url = None
-    app.redoc_url = "/redoc"  # keep ReDoc if desired
-    app.openapi_url = "/openapi.json"
-    CustomSwaggerUI(app)
     # Add startup event handler
     @app.on_event("startup")
     async def startup():

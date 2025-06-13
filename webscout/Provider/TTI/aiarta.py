@@ -309,6 +309,8 @@ class AIArta(TTICompatibleProvider):
         "Red and Black",
     ]
 
+    # Add AVAILABLE_MODELS for TTI provider map discovery
+    AVAILABLE_MODELS = models
 
     def __init__(self):
         self.session = requests.Session()

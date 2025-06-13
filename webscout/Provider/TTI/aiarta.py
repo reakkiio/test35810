@@ -24,11 +24,17 @@ import tempfile
 from webscout.litagent import LitAgent
 import time
 import json
+import random
+from pathlib import Path
 
 try:
     from PIL import Image
 except ImportError:
     Image = None
+
+
+class ModelNotFoundError(Exception):
+    pass
 
 
 class Images(BaseImages):
@@ -140,22 +146,23 @@ class Images(BaseImages):
             gen_headers = {
                 "Authorization": auth_data.get("idToken"),
             }
-            # Remove content-type header for form data
             if "content-type" in self._client.session.headers:
                 del self._client.session.headers["content-type"]
-            # get_model now returns the proper style name from model_aliases
-            style_value = self._client.get_model(model)
+            # Use the model name directly, not as 'style'
             image_payload = {
                 "prompt": str(prompt),
                 "negative_prompt": str(
                     kwargs.get("negative_prompt", "blurry, deformed hands, ugly")
                 ),
-                "style": str(style_value),
-                "images_num": str(1),  # Generate one image at a time in the loop
+                "style": str(model),  # Use 'style' key for the model name
+                "images_num": str(1),
                 "cfg_scale": str(kwargs.get("guidance_scale", 7)),
                 "steps": str(kwargs.get("num_inference_steps", 30)),
                 "aspect_ratio": str(aspect_ratio),
             }
+            # Remove 'model' from payload if present
+            if "model" in image_payload:
+                del image_payload["model"]
             # Step 2: Generate Image (send as form data, not JSON)
             image_response = self._client.session.post(
                 self._client.image_generation_url,
@@ -241,68 +248,69 @@ class Images(BaseImages):
 
 
 class AIArta(TTICompatibleProvider):
-    # Model aliases mapping from lowercase keys to proper API style names
-    model_aliases = {
-        "flux": "Flux",
-        "medieval": "Medieval",
-        "vincent_van_gogh": "Vincent Van Gogh",
-        "f_dev": "F Dev",
-        "low_poly": "Low Poly",
-        "dreamshaper_xl": "Dreamshaper-xl",
-        "anima_pencil_xl": "Anima-pencil-xl",
-        "biomech": "Biomech",
-        "trash_polka": "Trash Polka",
-        "no_style": "No Style",
-        "cheyenne_xl": "Cheyenne-xl",
-        "chicano": "Chicano",
-        "embroidery_tattoo": "Embroidery tattoo",
-        "red_and_black": "Red and Black",
-        "fantasy_art": "Fantasy Art",
-        "watercolor": "Watercolor",
-        "dotwork": "Dotwork",
-        "old_school_colored": "Old school colored",
-        "realistic_tattoo": "Realistic tattoo",
-        "japanese_2": "Japanese_2",
-        "realistic_stock_xl": "Realistic-stock-xl",
-        "f_pro": "F Pro",
-        "revanimated": "RevAnimated",
-        "katayama_mix_xl": "Katayama-mix-xl",
-        "sdxl_l": "SDXL L",
-        "cor_epica_xl": "Cor-epica-xl",
-        "anime_tattoo": "Anime tattoo",
-        "new_school": "New School",
-        "death_metal": "Death metal",
-        "old_school": "Old School",
-        "juggernaut_xl": "Juggernaut-xl",
-        "photographic": "Photographic",
-        "sdxl_1_0": "SDXL 1.0",
-        "graffiti": "Graffiti",
-        "mini_tattoo": "Mini tattoo",
-        "surrealism": "Surrealism",
-        "neo_traditional": "Neo-traditional",
-        "on_limbs_black": "On limbs black",
-        "yamers_realistic_xl": "Yamers-realistic-xl",
-        "pony_xl": "Pony-xl",
-        "playground_xl": "Playground-xl",
-        "anything_xl": "Anything-xl",
-        "flame_design": "Flame design",
-        "kawaii": "Kawaii",
-        "cinematic_art": "Cinematic Art",
-        "professional": "Professional",
-        "black_ink": "Black Ink",
-    }
+    url = "https://ai-arta.com"
+    auth_url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
+    token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
+    image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
+    status_check_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
+    working = True
+    models = [
+        "Anything-xl",
+        "High GPT4o",
+        "On limbs black",
+        "F Dev",
+        "SDXL 1.0",
+        "Old School",
+        "Vincent Van Gogh",
+        "Cor-epica-xl",
+        "Professional",
+        "Cheyenne-xl",
+        "Chicano",
+        "SDXL L",
+        "Black Ink",
+        "Juggernaut-xl",
+        "Cinematic Art",
+        "Dreamshaper-xl",
+        "Fantasy Art",
+        "Neo-traditional",
+        "Realistic-stock-xl",
+        "Flame design",
+        "Japanese_2",
+        "Medieval",
+        "Surrealism",
+        "Dotwork",
+        "Graffiti",
+        "RevAnimated",
+        "On limbs color",
+        "Old school colored",
+        "GPT4o Ghibli",
+        "Low Poly",
+        "GPT4o",
+        "No Style",
+        "Anime",
+        "tattoo",
+        "Embroidery tattoo",
+        "Mini tattoo",
+        "Realistic tattoo",
+        "Playground-xl",
+        "Watercolor",
+        "F Pro",
+        "Kawaii",
+        "Photographic",
+        "Katayama-mix-xl",
+        "Death metal",
+        "New School",
+        "Pony-xl",
+        "Anima-pencil-xl",
+        "Flux",
+        "Biomech",
+        "Yamers-realistic-xl",
+        "Trash Polka",
+        "Red and Black",
+    ]
 
-    AVAILABLE_MODELS = list(model_aliases.keys())
-    default_model = "Flux"
-    default_image_model = default_model
 
     def __init__(self):
-        self.image_generation_url = "https://img-gen-prod.ai-arta.com/api/v1/text2image"
-        self.status_check_url = (
-            "https://img-gen-prod.ai-arta.com/api/v1/text2image/{record_id}/status"
-        )
-        self.auth_url = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
-        self.token_refresh_url = "https://securetoken.googleapis.com/v1/token?key=AIzaSyB3-71wG0fIt0shj0ee4fvx1shcjJHGrrQ"
         self.session = requests.Session()
         self.user_agent = LitAgent().random()
         self.headers = {
@@ -316,11 +324,10 @@ class AIArta(TTICompatibleProvider):
         self.images = Images(self)
 
     def get_auth_file(self) -> str:
-        path = os.path.join(os.path.expanduser("~"), ".ai_arta_cookies")
-        if not os.path.exists(path):
-            os.makedirs(path)
+        path = Path.home() / ".ai_arta_cookies"
+        path.mkdir(exist_ok=True)
         filename = f"auth_{self.__class__.__name__}.json"
-        return os.path.join(path, filename)
+        return str(path / filename)
 
     def create_token(self, path: str) -> Dict[str, Any]:
         auth_payload = {"clientType": "CLIENT_TYPE_ANDROID"}
@@ -369,17 +376,18 @@ class AIArta(TTICompatibleProvider):
                 return auth_data
         return self.create_token(path)
 
-    def get_model(self, model_name: str) -> str:
-        # Convert to lowercase for lookup
-        model_key = model_name.lower()
-        # Return the proper style name from model_aliases, or the original if not found
-        return self.model_aliases.get(model_key, model_name)
+    def get_model(self, model: str) -> str:
+        if not model:
+            return self.default_model
+        if model in self.models:
+            return model
+        raise ModelNotFoundError(f"Model {model} not found")
 
     @property
-    def models(self):
+    def models_list(self):
         class _ModelList:
             def list(inner_self):
-                return type(self).AVAILABLE_MODELS
+                return type(self).models
 
         return _ModelList()
 
@@ -390,10 +398,10 @@ if __name__ == "__main__":
 
     client = AIArta()
     response = client.images.create(
-        model="flux",
-        prompt="a white siamese cat",
+        model="GPT4o",
+        prompt="Chitt Robot saying 'Hello World'",
         response_format="url",
-        n=2,
-        timeout=30,
+        n=1,
+        timeout=3000,
     )
     print(response)

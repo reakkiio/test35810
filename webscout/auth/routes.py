@@ -214,6 +214,7 @@ class Api:
             "/v1/chat/completions",
             response_model_exclude_none=True,
             response_model_exclude_unset=True,
+            tags=["Chat Completions"],
             openapi_extra={
                 "requestBody": {
                     "content": {
@@ -437,7 +438,7 @@ class Api:
     def _register_websearch_routes(self):
         """Register web search endpoint."""
 
-        @self.app.get("/search")
+        @self.app.get("/search", tags=["Web search"])
         async def websearch(
             q: str = Query(..., description="Search query"),
             engine: str = Query("google", description="Search engine: google, yep, duckduckgo"),

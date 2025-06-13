@@ -33,9 +33,8 @@ Supported Aspect Ratios:
     - IMAGE_ASPECT_RATIO_SQUARE: 1:1 square
 """
 
-from calendar import c
 import requests
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from webscout.Provider.TTI.utils import (
     ImageData,
     ImageResponse

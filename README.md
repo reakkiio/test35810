@@ -40,8 +40,8 @@
 
 <hr/>
 
-> [!IMPORTANT]
-> **Webscout supports three types of compatibility:**
+> [!IMPORTANT] > **Webscout supports three types of compatibility:**
+>
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces
 > - **Local LLM Compatibility:** Run local models with [Inferno](https://github.com/HelpingAI/inferno), an OpenAI-compatible server (now a standalone package)
@@ -71,12 +71,12 @@
 <summary><b>Search & AI</b></summary>
 <p>
 
-* **Comprehensive Search:** Leverage Google, DuckDuckGo, and Yep for diverse search results
-* **AI Powerhouse:** Access and interact with various AI models through three compatibility options:
-  * **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
-  * **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces
-  * **[Local LLMs with Inferno](https://github.com/HelpingAI/inferno):** Run local models with an OpenAI-compatible server (now available as a standalone package)
-* **[AI Search](webscout/Provider/AISEARCH/README.md):** AI-powered search engines with advanced capabilities
+- **Comprehensive Search:** Leverage Google, DuckDuckGo, and Yep for diverse search results
+- **AI Powerhouse:** Access and interact with various AI models through three compatibility options:
+  - **Native API:** Use Webscout's native interfaces for providers like OpenAI, Cohere, Gemini, and many more
+  - **[OpenAI-Compatible Providers](webscout/Provider/OPENAI/README.md):** Seamlessly integrate with various AI providers using standardized OpenAI-compatible interfaces
+  - **[Local LLMs with Inferno](https://github.com/HelpingAI/inferno):** Run local models with an OpenAI-compatible server (now available as a standalone package)
+- **[AI Search](webscout/Provider/AISEARCH/README.md):** AI-powered search engines with advanced capabilities
 </p>
 </details>
 
@@ -84,10 +84,10 @@
 <summary><b>Media & Content Tools</b></summary>
 <p>
 
-* **[YouTube Toolkit](webscout/Extra/YTToolkit/README.md):** Advanced YouTube video and transcript management with multi-language support
-* **[Text-to-Speech (TTS)](webscout/Provider/TTS/README.md):** Convert text into natural-sounding speech using multiple AI-powered providers
-* **[Text-to-Image](webscout/Provider/TTI/README.md):** Generate high-quality images using a wide range of AI art providers
-* **[Weather Tools](webscout/Extra/weather.md):** Retrieve detailed weather information for any location
+- **[YouTube Toolkit](webscout/Extra/YTToolkit/README.md):** Advanced YouTube video and transcript management with multi-language support
+- **[Text-to-Speech (TTS)](webscout/Provider/TTS/README.md):** Convert text into natural-sounding speech using multiple AI-powered providers
+- **[Text-to-Image](webscout/Provider/TTI/README.md):** Generate high-quality images using a wide range of AI art providers
+- **[Weather Tools](webscout/Extra/weather.md):** Retrieve detailed weather information for any location
 </p>
 </details>
 
@@ -95,14 +95,14 @@
 <summary><b>Developer Tools</b></summary>
 <p>
 
-* **[GitAPI](webscout/Extra/GitToolkit/gitapi):** Powerful GitHub data extraction toolkit without authentication requirements for public data
-* **[SwiftCLI](webscout/swiftcli/Readme.md):** A powerful and elegant CLI framework for beautiful command-line interfaces
-* **[LitPrinter](webscout/litprinter/Readme.md):** Styled console output with rich formatting and colors
-* **[LitLogger](webscout/litlogger/README.md):** Simplified logging with customizable formats and color schemes
-* **[LitAgent](webscout/litagent/Readme.md):** Modern user agent generator that keeps your requests undetectable
-* **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
-* **[Inferno](https://github.com/HelpingAI/inferno):** Run local LLMs with an OpenAI-compatible API and interactive CLI (now a standalone package: `pip install inferno-llm`)
-* **[GGUF Conversion](webscout/Extra/gguf.md):** Convert and quantize Hugging Face models to GGUF format
+- **[GitAPI](webscout/Extra/GitToolkit/gitapi):** Powerful GitHub data extraction toolkit without authentication requirements for public data
+- **[SwiftCLI](webscout/swiftcli/Readme.md):** A powerful and elegant CLI framework for beautiful command-line interfaces
+- **[LitPrinter](webscout/litprinter/Readme.md):** Styled console output with rich formatting and colors
+- **[LitLogger](webscout/litlogger/README.md):** Simplified logging with customizable formats and color schemes
+- **[LitAgent](webscout/litagent/Readme.md):** Modern user agent generator that keeps your requests undetectable
+- **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
+- **[Inferno](https://github.com/HelpingAI/inferno):** Run local LLMs with an OpenAI-compatible API and interactive CLI (now a standalone package: `pip install inferno-llm`)
+- **[GGUF Conversion](webscout/Extra/gguf.md):** Convert and quantize Hugging Face models to GGUF format
 </p>
 </details>
 
@@ -110,8 +110,8 @@
 <summary><b>Privacy & Utilities</b></summary>
 <p>
 
-* **[Tempmail](webscout/Extra/tempmail/README.md) & Temp Number:** Generate temporary email addresses and phone numbers
-* **[Awesome Prompts](webscout/Extra/Act.md):** Curated collection of system prompts for specialized AI personas
+- **[Tempmail](webscout/Extra/tempmail/README.md) & Temp Number:** Generate temporary email addresses and phone numbers
+- **[Awesome Prompts](webscout/Extra/Act.md):** Curated collection of system prompts for specialized AI personas
 </p>
 </details>
 
@@ -174,6 +174,9 @@ uv sync --extra dev --extra api
 
 # Or with pip
 pip install -e ".[dev,api]"
+
+#  Or with uv pip
+uv pip install -e ".[dev,api]"
 ```
 
 ### 🐳 Docker Installation
@@ -240,18 +243,18 @@ python -m webscout-server
 <summary><b>🔍 Web Search Commands</b></summary>
 <p>
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `webscout text -k "query"` | Perform a text search | `webscout text -k "python programming"` |
-| `webscout answers -k "query"` | Get instant answers | `webscout answers -k "what is AI"` |
-| `webscout images -k "query"` | Search for images | `webscout images -k "nature photography"` |
-| `webscout videos -k "query"` | Search for videos | `webscout videos -k "python tutorials"` |
-| `webscout news -k "query"` | Search for news articles | `webscout news -k "technology trends"` |
-| `webscout maps -k "query"` | Perform a maps search | `webscout maps -k "restaurants near me"` |
-| `webscout translate -k "text"` | Translate text | `webscout translate -k "hello world"` |
-| `webscout suggestions -k "query"` | Get search suggestions | `webscout suggestions -k "how to"` |
-| `webscout weather -l "location"` | Get weather information | `webscout weather -l "New York"` |
-| `webscout version` | Display the current version | `webscout version` |
+| Command                           | Description                 | Example                                   |
+| --------------------------------- | --------------------------- | ----------------------------------------- |
+| `webscout text -k "query"`        | Perform a text search       | `webscout text -k "python programming"`   |
+| `webscout answers -k "query"`     | Get instant answers         | `webscout answers -k "what is AI"`        |
+| `webscout images -k "query"`      | Search for images           | `webscout images -k "nature photography"` |
+| `webscout videos -k "query"`      | Search for videos           | `webscout videos -k "python tutorials"`   |
+| `webscout news -k "query"`        | Search for news articles    | `webscout news -k "technology trends"`    |
+| `webscout maps -k "query"`        | Perform a maps search       | `webscout maps -k "restaurants near me"`  |
+| `webscout translate -k "text"`    | Translate text              | `webscout translate -k "hello world"`     |
+| `webscout suggestions -k "query"` | Get search suggestions      | `webscout suggestions -k "how to"`        |
+| `webscout weather -l "location"`  | Get weather information     | `webscout weather -l "New York"`          |
+| `webscout version`                | Display the current version | `webscout version`                        |
 
 **Google Search Commands:**
 | Command | Description | Example |
@@ -286,21 +289,22 @@ After installation, you can use its CLI for managing and using local LLMs:
 inferno --help
 ```
 
-| Command | Description |
-|---------|-------------|
-| `inferno pull <model>` | Download a model from Hugging Face |
-| `inferno list` | List downloaded models |
-| `inferno serve <model>` | Start a model server with OpenAI-compatible API |
-| `inferno run <model>` | Chat with a model interactively |
-| `inferno remove <model>` | Remove a downloaded model |
-| `inferno version` | Show version information |
+| Command                  | Description                                     |
+| ------------------------ | ----------------------------------------------- |
+| `inferno pull <model>`   | Download a model from Hugging Face              |
+| `inferno list`           | List downloaded models                          |
+| `inferno serve <model>`  | Start a model server with OpenAI-compatible API |
+| `inferno run <model>`    | Chat with a model interactively                 |
+| `inferno remove <model>` | Remove a downloaded model                       |
+| `inferno version`        | Show version information                        |
 
 For more information, visit the [Inferno GitHub repository](https://github.com/HelpingAI/inferno) or [PyPI package page](https://pypi.org/project/inferno-llm/).
+
 </p>
 </details>
 
-> [!NOTE]
-> **Hardware requirements for running models with Inferno:**
+> [!NOTE] > **Hardware requirements for running models with Inferno:**
+>
 > - Around 2 GB of RAM for 1B models
 > - Around 4 GB of RAM for 3B models
 > - At least 8 GB of RAM for 7B models
@@ -370,7 +374,6 @@ $env:WEBSCOUT_PORT='7860'; webscout-server
 ```
 
 For a complete list of supported environment variables and Docker deployment options, see [DOCKER.md](DOCKER.md).
-
 
 #### From Python Code
 
@@ -552,6 +555,7 @@ with WEBS() as webs:
     for result in results:
         print(f"Title: {result['title']}\nURL: {result['url']}")
 ```
+
 </p>
 </details>
 
@@ -585,6 +589,7 @@ async def main():
 # Run the async function
 asyncio.run(main())
 ```
+
 </p>
 </details>
 
@@ -599,17 +604,17 @@ The WEBS class provides comprehensive access to DuckDuckGo's search capabilities
 
 ### Available Search Methods
 
-| Method | Description | Example |
-|--------|-------------|--------|
-| `text()` | General web search | `webs.text('python programming')` |
-| `answers()` | Instant answers | `webs.answers('population of france')` |
-| `images()` | Image search | `webs.images('nature photography')` |
-| `videos()` | Video search | `webs.videos('documentary')` |
-| `news()` | News articles | `webs.news('technology')` |
-| `maps()` | Location search | `webs.maps('restaurants', place='new york')` |
-| `translate()` | Text translation | `webs.translate('hello', to='es')` |
-| `suggestions()` | Search suggestions | `webs.suggestions('how to')` |
-| `weather()` | Weather information | `webs.weather('london')` |
+| Method          | Description         | Example                                      |
+| --------------- | ------------------- | -------------------------------------------- |
+| `text()`        | General web search  | `webs.text('python programming')`            |
+| `answers()`     | Instant answers     | `webs.answers('population of france')`       |
+| `images()`      | Image search        | `webs.images('nature photography')`          |
+| `videos()`      | Video search        | `webs.videos('documentary')`                 |
+| `news()`        | News articles       | `webs.news('technology')`                    |
+| `maps()`        | Location search     | `webs.maps('restaurants', place='new york')` |
+| `translate()`   | Text translation    | `webs.translate('hello', to='es')`           |
+| `suggestions()` | Search suggestions  | `webs.suggestions('how to')`                 |
+| `weather()`     | Weather information | `webs.weather('london')`                     |
 
 <details>
 <summary><b>Example: Text Search</b></summary>
@@ -632,6 +637,7 @@ with WEBS() as webs:
         print(f"URL: {result['url']}")
         print(f"Description: {result['body']}\n")
 ```
+
 </p>
 </details>
 
@@ -675,6 +681,7 @@ def fetch_formatted_news(keywords, timelimit='d', max_results=20):
 news = fetch_formatted_news('artificial intelligence', timelimit='w', max_results=5)
 print('\n'.join(news))
 ```
+
 </p>
 </details>
 
@@ -695,6 +702,7 @@ with WEBS() as webs:
         print(f"Temperature: {weather.get('temperature', 'N/A')}")
         print(f"Conditions: {weather.get('condition', 'N/A')}")
 ```
+
 </p>
 </details>
 
@@ -734,6 +742,7 @@ if isinstance(available_models, list):
 else:
     print(f"  {available_models}")
 ```
+
 </p>
 </details>
 
@@ -767,6 +776,7 @@ if isinstance(available_voices, dict):
     if len(available_voices) > 5:
         print(f"  ... and {len(available_voices) - 5} more")
 ```
+
 </p>
 </details>
 
@@ -780,22 +790,21 @@ Webscout offers a comprehensive collection of AI chat providers, giving you acce
 
 <div class="provider-table">
 
-| Provider | Description | Key Features |
-|----------|-------------|-------------|
-| `OPENAI` | OpenAI's models | GPT-3.5, GPT-4, tool calling |
-| `GEMINI` | Google's Gemini models | Web search capabilities |
-| `Meta` | Meta's AI assistant | Image generation, web search |
-| `GROQ` | Fast inference platform | High-speed inference, tool calling |
-| `LLAMA` | Meta's Llama models | Open weights models |
-| `DeepInfra` | Various open models | Multiple model options |
-| `Cohere` | Cohere's language models | Command models |
-| `PerplexityLabs` | Perplexity AI | Web search integration |
-| `YEPCHAT` | Yep.com's AI | Streaming responses |
-| `ChatGPTClone` | ChatGPT-like interface | Multiple model options |
-| `TypeGPT` | TypeChat models | Multiple model options |
+| Provider         | Description              | Key Features                       |
+| ---------------- | ------------------------ | ---------------------------------- |
+| `OPENAI`         | OpenAI's models          | GPT-3.5, GPT-4, tool calling       |
+| `GEMINI`         | Google's Gemini models   | Web search capabilities            |
+| `Meta`           | Meta's AI assistant      | Image generation, web search       |
+| `GROQ`           | Fast inference platform  | High-speed inference, tool calling |
+| `LLAMA`          | Meta's Llama models      | Open weights models                |
+| `DeepInfra`      | Various open models      | Multiple model options             |
+| `Cohere`         | Cohere's language models | Command models                     |
+| `PerplexityLabs` | Perplexity AI            | Web search integration             |
+| `YEPCHAT`        | Yep.com's AI             | Streaming responses                |
+| `ChatGPTClone`   | ChatGPT-like interface   | Multiple model options             |
+| `TypeGPT`        | TypeChat models          | Multiple model options             |
 
 </div>
-
 
 <details>
 <summary><b>Example: Using Meta AI</b></summary>
@@ -824,6 +833,7 @@ response = meta_ai.ask("Create an image of a futuristic city")
 for media in response.get("media", []):
     print(media["url"])
 ```
+
 </p>
 </details>
 
@@ -904,10 +914,9 @@ print(response)
 response = client.chat("Find information about quantum computing", tools=tools)
 print(response)
 ```
+
 </p>
 </details>
-
-
 
 <details open>
 <summary><b>GGUF Model Conversion</b></summary>
@@ -930,29 +939,30 @@ converter.convert()
 
 #### Available Quantization Methods
 
-| Method | Description |
-|--------|-------------|
-| `fp16` | 16-bit floating point - maximum accuracy, largest size |
-| `q2_k` | 2-bit quantization (smallest size, lowest accuracy) |
-| `q3_k_l` | 3-bit quantization (large) - balanced for size/accuracy |
+| Method   | Description                                                   |
+| -------- | ------------------------------------------------------------- |
+| `fp16`   | 16-bit floating point - maximum accuracy, largest size        |
+| `q2_k`   | 2-bit quantization (smallest size, lowest accuracy)           |
+| `q3_k_l` | 3-bit quantization (large) - balanced for size/accuracy       |
 | `q3_k_m` | 3-bit quantization (medium) - good balance for most use cases |
-| `q3_k_s` | 3-bit quantization (small) - optimized for speed |
-| `q4_0` | 4-bit quantization (version 0) - standard 4-bit compression |
-| `q4_1` | 4-bit quantization (version 1) - improved accuracy over q4_0 |
-| `q4_k_m` | 4-bit quantization (medium) - balanced for most models |
-| `q4_k_s` | 4-bit quantization (small) - optimized for speed |
-| `q5_0` | 5-bit quantization (version 0) - high accuracy, larger size |
-| `q5_1` | 5-bit quantization (version 1) - improved accuracy over q5_0 |
-| `q5_k_m` | 5-bit quantization (medium) - best balance for quality/size |
-| `q5_k_s` | 5-bit quantization (small) - optimized for speed |
-| `q6_k` | 6-bit quantization - highest accuracy, largest size |
-| `q8_0` | 8-bit quantization - maximum accuracy, largest size |
+| `q3_k_s` | 3-bit quantization (small) - optimized for speed              |
+| `q4_0`   | 4-bit quantization (version 0) - standard 4-bit compression   |
+| `q4_1`   | 4-bit quantization (version 1) - improved accuracy over q4_0  |
+| `q4_k_m` | 4-bit quantization (medium) - balanced for most models        |
+| `q4_k_s` | 4-bit quantization (small) - optimized for speed              |
+| `q5_0`   | 5-bit quantization (version 0) - high accuracy, larger size   |
+| `q5_1`   | 5-bit quantization (version 1) - improved accuracy over q5_0  |
+| `q5_k_m` | 5-bit quantization (medium) - best balance for quality/size   |
+| `q5_k_s` | 5-bit quantization (small) - optimized for speed              |
+| `q6_k`   | 6-bit quantization - highest accuracy, largest size           |
+| `q8_0`   | 8-bit quantization - maximum accuracy, largest size           |
 
 #### Command Line Usage
 
 ```bash
 python -m webscout.Extra.gguf convert -m "mistralai/Mistral-7B-Instruct-v0.2" -q "q4_k_m"
 ```
+
 </p>
 </details>
 
@@ -977,8 +987,8 @@ Contributions are welcome! If you'd like to contribute to Webscout, please follo
 
 ## 🙏 Acknowledgments
 
-* All the amazing developers who have contributed to the project
-* The open-source community for their support and inspiration
+- All the amazing developers who have contributed to the project
+- The open-source community for their support and inspiration
 
 <hr/>
 

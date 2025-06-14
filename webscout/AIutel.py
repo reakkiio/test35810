@@ -611,10 +611,17 @@ async def _sanitize_stream_async(
 def sanitize_stream(
     data: Union[
         str,
+        bytes,
         Iterable[str],
         Iterable[bytes],
         AsyncIterable[str],
         AsyncIterable[bytes],
+        dict,
+        list,
+        int,
+        float,
+        bool,
+        None,
     ],
     intro_value: str = "data:",
     to_json: bool = True,
@@ -629,19 +636,15 @@ def sanitize_stream(
     buffer_size: int = 8192,
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    object_mode: Literal["as_is", "json", "str"] = "json",
 ) -> Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
     """
     Processes streaming data (strings or bytes) in either synchronous or asynchronous mode.
-
-    This function acts as a unified interface for handling both synchronous and
-    asynchronous data streams. It automatically detects the type of input data and
-    dispatches it to the appropriate processing function (`_sanitize_stream_sync` or
-    `_sanitize_stream_async`).
+    Now supports non-iterable and miscellaneous input types (dict, list, int, float, bool, None).
 
     Args:
-        data (Union[str, Iterable[str], Iterable[bytes], AsyncIterable[str], AsyncIterable[bytes]]):
-            The data to be processed. Can be a string, a synchronous iterable of strings or bytes,
-            or an asynchronous iterable of strings or bytes.
+        data: The data to be processed. Can be a string, bytes, a synchronous iterable of strings or bytes,
+            an asynchronous iterable of strings or bytes, or a single object (dict, list, int, float, bool, None).
         intro_value (str): Prefix indicating the start of meaningful data. Defaults to "data:".
         to_json (bool): Parse JSON content if ``True``. Defaults to True.
         skip_markers (Optional[List[str]]): Lines containing any of these markers are skipped. Defaults to None.
@@ -659,34 +662,117 @@ def sanitize_stream(
         error_handler (Optional[Callable[[Exception, str], Optional[Any]]]):
             Callback invoked with ``(Exception, str)`` when JSON parsing fails.
             If the callback returns a value, it is yielded in place of the raw line. Defaults to None.
+        object_mode (Literal["as_is", "json", "str"]): How to handle non-string, non-iterable objects.
+            "json" (default) yields as JSON string, "str" yields as str(obj), "as_is" yields the object as-is.
 
     Returns:
         Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
             A generator or an asynchronous generator yielding the processed data.
     """
     # Determine the actual data payload to process
-    payload: Any  # The type of payload can change based on data's attributes
-
     text_attr = getattr(data, "text", None)
     content_attr = getattr(data, "content", None)
 
-    if isinstance(text_attr, str):
-        payload = text_attr
-    elif isinstance(content_attr, bytes):
-        payload = content_attr.decode(encoding, encoding_errors)
-    else:
-        # Use the original data if .text or .content are not applicable or not found
-        payload = data
+    # Handle None
+    if data is None:
+        def _empty_gen():
+            if False:
+                yield None
+        return _empty_gen()
 
-    # Dispatch to sync or async worker based on the nature of the 'payload'
-    if hasattr(payload, "__aiter__"):
-        return _sanitize_stream_async(
+    # Handle bytes directly
+    if isinstance(data, bytes):
+        try:
+            payload = data.decode(encoding, encoding_errors)
+        except Exception:
+            payload = str(data)
+        return _sanitize_stream_sync(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
         )
+
+    # Handle string directly
+    if isinstance(data, str):
+        return _sanitize_stream_sync(
+            data, intro_value, to_json, skip_markers, strip_chars,
+            start_marker, end_marker, content_extractor, yield_raw_on_error,
+            encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        )
+
+    # Handle dict, list, int, float, bool (non-iterable, non-string/bytes)
+    if isinstance(data, (dict, list, int, float, bool)):
+        if object_mode == "as_is":
+            def _as_is_gen():
+                yield data
+            return _as_is_gen()
+        elif object_mode == "str":
+            return _sanitize_stream_sync(
+                str(data), intro_value, to_json, skip_markers, strip_chars,
+                start_marker, end_marker, content_extractor, yield_raw_on_error,
+                encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            )
+        else:  # "json"
+            try:
+                json_str = json.dumps(data)
+            except Exception:
+                json_str = str(data)
+            return _sanitize_stream_sync(
+                json_str, intro_value, to_json, skip_markers, strip_chars,
+                start_marker, end_marker, content_extractor, yield_raw_on_error,
+                encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            )
+
+    # Handle file-like objects (optional, treat as string if .read exists)
+    if hasattr(data, "read") and callable(data.read):
+        try:
+            file_content = data.read()
+            if isinstance(file_content, bytes):
+                file_content = file_content.decode(encoding, encoding_errors)
+            return _sanitize_stream_sync(
+                file_content, intro_value, to_json, skip_markers, strip_chars,
+                start_marker, end_marker, content_extractor, yield_raw_on_error,
+                encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            )
+        except Exception:
+            pass  # fallback to next
+
+    # Handle .text or .content attributes
+    if isinstance(text_attr, str):
+        payload = text_attr
+        return _sanitize_stream_sync(
+            payload, intro_value, to_json, skip_markers, strip_chars,
+            start_marker, end_marker, content_extractor, yield_raw_on_error,
+            encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        )
+    elif isinstance(content_attr, bytes):
+        try:
+            payload = content_attr.decode(encoding, encoding_errors)
+        except Exception:
+            payload = str(content_attr)
+        return _sanitize_stream_sync(
+            payload, intro_value, to_json, skip_markers, strip_chars,
+            start_marker, end_marker, content_extractor, yield_raw_on_error,
+            encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        )
+
+    # Handle async iterables
+    if hasattr(data, "__aiter__"):
+        return _sanitize_stream_async(
+            data, intro_value, to_json, skip_markers, strip_chars,
+            start_marker, end_marker, content_extractor, yield_raw_on_error,
+            encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        )
+    # Handle sync iterables (but not strings/bytes)
+    if hasattr(data, "__iter__"):
+        return _sanitize_stream_sync(
+            data, intro_value, to_json, skip_markers, strip_chars,
+            start_marker, end_marker, content_extractor, yield_raw_on_error,
+            encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        )
+    # Fallback: treat as string
     return _sanitize_stream_sync(
-        payload, intro_value, to_json, skip_markers, strip_chars,
+        str(data), intro_value, to_json, skip_markers, strip_chars,
         start_marker, end_marker, content_extractor, yield_raw_on_error,
         encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
     )

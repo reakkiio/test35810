@@ -292,6 +292,7 @@ class Toolbaz(OpenAICompatibleProvider):
     AVAILABLE_MODELS = [
         "gemini-2.5-flash",
         "gemini-2.0-flash-thinking",
+        "sonar",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
         "o3-mini",

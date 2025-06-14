@@ -17,6 +17,7 @@ class TypeGPT(Provider):
     AVAILABLE_MODELS = [
         # Working Models (based on testing)
         # "gpt-4o-mini-2024-07-18",
+        "gpt-4o-mini",
         "chatgpt-4o-latest",
         "deepseek-r1",
         "deepseek-v3",

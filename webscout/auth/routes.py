@@ -310,6 +310,18 @@ class Api:
                 try:
                     provider = get_tti_provider_instance(provider_class)
                     logger.debug(f"Using TTI provider instance: {provider_class.__name__}")
+                except APIError as e:
+                    # Add helpful footer for provider errors
+                    return JSONResponse(
+                        status_code=e.status_code,
+                        content={
+                            "error": {
+                                "message": e.message,
+                                "type": e.error_type,
+                                "footer": "If you believe this is a bug, please pull an issue at https://github.com/OEvortex/Webscout."
+                            }
+                        }
+                    )
                 except Exception as e:
                     logger.error(f"Failed to initialize TTI provider {provider_class.__name__}: {e}")
                     raise APIError(

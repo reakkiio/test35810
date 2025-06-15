@@ -383,6 +383,13 @@ class AIArta(TTICompatibleProvider):
         raise ModelNotFoundError(f"Model {model} not found")
 
     @property
+    def models(self):
+        class _ModelList:
+            def list(inner_self):
+                return type(self).AVAILABLE_MODELS
+        return _ModelList()
+
+    @property
     def models_list(self):
         class _ModelList:
             def list(inner_self):

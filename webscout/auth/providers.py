@@ -87,13 +87,13 @@ def initialize_tti_provider_map() -> None:
     logger.info("Initializing TTI provider map...")
 
     try:
-        import webscout.Provider.TTI as tti_module
         from webscout.Provider.TTI.base import TTICompatibleProvider
-        
+        module = sys.modules["webscout.Provider.TTI"]
+
         provider_count = 0
         model_count = 0
 
-        for name, obj in inspect.getmembers(tti_module):
+        for name, obj in inspect.getmembers(module):
             if (
                 inspect.isclass(obj)
                 and issubclass(obj, TTICompatibleProvider)
@@ -242,7 +242,18 @@ def get_provider_instance(provider_class: Any):
     key = provider_class.__name__
     instance = provider_instances.get(key)
     if instance is None:
-        instance = provider_class()
+        try:
+            instance = provider_class()
+        except TypeError as e:
+            # Handle abstract class instantiation error
+            if "abstract class" in str(e):
+                from .exceptions import APIError
+                raise APIError(
+                    f"Provider misconfiguration: Cannot instantiate abstract class '{provider_class.__name__}'. Please check the provider implementation.",
+                    HTTP_500_INTERNAL_SERVER_ERROR,
+                    "provider_error"
+                )
+            raise
         provider_instances[key] = instance
     return instance
 
@@ -252,6 +263,17 @@ def get_tti_provider_instance(provider_class: Any):
     key = provider_class.__name__
     instance = tti_provider_instances.get(key)
     if instance is None:
-        instance = provider_class()
+        try:
+            instance = provider_class()
+        except TypeError as e:
+            # Handle abstract class instantiation error
+            if "abstract class" in str(e):
+                from .exceptions import APIError
+                raise APIError(
+                    f"Provider misconfiguration: Cannot instantiate abstract class '{provider_class.__name__}'. Please check the provider implementation.",
+                    HTTP_500_INTERNAL_SERVER_ERROR,
+                    "provider_error",
+                )
+            raise
         tti_provider_instances[key] = instance
     return instance

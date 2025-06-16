@@ -32,11 +32,16 @@ from webscout.Provider.OPENAI import *
 
 # Import server utilities from the FastAPI-compatible backend
 try:
-    from webscout.auth.server import run_api
-    # Provide a simple alias for starting the server with default settings
+    # Use lazy import to avoid module execution issues
+    def run_api(*args, **kwargs):
+        """Run the Webscout OpenAI-compatible API server (FastAPI backend)."""
+        from webscout.auth.server import run_api as _run_api
+        return _run_api(*args, **kwargs)
+    
     def start_server(**kwargs):
         """Start the Webscout OpenAI-compatible API server (FastAPI backend)."""
-        run_api(**kwargs)
+        from webscout.auth.server import run_api as _run_api
+        return _run_api(**kwargs)
 except ImportError:
     # Fallback for environments where the backend is not available
     def run_api(*args, **kwargs):

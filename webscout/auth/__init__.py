@@ -13,7 +13,18 @@ from .schemas import (
     UserResponse,
     HealthCheckResponse
 )
-from .server import create_app, run_api, start_server
+# Import server functions lazily to avoid module execution issues
+def create_app():
+    from .server import create_app as _create_app
+    return _create_app()
+
+def run_api(*args, **kwargs):
+    from .server import run_api as _run_api
+    return _run_api(*args, **kwargs)
+
+def start_server(*args, **kwargs):
+    from .server import start_server as _start_server
+    return _start_server(*args, **kwargs)
 from .routes import Api
 from .config import ServerConfig, AppConfig
 from .exceptions import APIError

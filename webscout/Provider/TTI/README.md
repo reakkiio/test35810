@@ -17,7 +17,6 @@ These providers allow you to easily generate AI‑created art from text prompts 
 | Provider         | Available Models (examples)               |
 | ---------------- | ----------------------------------------- |
 | `AIArta`         | `flux`, `medieval`, `dreamshaper_xl`, ... |
-| `FastFluxAI`     | `flux_1_schnell`                          |
 | `InfipAI`        | `img3`, `img4`, `uncen`                   |
 | `MagicStudioAI`  | `magicstudio`                             |
 | `PixelMuse`      | `flux-schnell`, `imagen-3`, `recraft-v3`  |
@@ -72,7 +71,6 @@ response = client.images.create(
 ## 🔧 Provider Specifics
 
 - **AIArta** – Uses Firebase authentication tokens and supports many tattoo‑style models.
-- **FastFluxAI** – Simple API for quick image generation.
 - **InfipAI** – Offers various models for different image styles.
 - **MagicStudioAI** – Generates images through MagicStudio's public endpoint.
 - **PixelMuse** – Supports several models and converts images from WebP.

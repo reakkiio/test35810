@@ -3,8 +3,8 @@ import time
 import json
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage
 )
@@ -73,7 +73,6 @@ class Completions(BaseCompletions):
 
         def for_stream():
             try:
-                print(f"[DEBUG] Sending streaming request to {url} with payload: {payload}")
                 response = session.post(
                     url,
                     json=payload,
@@ -81,13 +80,11 @@ class Completions(BaseCompletions):
                     timeout=timeout or 30,
                     proxies=proxies
                 )
-                print(f"[DEBUG] Response status: {response.status_code}")
                 response.raise_for_status()
                 for chunk in response.iter_content(chunk_size=4096):
                     if not chunk:
                         break
                     text = chunk.decode('utf-8', errors='replace')
-                    print(f"[DEBUG] Stream chunk: {repr(text)}")
                     delta = ChoiceDelta(content=text, role="assistant")
                     choice = Choice(index=0, delta=delta)
                     chunk_obj = ChatCompletionChunk(
@@ -99,33 +96,38 @@ class Completions(BaseCompletions):
                     )
                     yield chunk_obj
             except Exception as e:
-                print(f"[DEBUG] Streaming error: {e}")
                 raise RuntimeError(f"Flowith streaming request failed: {e}")
 
         def for_non_stream():
             try:
-                print(f"[DEBUG] Sending non-stream request to {url} with payload: {payload}")
                 response = session.post(
                     url,
                     json=payload,
                     timeout=timeout or 30,
                     proxies=proxies
                 )
-                print(f"[DEBUG] Response status: {response.status_code}")
                 response.raise_for_status()
                 encoding = response.headers.get('Content-Encoding', '').lower()
-                print(f"[DEBUG] Response encoding: {encoding}")
+                
+                # Try to handle different compression formats
                 if encoding == 'zstd':
-                    dctx = zstd.ZstdDecompressor()
-                    with dctx.stream_reader(response.raw) as reader:
-                        decompressed = reader.read()
-                        text = decompressed.decode('utf-8', errors='replace')
+                    try:
+                        # First, check if the content is actually zstd compressed
+                        if response.content.startswith(b'\x28\xb5\x2f\xfd'):  # zstd magic number
+                            dctx = zstd.ZstdDecompressor()
+                            text = dctx.decompress(response.content).decode('utf-8', errors='replace')
+                        else:
+                            text = response.content.decode('utf-8', errors='replace')
+                    except Exception as zstd_error:
+                        text = response.content.decode('utf-8', errors='replace')
+                elif encoding in ['gzip', 'deflate', 'br']:
+                    # Let requests handle other compression formats automatically
+                    text = response.text
                 else:
                     text = response.text
-                print(f"[DEBUG] Raw response text: {repr(text)}")
+                
                 # Flowith returns raw text, not JSON
                 content = text.strip()
-                print(f"[DEBUG] Final content for ChatCompletion: {repr(content)}")
                 message = ChatCompletionMessage(role="assistant", content=content)
                 choice = Choice(index=0, message=message, finish_reason="stop")
                 usage = CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
@@ -136,10 +138,8 @@ class Completions(BaseCompletions):
                     model=model,
                     usage=usage
                 )
-                print(f"[DEBUG] Returning ChatCompletion: {completion}")
                 return completion
             except Exception as e:
-                print(f"[DEBUG] Non-streaming error: {e}")
                 raise RuntimeError(f"Flowith request failed: {e}")
 
         return for_stream() if stream else for_non_stream()
@@ -164,3 +164,16 @@ class Flowith(OpenAICompatibleProvider):
             def list(inner_self):
                 return type(self).AVAILABLE_MODELS
         return _ModelList()
+
+if __name__ == "__main__":
+    # Example usage
+    client = Flowith()
+    messages = [{"role": "user", "content": "Hello, how are you?"}]
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=messages,
+        stream=True
+    )
+    for chunk in response:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+    print()

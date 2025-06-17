@@ -21,9 +21,9 @@
 
 The WebScout OpenAI-Compatible Providers module offers a standardized way to interact with various AI providers using the familiar OpenAI API structure. This makes it easy to:
 
-*   Use the same code structure across different AI providers
-*   Switch between providers without major code changes
-*   Leverage the OpenAI ecosystem of tools and libraries with alternative AI providers
+- Use the same code structure across different AI providers
+- Switch between providers without major code changes
+- Leverage the OpenAI ecosystem of tools and libraries with alternative AI providers
 
 ## ⚙️ Available Providers
 
@@ -70,8 +70,8 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - FalconH1
 - XenAI
 - GeminiProxy
----
-
+- MonoChat
+- Friendli
 
 ## 💻 Usage Examples
 
@@ -909,17 +909,17 @@ All providers return responses that mimic the OpenAI API structure, ensuring com
 
 The OpenAI-compatible providers are built on a modular architecture:
 
-*   `base.py`: Contains abstract base classes that define the OpenAI-compatible interface
-*   `utils.py`: Provides data structures that mimic OpenAI's response format
-*   Provider-specific implementations (e.g., `deepinfra.py`): Implement the abstract interfaces for specific providers
+- `base.py`: Contains abstract base classes that define the OpenAI-compatible interface
+- `utils.py`: Provides data structures that mimic OpenAI's response format
+- Provider-specific implementations (e.g., `deepinfra.py`): Implement the abstract interfaces for specific providers
 
 This architecture makes it easy to add new providers while maintaining a consistent interface.
 
 ## 📝 Notes
 
-*   Some providers may require API keys for full functionality
-*   Not all OpenAI features are supported by all providers
-*   Response formats are standardized to match OpenAI's format, but the underlying content depends on the specific provider and model
+- Some providers may require API keys for full functionality
+- Not all OpenAI features are supported by all providers
+- Response formats are standardized to match OpenAI's format, but the underlying content depends on the specific provider and model
 
 ## 🤝 Contributing
 
@@ -932,24 +932,24 @@ Want to add a new OpenAI-compatible provider? Follow these steps:
 
 ## 📚 Related Documentation
 
-*   [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
-*   [DeepInfra Documentation](https://deepinfra.com/docs)
-*   [Glider.so Website](https://glider.so/)
-*   [ChatGPT Clone Website](https://chatgpt-clone-ten-nu.vercel.app/)
-*   [X0GPT Website](https://x0-gpt.devwtf.in/)
-*   [WiseCat Website](https://wise-cat-groq.vercel.app/)
-*   [Venice AI Website](https://venice.ai/)
-*   [ExaAI Website](https://o3minichat.exa.ai/)
-*   [TypeGPT Website](https://chat.typegpt.net/)
-*   [SciraChat Website](https://scira.ai/)
-*   [FreeAIChat Website](https://freeaichatplayground.com/)
-*   [LLMChatCo Website](https://llmchat.co/)
-*   [Yep.com Website](https://yep.com/)
-*   [HeckAI Website](https://heck.ai/)
-*   [SonusAI Website](https://chat.sonus.ai/)
-*   [ExaChat Website](https://exa-chat.vercel.app/)
-*   [Netwrck Website](https://netwrck.com/)
-*   [StandardInput Website](https://chat.standard-input.com/)
+- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
+- [DeepInfra Documentation](https://deepinfra.com/docs)
+- [Glider.so Website](https://glider.so/)
+- [ChatGPT Clone Website](https://chatgpt-clone-ten-nu.vercel.app/)
+- [X0GPT Website](https://x0-gpt.devwtf.in/)
+- [WiseCat Website](https://wise-cat-groq.vercel.app/)
+- [Venice AI Website](https://venice.ai/)
+- [ExaAI Website](https://o3minichat.exa.ai/)
+- [TypeGPT Website](https://chat.typegpt.net/)
+- [SciraChat Website](https://scira.ai/)
+- [FreeAIChat Website](https://freeaichatplayground.com/)
+- [LLMChatCo Website](https://llmchat.co/)
+- [Yep.com Website](https://yep.com/)
+- [HeckAI Website](https://heck.ai/)
+- [SonusAI Website](https://chat.sonus.ai/)
+- [ExaChat Website](https://exa-chat.vercel.app/)
+- [Netwrck Website](https://netwrck.com/)
+- [StandardInput Website](https://chat.standard-input.com/)
 
 <div align="center">
   <a href="https://t.me/PyscoutAI"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram%20Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></a>

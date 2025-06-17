@@ -63,17 +63,62 @@ def create_app():
         openapi_url=app_openapi_url,
     )
 
-    # Custom Swagger UI with footer
+    # Simple Custom Swagger UI with WebScout footer
     @app.get(app_docs_url, include_in_schema=False)
     async def custom_swagger_ui_html():
         html = get_swagger_ui_html(
             openapi_url=app.openapi_url,
-            title=app.title + " - Swagger UI",
+            title=app.title + " - API Documentation",
         ).body.decode("utf-8")
-        # Inject custom footer with link before </body>
-        footer_html = ("<div style='text-align:center;padding:16px;font-size:14px;color:#888;'>"
-                      "Powered by <a href='https://github.com/OEvortex/Webscout' target='_blank' style='color:#6366f1;text-decoration:none;font-weight:bold;'>WebScout</a>"
-                      "</div>")
+        
+        # Simple, clean footer with WebScout branding
+        footer_html = """
+        <div style='
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid #e5e7eb;
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #6b7280;
+            z-index: 1000;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        '>
+            Powered by <a href='https://github.com/OEvortex/Webscout' target='_blank' style='
+                color: #6366f1;
+                text-decoration: none;
+                font-weight: 600;
+                transition: color 0.2s ease;
+            ' onmouseover='this.style.color="#4f46e5"' onmouseout='this.style.color="#6366f1"'>
+                WebScout
+            </a>
+        </div>
+        <style>
+            body {
+                padding-bottom: 60px !important;
+            }
+            .swagger-ui .topbar {
+                background-color: #fafafa;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            .swagger-ui .info .title {
+                color: #1f2937;
+            }
+            .swagger-ui .btn.authorize {
+                background-color: #6366f1;
+                border-color: #6366f1;
+            }
+            .swagger-ui .btn.authorize:hover {
+                background-color: #4f46e5;
+                border-color: #4f46e5;
+            }
+        </style>
+        """
+        
         html = html.replace("</body>", f"{footer_html}</body>")
         return HTMLResponse(content=html)
 

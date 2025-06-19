@@ -1,6 +1,8 @@
 # 🔥 LitAgent - The Lit User Agent Generator
 
-LitAgent is a powerful and modern user agent generator that keeps your requests fresh and undetectable! Built with style and packed with features, it's your go-to solution for managing user agents in your web scraping projects.
+LitAgent is a powerful, modern user agent generator that keeps your requests fresh and undetectable! Built for web scraping, it helps you manage user agents with ease and style.
+
+---
 
 ## 🚀 Quick Start
 
@@ -15,41 +17,46 @@ ua = agent.random()
 print(ua)  # Mozilla/5.0 (Windows NT 11.0) AppleWebKit/537.36 ...
 ```
 
+---
+
 ## 🎯 Features
 
 ### Browser-Specific Agents
 
 ```python
 # Get agents for specific browsers
-chrome_ua = agent.chrome()    # Latest Chrome agent
-firefox_ua = agent.firefox()  # Latest Firefox agent
-safari_ua = agent.safari()    # Latest Safari agent
-edge_ua = agent.edge()       # Latest Edge agent
-opera_ua = agent.opera()     # Latest Opera agent
+chrome_ua = agent.chrome()      # Latest Chrome agent
+firefox_ua = agent.firefox()    # Latest Firefox agent
+safari_ua = agent.safari()      # Latest Safari agent
+edge_ua = agent.edge()          # Latest Edge agent
+opera_ua = agent.opera()        # Latest Opera agent
 ```
 
 ### Device-Specific Agents
 
 ```python
 # Get mobile or desktop agents
-mobile_ua = agent.mobile()    # Mobile device agent
-desktop_ua = agent.desktop()  # Desktop device agent
+mobile_ua = agent.mobile()      # Mobile device agent
+desktop_ua = agent.desktop()    # Desktop device agent
 
 # New - Get agents for specific device types
-tablet_ua = agent.tablet()    # Tablet device agent
-tv_ua = agent.smart_tv()      # Smart TV agent
-console_ua = agent.gaming()   # Gaming console agent
+tablet_ua = agent.tablet()      # Tablet device agent
+tv_ua = agent.smart_tv()        # Smart TV agent
+console_ua = agent.gaming()     # Gaming console agent
+
+# Wearable device user agent support
+wearable_ua = agent.wearable()  # Get a wearable device user agent
 ```
 
 ### OS-Specific Agents
 
 ```python
 # New - Get agents for specific operating systems
-windows_ua = agent.windows()  # Windows agent
-mac_ua = agent.macos()        # macOS agent
-linux_ua = agent.linux()      # Linux agent
-android_ua = agent.android()  # Android agent
-ios_ua = agent.ios()          # iOS agent
+windows_ua = agent.windows()    # Windows agent
+mac_ua = agent.macos()          # macOS agent
+linux_ua = agent.linux()        # Linux agent`
+android_ua = agent.android()    # Android agent
+ios_ua = agent.ios()            # iOS agent
 ```
 
 ### Custom Agent Generation
@@ -82,6 +89,15 @@ agent.auto_refresh(interval_minutes=30)  # Auto-refresh every 30 minutes
 ip = agent.rotate_ip()
 print(ip)  # 192.168.1.10 (example)
 ```
+
+### Proxy Pool & Rotation
+
+```python
+agent.set_proxy_pool(["http://proxy1:8080", "http://proxy2:8080"])
+proxy = agent.rotate_proxy()  # Get next proxy from pool
+```
+
+---
 
 ## 💫 Real-World Examples
 
@@ -152,47 +168,30 @@ driver = create_driver()
 driver.get('https://example.com')
 ```
 
-### New - With Playwright
-
-```python
-from playwright.sync_api import sync_playwright
-from webscout import LitAgent
-
-agent = LitAgent()
-
-def browse_with_playwright():
-    with sync_playwright() as p:
-        browser_options = {
-            "user_agent": agent.chrome(),
-            "viewport": {"width": 1280, "height": 720}
-        }
-        browser = p.chromium.launch()
-        context = browser.new_context(**browser_options)
-        page = context.new_page()
-        page.goto('https://example.com')
-        # Continue with your scraping logic
-        browser.close()
-```
+---
 
 ## 🌟 Pro Tips
 
-1. **Rotate Agents**: Refresh your agents pool periodically to avoid detection
+1. **Rotate Agents Regularly**  
+   Refresh your agent pool periodically to avoid detection.
+
    ```python
    agent = LitAgent()
-   for _ in range(10):
+   for i in range(10):
        response = requests.get(url, headers={'User-Agent': agent.random()})
-       if _ % 3 == 0:  # Refresh every 3 requests
+       if i % 3 == 0:
            agent.refresh()
    ```
 
-2. **Device-Specific Scraping**: Use appropriate agents for different platforms
+2. **Device-Specific Scraping**  
+   Use device-specific agents for different platforms.
+
    ```python
    # Mobile site scraping
    mobile_response = requests.get(
        'https://m.example.com',
        headers={'User-Agent': agent.mobile()}
    )
-
    # Desktop site scraping
    desktop_response = requests.get(
        'https://example.com',
@@ -200,7 +199,9 @@ def browse_with_playwright():
    )
    ```
 
-3. **Browser Consistency**: Stick to one browser type per session
+3. **Browser Consistency**  
+   Stick to one browser type per session for realism.
+
    ```python
    chrome_agent = agent.chrome()
    headers = {
@@ -210,11 +211,11 @@ def browse_with_playwright():
    # Use these headers for all requests in this session
    ```
 
-4. **New - Browser Fingerprinting & IP Rotation**:
+4. **Browser Fingerprinting & IP Rotation**  
+   Generate consistent browser fingerprints and rotate IPs.
+
    ```python
-   # Create consistent browser fingerprinting
    fingerprint = agent.generate_fingerprint(browser="chrome")
-   
    headers = {
        'User-Agent': fingerprint['user_agent'],
        'Accept-Language': fingerprint['accept_language'],
@@ -223,32 +224,36 @@ def browse_with_playwright():
        'Sec-Ch-Ua-Platform': fingerprint['platform'],
        'X-Forwarded-For': fingerprint['x-forwarded-for']
    }
-   
-   # Use this consistent set for all session requests while rotating IPs
    ```
 
-5. **New - Multi-threading Support**:
+5. **Multi-threading Support**  
+   Use thread-safe mode for concurrent requests.
+
    ```python
    import concurrent.futures
    from webscout import LitAgent
-   
-   agent = LitAgent(thread_safe=True)  # Thread-safe instance
-   
+   import requests
+
+   agent = LitAgent(thread_safe=True)
+
    def fetch_url(url):
        headers = {'User-Agent': agent.random()}
        return requests.get(url, headers=headers).text
-   
+
    urls = ['https://example1.com', 'https://example2.com', 'https://example3.com']
-   
    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
        results = list(executor.map(fetch_url, urls))
    ```
+
+---
 
 ## 🔧 Supported Browsers & Devices
 
 - **Browsers**: Chrome, Firefox, Safari, Edge, Opera, Brave, Vivaldi
 - **Operating Systems**: Windows, macOS, Linux, Android, iOS, Chrome OS
 - **Devices**: Mobile phones, Tablets, Desktops, Game consoles, Smart TVs, Wearables
+
+---
 
 ## 🎨 Why LitAgent?
 
@@ -263,7 +268,11 @@ def browse_with_playwright():
 - 🧵 Thread-safe operation
 - 🕰️ Automatic refresh scheduling
 
-## 📊 New - Analytics and Reporting
+---
+
+## 📊 Analytics and Reporting
+
+Get statistics on your agent usage and export your data.
 
 ```python
 # Get statistics on your agent usage
@@ -276,10 +285,14 @@ print(f"Detection avoidance rate: {stats.avoidance_rate}%")
 agent.export_stats('agent_usage.json')
 ```
 
+---
+
 ## 📋 Installation
 
 ```bash
 pip install webscout
 ```
+
+---
 
 Made with 💖 by the HelpingAI team

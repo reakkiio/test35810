@@ -93,15 +93,23 @@ class LitAgent:
                 self._stats["device_usage"][device_type] = self._stats["device_usage"].get(device_type, 0) + 1
 
     def random(self) -> str:
-        """Get a random user agent! 🎲"""
+        """Get a random user agent! 🎲 (with blacklist/whitelist support)"""
+        if hasattr(self, '_whitelist') and self._whitelist:
+            pool = list(self._whitelist)
+        else:
+            pool = [a for a in self.agents if not hasattr(self, '_blacklist') or a not in self._blacklist]
+        if not pool:
+            pool = self.agents
         if self.thread_safe and self.lock:
             with self.lock:
-                agent = random.choice(self.agents)
+                agent = random.choice(pool)
                 self._update_stats()
+                self._add_to_history(agent)
                 return agent
         else:
-            agent = random.choice(self.agents)
+            agent = random.choice(pool)
             self._update_stats()
+            self._add_to_history(agent)
             return agent
 
     def browser(self, name: str) -> str:
@@ -472,6 +480,63 @@ class LitAgent:
         """Generate a random identifier string."""
         return ''.join(random.choices('0123456789abcdef', k=length)).lower()
 
+    def wearable(self) -> str:
+        """Get a wearable device agent! ⌚"""
+        wearable_type = random.choice(DEVICES['wearable'])
+        # Example user agent for wearables (simplified)
+        if 'Apple Watch' in wearable_type:
+            agent = f"Mozilla/5.0 (AppleWatch; CPU WatchOS like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/9.0 Mobile/13S344 Safari/602.1"
+        elif 'Samsung' in wearable_type:
+            agent = f"Mozilla/5.0 (Linux; Tizen 3.0; {wearable_type}) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/1.0"
+        elif 'Fitbit' in wearable_type:
+            agent = f"Mozilla/5.0 (Linux; {wearable_type}) AppleWebKit/537.36 (KHTML, like Gecko)"
+        elif 'Garmin' in wearable_type:
+            agent = f"Mozilla/5.0 (Linux; {wearable_type}) AppleWebKit/537.36 (KHTML, like Gecko)"
+        else:
+            agent = self.random()
+        self._update_stats(device_type="wearable")
+        return agent
+
+    def set_proxy_pool(self, proxies: List[str]):
+        """Set a pool of proxies for rotation."""
+        self._proxy_pool = proxies
+        self._proxy_index = 0
+
+    def rotate_proxy(self) -> Optional[str]:
+        """Rotate through the proxy pool and return the next proxy."""
+        if not hasattr(self, '_proxy_pool') or not self._proxy_pool:
+            return None
+        proxy = self._proxy_pool[self._proxy_index]
+        self._proxy_index = (self._proxy_index + 1) % len(self._proxy_pool)
+        return proxy
+
+    def add_to_blacklist(self, agent: str):
+        """Add a user agent to the blacklist."""
+        if not hasattr(self, '_blacklist'):
+            self._blacklist = set()
+        self._blacklist.add(agent)
+
+    def add_to_whitelist(self, agent: str):
+        """Add a user agent to the whitelist."""
+        if not hasattr(self, '_whitelist'):
+            self._whitelist = set()
+        self._whitelist.add(agent)
+
+    def _add_to_history(self, agent: str):
+        if not hasattr(self, '_history'):
+            self._history = []
+        self._history.append(agent)
+        if len(self._history) > 50:
+            self._history.pop(0)
+
+    def get_history(self) -> List[str]:
+        """Get the last 50 user agents served."""
+        return getattr(self, '_history', [])
+
+    def validate_agent(self, agent: str) -> bool:
+        """Validate if a user agent string is realistic (basic check)."""
+        return agent.startswith("Mozilla/5.0") and any(b in agent for b in BROWSERS.keys())
+
 if __name__ == "__main__":
     # Test it out! 🧪
     agent = LitAgent()
@@ -484,9 +549,32 @@ if __name__ == "__main__":
     print("Tablet:", agent.tablet())
     print("Smart TV:", agent.smart_tv())
     print("Gaming:", agent.gaming())
+    print("Wearable:", agent.wearable())
 
     # Test custom agent
     print("Custom:", agent.custom(browser="chrome", os="windows", os_version="10.0"))
 
     # Test fingerprinting
     print("Fingerprint:", agent.generate_fingerprint("chrome"))
+
+    # Test proxy rotation
+    agent.set_proxy_pool(["http://proxy1.com", "http://proxy2.com"])
+    print("Proxy 1:", agent.rotate_proxy())
+    print("Proxy 2:", agent.rotate_proxy())
+
+    # Test blacklist/whitelist
+    agent.add_to_blacklist("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
+    agent.add_to_whitelist("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    print("Blacklisted:", agent.random())
+    print("Whitelisted:", agent.random())
+
+    # Test agent history
+    for _ in range(55):
+        agent.random()
+    print("History:", agent.get_history())
+
+    # Test agent validation
+    print("Valid agent:", agent.validate_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"))
+    print("Invalid agent:", agent.validate_agent("InvalidUserAgentString"))
+    ip = agent.rotate_ip()
+    print(ip)  # 192.168.1.10 (example)

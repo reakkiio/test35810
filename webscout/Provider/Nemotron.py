@@ -110,7 +110,8 @@ class NEMOTRON(Provider):
     def _make_request(
         self,
         message: str,
-        stream: bool = False
+        stream: bool = False,
+        raw: bool = False
     ) -> Generator[str, None, None]:
         """Make request to NEMOTRON API."""
         payload = {
@@ -131,10 +132,26 @@ class NEMOTRON(Provider):
                     timeout=self.timeout
                 ) as response:
                     response.raise_for_status()
-                    yield from sanitize_stream(
-                        response.iter_content(chunk_size=1024),
-                        to_json=False,
-                    )
+                    buffer = ""
+                    chunk_size = 32
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if not chunk:
+                            continue
+                        text = chunk.decode(errors="ignore")
+                        buffer += text
+                        while len(buffer) >= chunk_size:
+                            out = buffer[:chunk_size]
+                            buffer = buffer[chunk_size:]
+                            if out.strip():
+                                if raw:
+                                    yield out
+                                else:
+                                    yield out
+                    if buffer.strip():
+                        if raw:
+                            yield buffer
+                        else:
+                            yield buffer
             else:
                 response = self.session.post(
                     self.url,
@@ -143,7 +160,10 @@ class NEMOTRON(Provider):
                     timeout=self.timeout
                 )
                 response.raise_for_status()
-                yield response.text
+                if raw:
+                    yield response.text
+                else:
+                    yield response.text
 
         except requests.exceptions.RequestException as e:
             raise exceptions.ProviderConnectionError(f"Connection error: {str(e)}")
@@ -167,13 +187,20 @@ class NEMOTRON(Provider):
                 raise ValueError(f"Optimizer is not one of {self.__available_optimizers}")
 
         def for_stream():
-            for text in self._make_request(conversation_prompt, stream=True):
-                yield {"text": text}
+            for text in self._make_request(conversation_prompt, stream=True, raw=raw):
+                if raw:
+                    yield text
+                else:
+                    yield {"text": text}
 
         def for_non_stream():
-            response_text = next(self._make_request(conversation_prompt, stream=False))
-            self.last_response = {"text": response_text}
-            return self.last_response
+            response_text = next(self._make_request(conversation_prompt, stream=False, raw=raw))
+            if raw:
+                self.last_response = response_text
+                return response_text
+            else:
+                self.last_response = {"text": response_text}
+                return self.last_response
 
         return for_stream() if stream else for_non_stream()
 
@@ -214,5 +241,6 @@ class NEMOTRON(Provider):
 if __name__ == "__main__":
     # Example usage
     nemotron = NEMOTRON()
-    response = nemotron.chat("Hello, how are you?", stream=False)
-    print(response)
+    response = nemotron.chat("write me about humans in points", stream=True)
+    for part in response:
+        print(part, end="", flush=True)

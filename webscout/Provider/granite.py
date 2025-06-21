@@ -83,10 +83,12 @@ class IBMGranite(Provider):
         self.conversation.history_offset = history_offset
 
     @staticmethod
-    def _granite_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from IBM Granite stream JSON lists [3, "text"]."""
-        if isinstance(chunk, list) and len(chunk) == 2 and chunk[0] == 3 and isinstance(chunk[1], str):
-            return chunk[1]
+    def _granite_extractor(chunk: Union[str, Dict[str, Any], list]) -> Optional[str]:
+        """Extracts content from IBM Granite stream JSON lists [6, "text"] or [3, "text"]."""
+        # Accept both [3, str] and [6, str] as content chunks
+        if isinstance(chunk, list) and len(chunk) == 2 and isinstance(chunk[1], str):
+            if chunk[0] in (3, 6):
+                return chunk[1]
         return None
 
     @staticmethod
@@ -157,73 +159,60 @@ class IBMGranite(Provider):
             payload["thinking"] = True
 
         def for_stream():
-            streaming_text = "" # Initialize outside try block
+            streaming_text = ""
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint, 
-                    # headers are set on the session
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status() # Check for HTTP errors
-
-                # Use sanitize_stream
+                response.raise_for_status()
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No prefix
-                    to_json=True,     # Stream sends JSON lines (which are lists)
-                    content_extractor=self._granite_extractor, # Use the specific extractor
-                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                    data=response.iter_content(chunk_size=None),
+                    intro_value=None,
+                    to_json=True,
+                    content_extractor=self._granite_extractor,
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
                 for content_chunk in processed_stream:
-                    # content_chunk is the string extracted by _granite_extractor
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        resp = dict(text=content_chunk)
-                        yield resp if not raw else content_chunk
-                
-                # Update history after stream finishes
+                    if raw:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            resp = dict(text=content_chunk)
+                            yield resp
                 self.last_response = dict(text=streaming_text)
                 self.conversation.update_chat_history(prompt, streaming_text)
-                
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.ProviderConnectionError(f"Request failed (CurlError): {e}") from e
-            except json.JSONDecodeError as e: # Keep specific JSON error handling
+            except json.JSONDecodeError as e:
                 raise exceptions.InvalidResponseError(f"Failed to decode JSON response: {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
-                # Use specific exception type if available, otherwise generic
                 ex_type = exceptions.FailedToGenerateResponseError if not isinstance(e, exceptions.ProviderConnectionError) else type(e)
                 raise ex_type(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
 
-
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
             full_text = ""
             try:
-                # Ensure raw=False so for_stream yields dicts
                 for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict) and "text" in chunk_data:
-                        full_text += chunk_data["text"]
-                    # Handle raw string case if raw=True was passed
-                    elif raw and isinstance(chunk_data, str):
-                         full_text += chunk_data
+                    if raw:
+                        if isinstance(chunk_data, str):
+                            full_text += chunk_data
+                    else:
+                        if isinstance(chunk_data, dict) and "text" in chunk_data:
+                            full_text += chunk_data["text"]
             except Exception as e:
-                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
-                 if not full_text:
-                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
-            # last_response and history are updated within for_stream
-            # Return the final aggregated response dict or raw string
+                if not full_text:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
             return full_text if raw else self.last_response
 
-
-        # Since the API endpoint suggests streaming, always call the stream generator.
-        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -232,25 +221,27 @@ class IBMGranite(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response as a string using chat method"""
         def for_stream_chat():
-            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                prompt, stream=True, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
-
+            for response in gen:
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
-            # ask() returns dict or str when not streaming
             response_data = self.ask(
-                prompt, stream=False, raw=False, # Ensure ask returns dict
+                prompt, stream=False, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response_data) # get_message expects dict
-
+            if raw:
+                return response_data if isinstance(response_data, str) else str(response_data)
+            return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:
@@ -265,6 +256,6 @@ if __name__ == "__main__":
     ai = IBMGranite(
         thinking=True,
     )
-    response = ai.chat("How many r in strawberry", stream=True)
+    response = ai.chat("How many r in strawberry", stream=True, raw=False)
     for chunk in response:
-        print(chunk, end="", flush=True)
+        print(chunk, end="", flush=True)  # Print each chunk without newline

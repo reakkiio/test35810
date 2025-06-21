@@ -2,7 +2,7 @@ from curl_cffi import CurlError
 from curl_cffi.requests import Session, Response # Import Response
 import json
 import uuid
-from typing import Any, Dict, Union, Optional, List
+from typing import Any, Dict, Union, Optional, List, Generator
 from datetime import datetime
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider 
@@ -264,10 +264,11 @@ class ExaChat(Provider):
     def ask(
         self,
         prompt: str,
+        stream: bool = False,
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> Union[Dict[str, Any], Generator[Any, None, None]]:
         """Sends a prompt to the API and returns the response."""
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -281,78 +282,103 @@ class ExaChat(Provider):
 
         payload = self._build_payload(conversation_prompt)
         response = self._make_request(payload)
-        
-        try:
-            full_response = ""
-            # Use sanitize_stream to process the response
-            processed_stream = sanitize_stream(
-                data=response.iter_content(chunk_size=None), # Pass byte iterator
-                intro_value=None, # API doesn't seem to use 'data:' prefix
-                to_json=True,     # Stream sends JSON lines
-                content_extractor=self._exachat_extractor, # Use the specific extractor
-                yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
-            )
-
+        processed_stream = sanitize_stream(
+            data=response.iter_content(chunk_size=None),
+            intro_value=None,
+            to_json=True,
+            content_extractor=self._exachat_extractor,
+            yield_raw_on_error=False,
+            raw=raw
+        )
+        if stream:
+            streaming_text = ""
             for content_chunk in processed_stream:
-                # content_chunk is the string extracted by _exachat_extractor
                 if content_chunk and isinstance(content_chunk, str):
-                    full_response += content_chunk
-                            
+                    content_chunk = content_chunk.replace('\\\\', '\\').replace('\\"', '"')
+                if raw:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                    yield content_chunk
+                else:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk)
+            self.last_response = {"text": streaming_text}
+            self.conversation.update_chat_history(prompt, streaming_text)
+        else:
+            full_response = ""
+            for content_chunk in processed_stream:
+                if content_chunk and isinstance(content_chunk, str):
+                    content_chunk = content_chunk.replace('\\\\', '\\').replace('\\"', '"')
+                if raw:
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response += content_chunk
+                else:
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response += content_chunk
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
-            return self.last_response if not raw else full_response # Return dict or raw string
-            
-        except json.JSONDecodeError as e:
-            raise exceptions.FailedToGenerateResponseError(f"Invalid JSON response: {e}") from e
+            return self.last_response if not raw else full_response
 
     def chat(
         self,
         prompt: str,
+        stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
-        """Generate response."""
-        response = self.ask(
-            prompt, optimizer=optimizer, conversationally=conversationally
-        )
-        return self.get_message(response)
+        raw: bool = False,
+    ) -> Union[str, Generator[str, None, None]]:
+        def for_stream():
+            for response in self.ask(
+                prompt, stream=True, raw=raw, optimizer=optimizer, conversationally=conversationally
+            ):
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
+        def for_non_stream():
+            result = self.ask(
+                prompt, stream=False, raw=raw, optimizer=optimizer, conversationally=conversationally
+            )
+            if raw:
+                return result if isinstance(result, str) else str(result)
+            return self.get_message(result)
+        return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: Union[Dict[str, Any], str]) -> str:
-        """
-        Retrieves message from response.
-        
-        Args:
-            response (Union[Dict[str, Any], str]): The response to extract the message from
-            
-        Returns:
-            str: The extracted message text
-        """
         if isinstance(response, dict):
-            return response.get("text", "")
-        return str(response)
+            text = response.get("text", "")
+        else:
+            text = str(response)
+        return text.replace('\\\\', '\\').replace('\\"', '"')
 
 if __name__ == "__main__":
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
     
-    # Test all available models
-    working = 0
-    total = len(ExaChat.AVAILABLE_MODELS)
+    # # Test all available models
+    # working = 0
+    # total = len(ExaChat.AVAILABLE_MODELS)
     
-    for model in ExaChat.AVAILABLE_MODELS:
-        try:
-            test_ai = ExaChat(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            response_text = response
+    # for model in ExaChat.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = ExaChat(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word")
+    #         response_text = response
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"{model:<50} {'✗':<10} {str(e)}")
+    from rich import print
+    ai = ExaChat(model="gemini-2.0-flash")
+    response = ai.chat("tell me a joke", stream=True, raw=False)
+    for chunk in response:
+        print(chunk, end='', flush=True)

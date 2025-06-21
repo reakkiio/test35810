@@ -1,7 +1,7 @@
 from curl_cffi.requests import Session 
 import uuid
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Generator, Optional, Union
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
@@ -166,7 +166,8 @@ class StandardInputAI(Provider):
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]:
+        raw: bool = False,  # Added raw parameter
+    ) -> Union[Dict[str, Any], Generator[str, None, None]]:
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -233,9 +234,12 @@ class StandardInputAI(Provider):
             for content_chunk in processed_stream:
                 if content_chunk and isinstance(content_chunk, str):
                     full_response += content_chunk
-
+                    if raw:
+                        yield content_chunk
             self.last_response = {"text": full_response}
             self.conversation.update_chat_history(prompt, full_response)
+            if raw:
+                return full_response
             return {"text": full_response}
         except Exception as e:
             raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
@@ -245,17 +249,32 @@ class StandardInputAI(Provider):
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
-        return self.get_message(
-            self.ask(
-                prompt, optimizer=optimizer, conversationally=conversationally
+        raw: bool = False,  # Added raw parameter
+    ) -> Union[str, Generator[str, None, None]]:
+        def for_stream():
+            gen = self.ask(
+                prompt, optimizer=optimizer, conversationally=conversationally, raw=raw
             )
-        )
-
-    def get_message(self, response: dict) -> str:
-        assert isinstance(response, dict), "Response should be of dict data-type only"
-        # Extractor handles formatting
-        return response.get("text", "").replace('\\n', '\n').replace('\\n\\n', '\n\n')
+            if hasattr(gen, '__iter__') and not isinstance(gen, dict):
+                for chunk in gen:
+                    if raw:
+                        yield chunk
+                    else:
+                        yield self.get_message({"text": chunk})
+            else:
+                if raw:
+                    yield gen if isinstance(gen, str) else self.get_message(gen)
+                else:
+                    yield self.get_message(gen)
+        def for_non_stream():
+            result = self.ask(
+                prompt, optimizer=optimizer, conversationally=conversationally, raw=raw
+            )
+            if raw:
+                return result if isinstance(result, str) else self.get_message(result)
+            else:
+                return self.get_message(result)
+        return for_stream() if raw else for_non_stream()
 
 if __name__ == "__main__":
     print("-" * 100)

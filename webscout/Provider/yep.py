@@ -1,9 +1,10 @@
 import uuid
-import json
 from curl_cffi import CurlError
 from curl_cffi.requests import Session
 
 from typing import Any, Dict, Optional, Generator, Union, List, TypeVar
+
+from mistralai import ContentChunk
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
@@ -192,81 +193,63 @@ class YEPCHAT(Provider):
 
         def for_stream():
             try:
-                # buffer = b"" # No longer needed here
-                # Use curl_cffi session post, pass cookies explicitly
                 response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
-                
                 if not response.ok:
-                    # If we get a non-200 response, try refreshing our identity once
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        # Retry with new identity
-                        # Use curl_cffi session post, pass cookies explicitly
                         retry_response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, stream=True, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
                         if not retry_response.ok:
                             raise exceptions.FailedToGenerateResponseError(
                                 f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
                             )
-                        response = retry_response # Use the successful retry response
+                        response = retry_response
                     else:
                         raise exceptions.FailedToGenerateResponseError(
                             f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                         )
-
-                # --- Start of stream processing block (should be outside the 'if not response.ok' block) ---
                 streaming_text = ""
-
-                # Use sanitize_stream to process the lines
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass the byte iterator directly
+                    data=response.iter_content(chunk_size=None),
                     intro_value="data:",
-                    to_json=True, # Yep sends JSON after 'data:'
-                    skip_markers=["[DONE]"], # Skip the final marker
-                    yield_raw_on_error=False, # Only process valid JSON data
-                    # --- Add the content extractor ---
-                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None
+                    to_json=True,
+                    skip_markers=["[DONE]"],
+                    yield_raw_on_error=False,
+                    content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None,
+                    raw=raw
                 )
-                # The loop now yields the final extracted string content directly
                 for content_chunk in processed_stream:
-                    # --- TEMPORARY DEBUG PRINT ---
-                    # print(f"\nDEBUG: Received extracted content: {content_chunk!r}\n", flush=True) # Keep or remove debug print as needed
-                    if content_chunk and isinstance(content_chunk, str): # Ensure it's a non-empty string
-                        streaming_text += content_chunk
-                        # Yield dict or raw string chunk based on 'raw' flag
-                        yield dict(text=content_chunk) if not raw else content_chunk
-                # --- End of stream processing block ---
-
-                # Check if the response contains a tool call (This should happen *after* processing the stream)
-                response_data = self.conversation.handle_tool_response(streaming_text)
-                
-                if response_data["is_tool_call"]:
-                    # Handle tool call results
-                    if response_data["success"]:
-                        for tool_call in response_data.get("tool_calls", []):
-                            tool_name = tool_call.get("name", "unknown_tool")
-                            result = response_data["result"]
-                            self.conversation.update_chat_history_with_tool(prompt, tool_name, result)
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if raw:
+                        yield content_chunk
                     else:
-                        # If tool call failed, update history with error
-                        self.conversation.update_chat_history(prompt, 
-                            f"Error executing tool call: {response_data['result']}")
-                else:
-                    # Normal response handling
-                    self.conversation.update_chat_history(prompt, streaming_text)
-                        
-            except CurlError as e: # Catch CurlError
-                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
+                if not raw:
+                    response_data = self.conversation.handle_tool_response(streaming_text)
+                    if response_data["is_tool_call"]:
+                        if response_data["success"]:
+                            for tool_call in response_data.get("tool_calls", []):
+                                tool_name = tool_call.get("name", "unknown_tool")
+                                result = response_data["result"]
+                                self.conversation.update_chat_history_with_tool(prompt, tool_name, result)
+                        else:
+                            self.conversation.update_chat_history(prompt, f"Error executing tool call: {response_data['result']}")
+                    else:
+                        self.conversation.update_chat_history(prompt, streaming_text)
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
         def for_non_stream():
             try:
-                # Use curl_cffi session post, pass cookies explicitly
                 response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
                 if not response.ok:
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        # Use curl_cffi session post, pass cookies explicitly
                         response = self.session.post(self.chat_endpoint, headers=self.headers, cookies=self.cookies, json=data, timeout=self.timeout, impersonate=self.fingerprint.get("browser_type", "chrome110"))
                         if not response.ok:
                             raise exceptions.FailedToGenerateResponseError(
@@ -276,40 +259,28 @@ class YEPCHAT(Provider):
                         raise exceptions.FailedToGenerateResponseError(
                             f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                         )
-
-                # ... existing non-stream response handling code ...
+                if raw:
+                    return response.text
                 response_data = response.json()
                 if 'choices' in response_data and len(response_data['choices']) > 0:
                     content = response_data['choices'][0].get('message', {}).get('content', '')
-                    
-                    # Check if the response contains a tool call
                     tool_response = self.conversation.handle_tool_response(content)
-                    
                     if tool_response["is_tool_call"]:
-                        # Process tool call
                         if tool_response["success"]:
-                            # Get the first tool call for simplicity
                             if "tool_calls" in tool_response and len(tool_response["tool_calls"]) > 0:
                                 tool_call = tool_response["tool_calls"][0]
                                 tool_name = tool_call.get("name", "unknown_tool")
                                 tool_result = tool_response["result"]
-                                
-                                # Update chat history with tool call
                                 self.conversation.update_chat_history_with_tool(prompt, tool_name, tool_result)
-                                
-                                # Return tool result
                                 return {"text": tool_result, "is_tool_call": True, "tool_name": tool_name}
-                        
-                        # If tool call processing failed
                         return {"text": tool_response["result"], "is_tool_call": True, "error": True}
                     else:
-                        # Normal response handling
                         self.conversation.update_chat_history(prompt, content)
                         return {"text": content}
                 else:
                     raise exceptions.FailedToGenerateResponseError("No response content found")
-            except CurlError as e: # Catch CurlError
-                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
@@ -321,6 +292,7 @@ class YEPCHAT(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         """
         Initiates a chat with the Yep API using the provided prompt.
@@ -335,19 +307,25 @@ class YEPCHAT(Provider):
         """
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
 
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
 
         return for_stream() if stream else for_non_stream()
 
@@ -361,29 +339,37 @@ class YEPCHAT(Provider):
             >>> ai.get_message(response)
             Extracts and returns the message content from the response.
         """
-        assert isinstance(response, dict)
-        return response["text"]
+        if isinstance(response, dict):
+            return response["text"]
+        elif isinstance(response, (str, bytes)):
+            return response
+        else:
+            raise TypeError(f"Unexpected response type: {type(response)}")
 
 
 if __name__ == "__main__":
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
 
-    for model in YEPCHAT.AVAILABLE_MODELS:
-        try:
-            test_ai = YEPCHAT(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            response_text = response
+    # for model in YEPCHAT.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = YEPCHAT(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word")
+    #         response_text = response
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"{model:<50} {'✗':<10} {str(e)}")
+    ai = YEPCHAT(model="DeepSeek-R1-Distill-Qwen-32B", timeout=60)
+    response = ai.chat("Say 'Hello' in one word", raw=True, stream=True)
+    for chunk in response:
 
+        print(chunk, end='', flush=True)

@@ -338,7 +338,8 @@ class LitAgent:
         self._update_stats(browser_type=browser, device_type=device_type)
         return agent
 
-    def generate_fingerprint(self, browser: Optional[str] = None) -> Dict[str, str]:
+    @staticmethod
+    def generate_fingerprint(browser: Optional[str] = None) -> Dict[str, str]:
         """
         Generate a consistent browser fingerprint for anti-fingerprinting purposes.
 
@@ -355,13 +356,14 @@ class LitAgent:
             Dict[str, str]: A dictionary containing fingerprinting headers and values.
         """
         # Get a random user agent using the random() method
-        user_agent = self.random()
+        agent = LitAgent()
+        user_agent = agent.random()
 
         # If browser is specified, try to get a matching one
         if browser:
             browser = browser.lower()
             if browser in BROWSERS:
-                user_agent = self.browser(browser)
+                user_agent = agent.browser(browser)
 
         accept_language = random.choice(FINGERPRINTS["accept_language"])
         accept = random.choice(FINGERPRINTS["accept"])
@@ -375,7 +377,7 @@ class LitAgent:
                 sec_ch_ua = FINGERPRINTS["sec_ch_ua"][browser_name].format(version, version)
                 break
 
-        ip = self.rotate_ip()
+        ip = agent.rotate_ip()
         fingerprint = {
             "user_agent": user_agent,
             "accept_language": accept_language,
@@ -387,10 +389,10 @@ class LitAgent:
             "x-client-ip": ip,
             "forwarded": f"for={ip};proto=https",
             "x-forwarded-proto": "https",
-            "x-request-id": self.random_id(8) if hasattr(self, 'random_id') else ''.join(random.choices('0123456789abcdef', k=8)),
+            "x-request-id": agent.random_id(8) if hasattr(agent, 'random_id') else ''.join(random.choices('0123456789abcdef', k=8)),
         }
 
-        self._update_stats(browser_type=browser)
+        agent._update_stats(browser_type=browser)
         return fingerprint
 
     def refresh(self) -> None:

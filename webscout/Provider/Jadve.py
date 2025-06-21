@@ -170,16 +170,20 @@ class JadveOpenAI(Provider):
                     intro_value=None, # No simple prefix
                     to_json=False,    # Content is text after extraction
                     content_extractor=self._jadve_extractor, # Use the specific extractor
-                    # end_marker="e:", # Add if 'e:' reliably marks the end
-                    yield_raw_on_error=True
+                    yield_raw_on_error=True,
+                    raw=raw
                 )
 
                 for content_chunk in processed_stream:
-                    # content_chunk is the string extracted by _jadve_extractor
-                    if content_chunk and isinstance(content_chunk, str):
-                        full_response_text += content_chunk
-                        resp = {"text": content_chunk}
-                        yield resp if not raw else content_chunk
+                    if raw:
+                        if content_chunk and isinstance(content_chunk, str):
+                            full_response_text += content_chunk
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            full_response_text += content_chunk
+                            resp = {"text": content_chunk}
+                            yield resp
 
                 # Update history after stream finishes
                 self.last_response = {"text": full_response_text}
@@ -191,30 +195,22 @@ class JadveOpenAI(Provider):
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Failed to generate response ({type(e).__name__}): {e} - {err_text}") from e
 
-
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
             collected_text = ""
             try:
-                # Ensure raw=False so for_stream yields dicts
                 for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict) and "text" in chunk_data:
-                        collected_text += chunk_data["text"]
-                    # Handle raw string case if raw=True was passed
-                    elif raw and isinstance(chunk_data, str):
-                         collected_text += chunk_data
+                    if raw:
+                        if isinstance(chunk_data, str):
+                            collected_text += chunk_data
+                    else:
+                        if isinstance(chunk_data, dict) and "text" in chunk_data:
+                            collected_text += chunk_data["text"]
             except Exception as e:
-                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
-                 if not collected_text:
-                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
+                if not collected_text:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
             # last_response and history are updated within for_stream
-            # Return the final aggregated response dict or raw string
             return collected_text if raw else self.last_response
 
-
-        # Since the API endpoint suggests streaming, always call the stream generator.
-        # The non-stream wrapper will handle aggregation if stream=False.
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -223,6 +219,7 @@ class JadveOpenAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
         """
         Generate a chat response (string). 
@@ -232,25 +229,29 @@ class JadveOpenAI(Provider):
             stream (bool, optional): Flag for streaming response. Defaults to False.
             optimizer (str, optional): Prompt optimizer name. Defaults to None.
             conversationally (bool, optional): Flag for conversational optimization. Defaults to False.
+            raw (bool, optional): Return raw response. Defaults to False.
         Returns:
             str or generator: Generated response string or generator yielding response chunks.
         """
         def for_stream_chat():
-            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                prompt, stream=True, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
+            for response in gen:
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
 
         def for_non_stream_chat():
-            # ask() returns dict or str when not streaming
             response_data = self.ask(
-                prompt, stream=False, raw=False, # Ensure ask returns dict
+                prompt, stream=False, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response_data) # get_message expects dict
+            if raw:
+                return response_data if isinstance(response_data, str) else str(response_data)
+            return self.get_message(response_data)
 
         return for_stream_chat() if stream else for_non_stream_chat()
 
@@ -268,24 +269,29 @@ class JadveOpenAI(Provider):
         return response.get("text", "")
 
 if __name__ == "__main__":
-    # Ensure curl_cffi is installed
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # # Ensure curl_cffi is installed
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
 
-    for model in JadveOpenAI.AVAILABLE_MODELS:
-        try:
-            test_ai = JadveOpenAI(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            response_text = response
+    # for model in JadveOpenAI.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = JadveOpenAI(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word")
+    #         response_text = response
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"{model:<50} {'✗':<10} {str(e)}")
+    from rich import print
+    ai = JadveOpenAI()
+    response = ai.chat("tell me about humans", stream=True, raw=False)
+    for chunk in response:
+        print(chunk, end='', flush=True)

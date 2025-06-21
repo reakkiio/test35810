@@ -87,7 +87,7 @@ class OpenGPT(Provider):
     def ask(
         self,
         prompt: str,
-        stream: bool = False, # Note: API does not support streaming
+        stream: bool = False, # Note: API does not support streaming natively
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
@@ -121,38 +121,54 @@ class OpenGPT(Provider):
             "id": self.app_id,
             "userKey": ""  # Assuming userKey is meant to be empty as in the original code
         }
-        
-        # API does not stream, implement non-stream logic directly
-        def for_non_stream():
+
+        def for_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     "https://open-gpt.app/api/generate",
-                    # headers are set on the session
-                    data=json.dumps(payload), # Keep data as JSON string
+                    data=json.dumps(payload),
                     timeout=self.timeout,
-                    # proxies are set on the session
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                
-                response.raise_for_status() # Check for HTTP errors
-                
-                # Use response.text which is already decoded
+                response.raise_for_status()
+                response_text = response.text
+                buffer = ""
+                chunk_size = 32
+                for i in range(0, len(response_text), chunk_size):
+                    out = response_text[i:i+chunk_size]
+                    if out.strip():
+                        if raw:
+                            yield out
+                        else:
+                            yield {"text": out}
+                self.last_response = {"text": response_text}
+                self.conversation.update_chat_history(prompt, response_text)
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
+                raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
+
+        def for_non_stream():
+            try:
+                response = self.session.post(
+                    "https://open-gpt.app/api/generate",
+                    data=json.dumps(payload),
+                    timeout=self.timeout,
+                    impersonate="chrome110"
+                )
+                response.raise_for_status()
                 response_text = response.text
                 self.last_response = {"text": response_text}
                 self.conversation.update_chat_history(prompt, response_text)
-                
-                # Return dict or raw string based on raw flag
                 return {"raw": response_text} if raw else {"text": response_text}
-                
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError, JSONDecodeError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e} - {err_text}") from e
-        
-        # This provider doesn't support streaming, so just return non-stream
-        return for_non_stream()
+
+        return for_stream() if stream else for_non_stream()
 
     def chat(
         self,
@@ -173,21 +189,25 @@ class OpenGPT(Provider):
         Returns:
             A string with the response text.
         """
-        # Since ask() now handles both stream=True/False by returning the full response dict:
-        response_data = self.ask(
-            prompt, 
-            stream=False, # Call ask in non-stream mode internally
-            raw=False, # Ensure ask returns dict with 'text' key
-            optimizer=optimizer, 
-            conversationally=conversationally
-        )
-        # If stream=True was requested, simulate streaming by yielding the full message at once
         if stream:
             def stream_wrapper():
-                yield self.get_message(response_data)  # yield only the text string
+                for part in self.ask(
+                    prompt,
+                    stream=True,
+                    raw=False,
+                    optimizer=optimizer,
+                    conversationally=conversationally
+                ):
+                    yield self.get_message(part) if isinstance(part, dict) else part
             return stream_wrapper()
         else:
-            # If stream=False, return the full message directly
+            response_data = self.ask(
+                prompt,
+                stream=False,
+                raw=False,
+                optimizer=optimizer,
+                conversationally=conversationally
+            )
             return self.get_message(response_data)
 
     def get_message(self, response: dict) -> str:
@@ -206,4 +226,6 @@ class OpenGPT(Provider):
 
 if __name__ == "__main__":
     ai = OpenGPT()
-    print(ai.chat("Hello, how are you?"))
+    response = ai.chat("write me about humans in points", stream=True)
+    for part in response:
+        print(part, end="", flush=True)

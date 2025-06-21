@@ -135,95 +135,98 @@ class TextPollinationsAI(Provider):
             payload["tool_choice"] = tool_choice
 
         def for_stream():
-            try: # Add try block for CurlError
-                # Use curl_cffi session post with impersonate
+            try:
                 response = self.session.post(
                     self.api_endpoint,
-                    # headers are set on the session
                     json=payload,
                     stream=True,
                     timeout=self.timeout,
-                    impersonate="chrome120" # Add impersonate
+                    impersonate="chrome120"
                 )
-
                 if not response.ok:
                     raise exceptions.FailedToGenerateResponseError(
                         f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     )
-
                 streaming_text = ""
-                # Use sanitize_stream
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    data=response.iter_content(chunk_size=None),
                     intro_value="data:",
-                    to_json=True,     # Stream sends JSON
+                    to_json=True,
                     skip_markers=["[DONE]"],
-                    # Extractor handles both content and tool_calls
                     content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta') if isinstance(chunk, dict) else None,
-                    yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
                 for delta in processed_stream:
-                    # delta is the extracted 'delta' object or None
-                    if delta and isinstance(delta, dict):
-                        if 'content' in delta and delta['content'] is not None:
-                            content = delta['content']
-                            streaming_text += content
-                            yield content if raw else dict(text=content)
-                        elif 'tool_calls' in delta:
-                            tool_calls = delta['tool_calls']
-                            yield tool_calls if raw else dict(tool_calls=tool_calls)
-
-                # Update history and last response after stream finishes
-                self.last_response.update(dict(text=streaming_text)) # Store aggregated text
-                if streaming_text: # Only update history if text was received
+                    if isinstance(delta, bytes):
+                        delta = delta.decode('utf-8', errors='ignore')
+                    if delta is None:
+                        continue
+                    if raw:
+                        # Only yield content or tool_calls as string
+                        if isinstance(delta, dict):
+                            if 'content' in delta and delta['content'] is not None:
+                                content = delta['content']
+                                streaming_text += content
+                                yield content
+                            elif 'tool_calls' in delta:
+                                tool_calls = delta['tool_calls']
+                                yield json.dumps(tool_calls)
+                        elif isinstance(delta, str):
+                            streaming_text += delta
+                            yield delta
+                    else:
+                        if isinstance(delta, dict):
+                            if 'content' in delta and delta['content'] is not None:
+                                content = delta['content']
+                                streaming_text += content
+                                yield dict(text=content)
+                            elif 'tool_calls' in delta:
+                                tool_calls = delta['tool_calls']
+                                yield dict(tool_calls=tool_calls)
+                self.last_response.update(dict(text=streaming_text))
+                if streaming_text:
                     self.conversation.update_chat_history(
-                        prompt, streaming_text # Use the fully aggregated text
+                        prompt, streaming_text
                     )
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions
+            except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}") from e
-
-
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
             final_content = ""
-            tool_calls_aggregated = None # To store potential tool calls
-            try: # Add try block for potential errors during aggregation
+            tool_calls_aggregated = None
+            try:
                 for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict):
-                        if "text" in chunk_data:
-                            final_content += chunk_data["text"]
-                        elif "tool_calls" in chunk_data:
-                            # Aggregate tool calls (simple aggregation, might need refinement)
+                    if raw:
+                        if isinstance(chunk_data, str):
+                            final_content += chunk_data
+                        elif isinstance(chunk_data, bytes):
+                            final_content += chunk_data.decode('utf-8', errors='ignore')
+                        elif isinstance(chunk_data, list):
                             if tool_calls_aggregated is None:
                                 tool_calls_aggregated = []
-                            tool_calls_aggregated.extend(chunk_data["tool_calls"])
-                    elif isinstance(chunk_data, str): # Handle raw stream case
-                        final_content += chunk_data
-                    # Handle raw tool calls list if raw=True
-                    elif isinstance(chunk_data, list) and raw:
-                         if tool_calls_aggregated is None:
-                             tool_calls_aggregated = []
-                         tool_calls_aggregated.extend(chunk_data)
+                            tool_calls_aggregated.extend(chunk_data)
+                    else:
+                        if isinstance(chunk_data, dict):
+                            if "text" in chunk_data:
+                                final_content += chunk_data["text"]
+                            elif "tool_calls" in chunk_data:
+                                if tool_calls_aggregated is None:
+                                    tool_calls_aggregated = []
+                                tool_calls_aggregated.extend(chunk_data["tool_calls"])
+                        elif isinstance(chunk_data, str):
+                            final_content += chunk_data
             except Exception as e:
-                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
-                 if not final_content and not tool_calls_aggregated:
-                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
-
-            # last_response and history are updated within for_stream (for text)
-            # Return a dict containing text and/or tool_calls
+                if not final_content and not tool_calls_aggregated:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
             result = {}
             if final_content:
                 result["text"] = final_content
             if tool_calls_aggregated:
                 result["tool_calls"] = tool_calls_aggregated
-            self.last_response = result # Update last_response with aggregated result
-            return self.last_response
-
-
+            self.last_response = result
+            return self.last_response if not raw else (final_content if final_content else json.dumps(tool_calls_aggregated) if tool_calls_aggregated else "")
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -234,27 +237,32 @@ class TextPollinationsAI(Provider):
         conversationally: bool = False,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[Dict[str, Any]] = None,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         """Generate response as a string"""
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally,
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally,
                 tools=tools, tool_choice=tool_choice
             ):
-                yield self.get_message(response)
-
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                    tools=tools,
-                    tool_choice=tool_choice,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
+                tools=tools,
+                tool_choice=tool_choice,
             )
-
+            if raw:
+                return result if isinstance(result, str) else (result.get("text", "") if isinstance(result, dict) else str(result))
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

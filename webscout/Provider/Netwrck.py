@@ -127,75 +127,58 @@ class Netwrck(Provider):
 
         def for_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     "https://netwrck.com/api/chatpred_or",
                     json=payload,
-                    # headers are set on the session
-                    # proxies are set on the session
                     timeout=self.timeout,
                     stream=True,
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status() # Check for HTTP errors
-
-                streaming_text = ""
-                # Use sanitize_stream
-                processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No prefix
-                    to_json=False,    # It's text
-                    content_extractor=self._netwrck_extractor, # Use the quote stripper
-                    yield_raw_on_error=True
-                )
-                for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield {"text": content_chunk} if not raw else content_chunk
-                # Update history after stream finishes
-                self.last_response = {"text": streaming_text} # Store aggregated text
-                self.conversation.update_chat_history(payload["query"], streaming_text)
-
-            except CurlError as e: # Catch CurlError
+                response.raise_for_status()
+                buffer = ""
+                chunk_size = 32
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if not chunk:
+                        continue
+                    text = chunk.decode(errors="ignore")
+                    buffer += text
+                    while len(buffer) >= chunk_size:
+                        out = buffer[:chunk_size]
+                        buffer = buffer[chunk_size:]
+                        if out.strip():
+                            if raw:
+                                yield out
+                            else:
+                                yield {"text": out}
+                if buffer.strip():
+                    if raw:
+                        yield buffer
+                    else:
+                        yield {"text": buffer}
+                self.last_response = {"text": buffer}
+                self.conversation.update_chat_history(payload["query"], buffer)
+            except CurlError as e:
                 raise exceptions.ProviderConnectionError(f"Network error (CurlError): {str(e)}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.ProviderConnectionError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
 
         def for_non_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     "https://netwrck.com/api/chatpred_or",
                     json=payload,
-                    # headers are set on the session
-                    # proxies are set on the session
                     timeout=self.timeout,
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status() # Check for HTTP errors
-                
-                response_text_raw = response.text # Get raw text
-
-                # Process the text using sanitize_stream
-                processed_stream = sanitize_stream(
-                    data=response_text_raw,
-                    intro_value=None,
-                    to_json=False,
-                    content_extractor=self._netwrck_extractor
-                )
-                # Aggregate the single result
-                text = "".join(list(processed_stream))
-
-                self.last_response = {"text": text} # Store processed text
-                self.conversation.update_chat_history(prompt, text)
-
-                # Return dict or raw string
-                return text if raw else self.last_response
-
-            except CurlError as e: # Catch CurlError
+                response.raise_for_status()
+                response_text_raw = response.text
+                self.last_response = {"text": response_text_raw}
+                self.conversation.update_chat_history(prompt, response_text_raw)
+                return response_text_raw if raw else self.last_response
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Network error (CurlError): {str(e)}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
 

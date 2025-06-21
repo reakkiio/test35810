@@ -127,83 +127,69 @@ class Venice(Provider):
                 )
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
-
-        # Update Payload construction based on successful request
         payload = {
-            "requestId": str(uuid4())[:7], # Keep generating request ID
+            "requestId": str(uuid4())[:7],
             "modelId": self.model,
             "prompt": [{"content": conversation_prompt, "role": "user"}],
-            "systemPrompt": self.system_prompt, # Use configured system prompt
+            "systemPrompt": self.system_prompt,
             "conversationType": "text",
-            "temperature": self.temperature, # Use configured temperature
-            "webEnabled": True, # Keep webEnabled
-            "topP": self.top_p, # Use configured topP
-            "includeVeniceSystemPrompt": True, # Set to True as per example
-            "isCharacter": False, # Keep as False
-            # Add missing fields from example payload
-            "userId": "user_anon_" + str(random.randint(1000000000, 9999999999)), # Generate anon user ID
-            "isDefault": True, 
+            "temperature": self.temperature,
+            "webEnabled": True,
+            "topP": self.top_p,
+            "includeVeniceSystemPrompt": True,
+            "isCharacter": False,
+            "userId": "user_anon_" + str(random.randint(1000000000, 9999999999)),
+            "isDefault": True,
             "textToSpeech": {"voiceId": "af_sky", "speed": 1},
-            "clientProcessingTime": random.randint(10, 50) # Randomize slightly
+            "clientProcessingTime": random.randint(10, 50)
         }
-
         def for_stream():
             try:
-                # Use curl_cffi session post
                 response = self.session.post(
                     self.api_endpoint, 
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate="edge101" # Match impersonation closer to headers
+                    impersonate="edge101"
                 ) 
-                # Check response status after the call
                 if response.status_code != 200:
-                    # Include response text in error
                     raise exceptions.FailedToGenerateResponseError(
                         f"Request failed with status code {response.status_code} - {response.text}"
                     )
-                    
                 streaming_text = ""
-                # Use sanitize_stream with the custom extractor
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No simple prefix
-                    to_json=True,     # Each line is JSON
-                    content_extractor=self._venice_extractor, # Use the specific extractor
-                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                    data=response.iter_content(chunk_size=None),
+                    intro_value=None,
+                    to_json=True,
+                    content_extractor=self._venice_extractor,
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
                 for content_chunk in processed_stream:
-                    # content_chunk is the string extracted by _venice_extractor
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield content_chunk if raw else dict(text=content_chunk)
-                
-                # Update history and last response after stream finishes
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
                 self.conversation.update_chat_history(prompt, streaming_text)
                 self.last_response = {"text": streaming_text} 
-                    
             except CurlError as e: 
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
-            # Catch requests.exceptions.RequestException if needed, but CurlError is primary for curl_cffi
             except Exception as e: 
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
-
         def for_non_stream():
             full_text = ""
-            # Iterate through the generator provided by for_stream
             for chunk_data in for_stream(): 
-                # Check if chunk_data is a dict (not raw) and has 'text'
                 if isinstance(chunk_data, dict) and "text" in chunk_data:
                     full_text += chunk_data["text"]
-                # If raw=True, chunk_data is the string content itself
                 elif isinstance(chunk_data, str): 
                      full_text += chunk_data
-            # Update last_response after aggregation
             self.last_response = {"text": full_text} 
             return self.last_response 
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -212,14 +198,20 @@ class Venice(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator]:
         def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, conversationally=conversationally):
-                yield self.get_message(response)
+            for response in self.ask(prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally):
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(prompt, False, optimizer=optimizer, conversationally=conversationally)
-            )
+            result = self.ask(prompt, False, raw=raw, optimizer=optimizer, conversationally=conversationally)
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

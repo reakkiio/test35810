@@ -207,14 +207,10 @@ class TogetherAI(Provider):
                 )
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
-
-        # Get API key if not already set
         if not self.headers.get("Authorization"):
             api_key = self.get_activation_key()
             self.headers["Authorization"] = f"Bearer {api_key}"
             self.session.headers.update(self.headers)
-
-        # Payload construction
         payload = {
             "model": self.model,
             "messages": [
@@ -223,7 +219,6 @@ class TogetherAI(Provider):
             ],
             "stream": stream
         }
-
         def for_stream():
             streaming_text = ""
             try:
@@ -235,23 +230,27 @@ class TogetherAI(Provider):
                     impersonate="chrome110"
                 )
                 response.raise_for_status()
-
-                # Use sanitize_stream
                 processed_stream = sanitize_stream(
                     data=response.iter_content(chunk_size=None),
                     intro_value="data:",
                     to_json=True,
                     skip_markers=["[DONE]"],
                     content_extractor=self._togetherai_extractor,
-                    yield_raw_on_error=False
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        resp = dict(text=content_chunk)
-                        yield resp if not raw else content_chunk
-
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if content_chunk is None:
+                        continue
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            resp = dict(text=content_chunk)
+                            yield resp
             except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {str(e)}") from e
             except Exception as e:
@@ -260,7 +259,6 @@ class TogetherAI(Provider):
                 if streaming_text:
                     self.last_response = {"text": streaming_text}
                     self.conversation.update_chat_history(prompt, streaming_text)
-
         def for_non_stream():
             try:
                 response = self.session.post(
@@ -270,30 +268,25 @@ class TogetherAI(Provider):
                     impersonate="chrome110"
                 )
                 response.raise_for_status()
-
                 response_text = response.text
-
-                # Use sanitize_stream to parse the non-streaming JSON response
                 processed_stream = sanitize_stream(
                     data=response_text,
                     to_json=True,
                     intro_value=None,
                     content_extractor=lambda chunk: chunk.get("choices", [{}])[0].get("message", {}).get("content") if isinstance(chunk, dict) else None,
-                    yield_raw_on_error=False
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-                content = next(processed_stream, None)
+                content = next((c for c in processed_stream if c is not None), None)
                 content = content if isinstance(content, str) else ""
-
                 self.last_response = {"text": content}
                 self.conversation.update_chat_history(prompt, content)
                 return self.last_response if not raw else content
-
             except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
             except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {e} - {err_text}") from e
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -302,23 +295,27 @@ class TogetherAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
-        """Generate response `str`"""
         def for_stream_chat():
             gen = self.ask(
-                prompt, stream=True, raw=False,
+                prompt, stream=True, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            for response_dict in gen:
-                yield self.get_message(response_dict)
-
+            for response in gen:
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
             response_data = self.ask(
-                prompt, stream=False, raw=False,
+                prompt, stream=False, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response_data)
-
+            if raw:
+                return response_data
+            else:
+                return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:

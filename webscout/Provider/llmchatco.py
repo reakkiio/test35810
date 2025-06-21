@@ -129,8 +129,8 @@ class LLMChatCo(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         web_search: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]]:
-        """Chat with LLMChat.co with streaming capabilities"""
+    ) -> Union[Dict[str, Any], Generator[Any, None, None], str]:
+        """Chat with LLMChat.co with streaming capabilities and raw output support using sanitize_stream."""
 
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -142,7 +142,6 @@ class LLMChatCo(Provider):
                 raise exceptions.FailedToGenerateResponseError(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
 
         # Generate a unique ID for this message
         thread_item_id = ''.join(str(uuid.uuid4()).split('-'))[:20]
@@ -164,79 +163,59 @@ class LLMChatCo(Provider):
         }
 
         def for_stream():
-            full_response = "" # Initialize outside try block
+            full_response = ""
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint,
                     json=payload,
-                    # headers are set on the session
                     stream=True,
                     timeout=self.timeout,
-                    # proxies are set on the session
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status() # Check for HTTP errors
+                response.raise_for_status()
 
-                # Use sanitize_stream
-                # Note: This won't handle SSE 'event:' lines, only 'data:' lines.
-                # The original code checked for event == 'answer'. We assume relevant data is JSON after 'data:'.
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
+                    data=response.iter_content(chunk_size=None),
                     intro_value="data:",
-                    to_json=True,     # Stream sends JSON
-                    content_extractor=self._llmchatco_extractor, # Use the specific extractor
-                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
+                    to_json=True,
+                    content_extractor=self._llmchatco_extractor,
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
 
                 last_yielded_text = ""
                 for current_full_text in processed_stream:
-                    # current_full_text is the full text extracted by _llmchatco_extractor
                     if current_full_text and isinstance(current_full_text, str):
-                        # Calculate the new part of the text
                         new_text = current_full_text[len(last_yielded_text):]
                         if new_text:
-                            full_response = current_full_text # Keep track of the latest full text
-                            last_yielded_text = current_full_text # Update tracker
-                            resp = dict(text=new_text)
-                            # Yield dict or raw string chunk
-                            yield resp if not raw else new_text
-
-                # Update history after stream finishes
+                            full_response = current_full_text
+                            last_yielded_text = current_full_text
+                            if raw:
+                                yield new_text
+                            else:
+                                yield dict(text=new_text)
                 self.last_response = dict(text=full_response)
                 self.last_assistant_response = full_response
                 self.conversation.update_chat_history(
                     prompt, full_response
                 )
-
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
-
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
             full_response_text = ""
             try:
-                # Ensure raw=False so for_stream yields dicts
                 for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                    if raw and isinstance(chunk_data, str):
+                        full_response_text += chunk_data
+                    elif isinstance(chunk_data, dict) and "text" in chunk_data:
                         full_response_text += chunk_data["text"]
-                    # Handle raw string case if raw=True was passed
-                    elif raw and isinstance(chunk_data, str):
-                         full_response_text += chunk_data
-
             except Exception as e:
-                # If aggregation fails but some text was received, use it. Otherwise, re-raise.
                 if not full_response_text:
                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
-            # last_response and history are updated within for_stream
-            # Return the final aggregated response dict or raw string
             return full_response_text if raw else self.last_response
-
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -246,31 +225,33 @@ class LLMChatCo(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         web_search: bool = False,
+        raw: bool = False
     ) -> Union[str, Generator[str, None, None]]:
-        """Generate response with streaming capabilities"""
-
+        """Generate response with streaming capabilities and raw output support"""
         def for_stream_chat():
-            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                prompt, stream=True, raw=raw,
                 optimizer=optimizer, conversationally=conversationally,
                 web_search=web_search
             )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
-
+            for response in gen:
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
-            # ask() returns dict or str when not streaming
             response_data = self.ask(
                 prompt,
                 stream=False,
-                raw=False, # Ensure ask returns dict
+                raw=raw,
                 optimizer=optimizer,
                 conversationally=conversationally,
                 web_search=web_search
             )
-            return self.get_message(response_data) # get_message expects dict
-
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
@@ -279,28 +260,32 @@ class LLMChatCo(Provider):
         return response["text"]
 
 if __name__ == "__main__":
-    # Ensure curl_cffi is installed
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # # Ensure curl_cffi is installed
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
 
-    # Test all available models
-    working = 0
-    total = len(LLMChatCo.AVAILABLE_MODELS)
+    # # Test all available models
+    # working = 0
+    # total = len(LLMChatCo.AVAILABLE_MODELS)
 
-    for model in LLMChatCo.AVAILABLE_MODELS:
-        try:
-            test_ai = LLMChatCo(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word")
-            response_text = response
+    # for model in LLMChatCo.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = LLMChatCo(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word")
+    #         response_text = response
 
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"{model:<50} {'✗':<10} {str(e)}")
+    ai = LLMChatCo()
+    response = ai.chat("yooo", stream=True, raw=False)
+    for chunk in response:
+        print(chunk, end="", flush=True)

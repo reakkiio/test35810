@@ -1,5 +1,6 @@
 import codecs
 import json
+import re
 from typing import (
     Any,
     AsyncGenerator,
@@ -48,17 +49,6 @@ def _process_chunk(
         error_handler (Optional[Callable[[Exception, str], Optional[Any]]]): An optional callback function that is called when JSON parsing fails.
             It receives the exception and the sanitized chunk as arguments.  It should return a value to yield instead of the raw chunk, or None to ignore.
 
-
-    Args:
-        chunk: Chunk of text to process.
-        intro_value: Prefix to remove from the chunk.
-        to_json: Parse the chunk as JSON if True.
-        skip_markers: List of markers to skip.
-        strip_chars: Characters to strip from the chunk.
-        yield_raw_on_error: Whether to return the raw chunk on parse errors.
-        error_handler: Optional callback ``Callable[[Exception, str], Optional[Any]]``
-            invoked when JSON parsing fails. The callback should return a value to
-            yield instead of the raw chunk, or ``None`` to ignore.
     """
     if not isinstance(chunk, str):
         return None
@@ -128,11 +118,6 @@ def _decode_byte_stream(
             Defaults to 'replace'.
         buffer_size (int): The size of the internal buffer used for decoding.
 
-    Args:
-        byte_iterator: Iterator yielding bytes
-        encoding: Character encoding to use
-        errors: How to handle encoding errors ('strict', 'ignore', 'replace')
-        buffer_size: Size of internal buffer for performance tuning
     """
     # Initialize decoder with the specified encoding
     try:
@@ -252,7 +237,7 @@ def _sanitize_stream_sync(
     Args:
         data: String, iterable of strings, or iterable of bytes to process.
         intro_value: Prefix indicating the start of meaningful data.
-        to_json: Parse JSON content if ``True``.
+        to_json: Parse the chunk as JSON if True.
         skip_markers: Lines containing any of these markers are skipped.
         strip_chars: Characters to strip from each line.
         start_marker: Begin processing only after this marker is found.
@@ -637,6 +622,7 @@ def sanitize_stream(
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
     object_mode: Literal["as_is", "json", "str"] = "json",
+    raw: bool = False,
 ) -> Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
     """
     Processes streaming data (strings or bytes) in either synchronous or asynchronous mode.
@@ -664,12 +650,49 @@ def sanitize_stream(
             If the callback returns a value, it is yielded in place of the raw line. Defaults to None.
         object_mode (Literal["as_is", "json", "str"]): How to handle non-string, non-iterable objects.
             "json" (default) yields as JSON string, "str" yields as str(obj), "as_is" yields the object as-is.
+        raw (bool): If True, yields the raw response as returned by the API, chunk by chunk (no splitting or joining).
 
     Returns:
         Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
-            A generator or an asynchronous generator yielding the processed data.
-    """
-    # Determine the actual data payload to process
+            A generator or an asynchronous generator yielding the processed data, or raw data if raw=True.
+    """    # --- RAW MODE: yield each chunk exactly as returned by the API ---
+    if raw:
+        def _raw_passthrough_sync(source_iter):
+            for chunk in source_iter:
+                if isinstance(chunk, (bytes, bytearray)):
+                    # Decode bytes preserving all whitespace and newlines
+                    yield chunk.decode(encoding, encoding_errors)
+                elif chunk is not None:
+                    # Yield string chunks as-is, preserving all formatting
+                    yield chunk
+                # Skip None chunks entirely
+        async def _raw_passthrough_async(source_aiter):
+            async for chunk in source_aiter:
+                if isinstance(chunk, (bytes, bytearray)):
+                    # Decode bytes preserving all whitespace and newlines
+                    yield chunk.decode(encoding, encoding_errors)
+                elif chunk is not None:
+                    # Yield string chunks as-is, preserving all formatting
+                    yield chunk
+                # Skip None chunks entirely
+        # Sync iterable (but not str/bytes)
+        if hasattr(data, "__iter__") and not isinstance(data, (str, bytes)):
+            return _raw_passthrough_sync(data)
+        # Async iterable
+        if hasattr(data, "__aiter__"):
+            return _raw_passthrough_async(data)
+        # Single string or bytes
+        if isinstance(data, (bytes, bytearray)):
+            def _yield_single():
+                yield data.decode(encoding, encoding_errors)
+            return _yield_single()
+        else:
+            def _yield_single():
+                if data is not None:
+                    yield data
+            return _yield_single()
+    # --- END RAW MODE ---
+
     text_attr = getattr(data, "text", None)
     content_attr = getattr(data, "content", None)
 

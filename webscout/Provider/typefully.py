@@ -126,11 +126,19 @@ class TypefullyAI(Provider):
                     intro_value=None,
                     to_json=False,
                     content_extractor=self._typefully_extractor,
+                    raw=raw
                 )
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield content_chunk if raw else dict(text=content_chunk)
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if content_chunk is None:
+                        continue
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
                 self.last_response.update(dict(text=streaming_text))
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)
@@ -151,21 +159,28 @@ class TypefullyAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> str:
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

@@ -40,7 +40,8 @@
 
 <hr/>
 
-> [!IMPORTANT] > **Webscout supports three types of compatibility:**
+> [!IMPORTANT] >
+> **Webscout supports three types of compatibility:**
 >
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
 > - **OpenAI Compatibility:** Use providers with OpenAI-compatible interfaces

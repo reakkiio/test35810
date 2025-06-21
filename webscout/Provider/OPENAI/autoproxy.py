@@ -9,6 +9,8 @@ from abc import ABCMeta
 from typing import Dict, List, Optional, Any, Callable, Union
 import requests
 import functools
+from contextlib import contextmanager
+import types
 
 # Optional imports for different HTTP clients
 try:
@@ -31,6 +33,77 @@ _proxy_cache = {
 }
 
 PROXY_SOURCE_URL = "http://207.180.209.185:5000/ips.txt"
+
+# --- Static Proxy Lists ---
+# NordVPN proxies (format: https://host:port:user:pass)
+STATIC_NORDVPN_PROXIES = [
+    "https://pl128.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://be148.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://hu48.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5063.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://at86.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://ch217.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://dk152.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://no151.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://ch218.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk1784.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://fr555.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://ch219.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5064.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk765.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk812.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk813.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk814.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk871.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk873.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk875.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk877.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk879.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk884.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk886.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://be149.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk1806.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk888.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk890.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk892.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk894.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk896.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://uk898.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5055.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://jp429.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://it132.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us4735.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://pl122.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://cz93.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://at80.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://ro59.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://ch198.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://bg38.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://hu47.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://jp454.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://dk150.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://de750.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://pl125.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5057.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5058.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5059.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://us5060.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJVZdy8KKcEW3ZE5",
+    "https://no141.nordvpn.com:89:WZBVNB9MCuZu3FLX3D1rUc8a:XRBU8tofEJ"
+]
+
+# Webshare rotating proxies (format: http://user:pass@host:port)
+STATIC_WEBSHARE_PROXIES = [
+    "http://kkuafwyh-rotate:kl6esmu21js3@p.webshare.io:80",
+    "http://stzaxffz-rotate:ax92ravj1pmm@p.webshare.io:80",
+    "http://nfokjhhu-rotate:ez248bgee4z9@p.webshare.io:80",
+    "http://fiupzkjx-rotate:0zlrd2in3mrh@p.webshare.io:80",
+    "http://xukpnkpr-rotate:hcmwl8cl4iyw@p.webshare.io:80",
+    "http://tndgqbid-rotate:qb1cgkl4irh4@p.webshare.io:80",
+    "http://nnpnjrmj-rotate:8bj089tzcwhz@p.webshare.io:80",
+]
+
+# Combine all static proxies
+STATIC_PROXIES = STATIC_NORDVPN_PROXIES + STATIC_WEBSHARE_PROXIES
 
 
 def fetch_proxies() -> List[str]:
@@ -76,22 +149,27 @@ def get_cached_proxies() -> List[str]:
         else:
             pass
 
-    return _proxy_cache['proxies']
+    # Priority: Webshare -> remote -> NordVPN
+    proxies = STATIC_WEBSHARE_PROXIES + _proxy_cache['proxies'] + STATIC_NORDVPN_PROXIES
+    proxies = list(dict.fromkeys(proxies))  # Remove duplicates, preserve order
+    return proxies
 
 
 def get_auto_proxy() -> Optional[str]:
     """
-    Get a random proxy from the cached proxy list.
+    Get a random proxy, prioritizing Webshare proxies if available.
 
     Returns:
         Optional[str]: A proxy URL or None if no proxies available
     """
     proxies = get_cached_proxies()
-    if not proxies:
-        return None
-
-    proxy = random.choice(proxies)
-    return proxy
+    # Try Webshare proxies first
+    webshare = [p for p in proxies if p in STATIC_WEBSHARE_PROXIES]
+    if webshare:
+        return random.choice(webshare)
+    if proxies:
+        return random.choice(proxies)
+    return None
 
 
 def get_proxy_dict(proxy_url: Optional[str] = None) -> Dict[str, str]:
@@ -877,3 +955,113 @@ def disable_auto_retry_for_provider(provider_instance):
                 
         except Exception:
             continue
+
+
+def proxy():
+    """
+    Return a working proxy dict or None. One-liner for easy use.
+    Example:
+        proxies = autoproxy.proxy()
+        requests.get(url, proxies=proxies)
+    """
+    proxy_url = get_working_proxy()
+    return get_proxy_dict(proxy_url) if proxy_url else None
+
+
+def patch(obj, proxy_url=None):
+    """
+    Patch a function, class, or object to use proxies automatically.
+    - For functions: inject proxies kwarg if not present.
+    - For requests.Session: set .proxies.
+    - For classes: patch all methods that look like HTTP calls.
+    """
+    if isinstance(obj, requests.Session):
+        obj.proxies.update(get_proxy_dict(proxy_url))
+        return obj
+    if httpx and isinstance(obj, httpx.Client):
+        obj._proxies = get_proxy_dict(proxy_url)
+        return obj
+    if isinstance(obj, types.FunctionType):
+        def wrapper(*args, **kwargs):
+            if 'proxies' not in kwargs:
+                kwargs['proxies'] = get_proxy_dict(proxy_url)
+            return obj(*args, **kwargs)
+        return wrapper
+    if isinstance(obj, type):  # class
+        for attr in dir(obj):
+            if attr.startswith('get') or attr.startswith('post'):
+                method = getattr(obj, attr)
+                if callable(method):
+                    setattr(obj, attr, patch(method, proxy_url))
+        return obj
+    # fallback: return as is
+    return obj
+
+
+@contextmanager
+def use_proxy(proxy_url=None):
+    """
+    Context manager to temporarily patch requests and httpx to use a proxy globally.
+    Example:
+        with autoproxy.use_proxy():
+            requests.get(url)  # uses proxy automatically
+    """
+    orig_request = requests.Session.request
+    def request_with_proxy(self, method, url, **kwargs):
+        if 'proxies' not in kwargs:
+            kwargs['proxies'] = get_proxy_dict(proxy_url)
+        return orig_request(self, method, url, **kwargs)
+    requests.Session.request = request_with_proxy
+    # Optionally patch httpx if available
+    orig_httpx = None
+    if httpx:
+        orig_httpx = httpx.Client.request
+        def httpx_request_with_proxy(self, method, url, **kwargs):
+            if 'proxies' not in kwargs:
+                kwargs['proxies'] = get_proxy_dict(proxy_url)
+            return orig_httpx(self, method, url, **kwargs)
+        httpx.Client.request = httpx_request_with_proxy
+    try:
+        yield
+    finally:
+        requests.Session.request = orig_request
+        if httpx and orig_httpx:
+            httpx.Client.request = orig_httpx
+
+
+def proxyify(func):
+    """
+    Decorator to auto-inject proxies into any function.
+    Example:
+        @autoproxy.proxyify
+        def my_request(...): ...
+    """
+    def wrapper(*args, **kwargs):
+        if 'proxies' not in kwargs:
+            kwargs['proxies'] = proxy()
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def list_proxies():
+    """
+    List all available proxies (Webshare, remote, NordVPN).
+    """
+    return get_cached_proxies()
+
+
+def test_all_proxies(timeout=5):
+    """
+    Test all proxies and return a dict of proxy_url: True/False.
+    """
+    results = {}
+    for proxy in get_cached_proxies():
+        results[proxy] = test_proxy(proxy, timeout=timeout)
+    return results
+
+
+def current_proxy():
+    """
+    Return a random proxy that would be used now (Webshare preferred).
+    """
+    return get_auto_proxy()

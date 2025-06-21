@@ -1,4 +1,4 @@
-from typing import Optional, Union, Any, Dict
+from typing import Generator, Optional, Union, Any, Dict
 from uuid import uuid4
 from curl_cffi import CurlError
 from curl_cffi.requests import Session
@@ -134,7 +134,7 @@ class X0GPT(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> Union[Dict[str, Any], Generator]:
         """
         Sends a prompt to the x0-gpt.devwtf.in API and returns the response.
 
@@ -197,13 +197,20 @@ class X0GPT(Provider):
                     data=response.iter_content(chunk_size=None), # Pass byte iterator
                     intro_value=None, # No simple prefix to remove here
                     to_json=False,    # Content is not JSON
-                    content_extractor=self._x0gpt_extractor # Use the specific extractor
+                    content_extractor=self._x0gpt_extractor, # Use the specific extractor
+                    raw=raw
                 )
 
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_response += content_chunk
-                        yield content_chunk if raw else dict(text=content_chunk)
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_response += content_chunk
+                            yield dict(text=content_chunk)
 
                 self.last_response.update(dict(text=streaming_response))
                 self.conversation.update_chat_history(
@@ -217,6 +224,8 @@ class X0GPT(Provider):
 
         def for_non_stream():
             # This function implicitly uses the updated for_stream
+            if stream:
+                return for_stream()
             for _ in for_stream():
                 pass
             return self.last_response
@@ -229,7 +238,8 @@ class X0GPT(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
+        raw: bool = False,  # Added raw parameter
+    ) -> Union[str, Generator[str, None, None]]:
         """
         Generates a response from the X0GPT API.
 
@@ -251,19 +261,25 @@ class X0GPT(Provider):
 
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
 
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
 
         return for_stream() if stream else for_non_stream()
 
@@ -294,6 +310,6 @@ class X0GPT(Provider):
 if __name__ == "__main__":
     from rich import print
     ai = X0GPT(timeout=5000)
-    response = ai.chat("write a poem about AI", stream=True)
+    response = ai.chat("write a poem about AI", stream=True, raw=True)
     for chunk in response:
         print(chunk, end="", flush=True)

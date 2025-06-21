@@ -2,7 +2,7 @@ from curl_cffi.requests import Session
 from curl_cffi import CurlError
 import json
 import uuid
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Generator
 from datetime import datetime
 from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider
@@ -257,10 +257,9 @@ class MultiChatAI(Provider):
         raw: bool = False, # Keep raw param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
-        # Add stream parameter for consistency, though API doesn't stream
         stream: bool = False 
-    ) -> Dict[str, Any]:
-        """Sends a prompt to the MultiChatAI API and returns the response."""
+    ) -> Union[Dict[str, Any], str, Generator[str, None, None]]:
+        """Sends a prompt to the MultiChatAI API and returns the response. Supports raw output and direct text streaming."""
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -275,26 +274,32 @@ class MultiChatAI(Provider):
             "customModelId": "",
         }
 
-        # API does not stream, implement non-stream logic directly
         response = self._make_request(payload)
         try:
-            # Use response.text which is already decoded
-            response_text_raw = response.text # Get raw text
-
-            # Process the text using sanitize_stream (even though it's not streaming)
-            processed_stream = sanitize_stream(
-                data=response_text_raw,
-                intro_value=None, # No prefix
-                to_json=False     # It's plain text
-            )
-            # Aggregate the single result
-            full_response = "".join(list(processed_stream)).strip()
-
-            self.last_response = {"text": full_response} # Store processed text
-            self.conversation.update_chat_history(prompt, full_response)
-            # Return dict or raw string based on raw flag
-            return full_response if raw else self.last_response
-        except Exception as e: # Catch potential errors during text processing
+            response_text_raw = response.text
+            if stream:
+                chunk_size = 64
+                text = response_text_raw
+                for i in range(0, len(text), chunk_size):
+                    chunk = text[i:i+chunk_size]
+                    if raw:
+                        yield chunk
+                    else:
+                        yield {"text": chunk}
+                self.last_response = {"text": text}
+                self.conversation.update_chat_history(prompt, text)
+            else:
+                processed_stream = sanitize_stream(
+                    data=response_text_raw,
+                    intro_value=None,
+                    to_json=False,
+                    raw=raw
+                )
+                full_response = "".join(list(processed_stream)).strip()
+                self.last_response = {"text": full_response}
+                self.conversation.update_chat_history(prompt, full_response)
+                return full_response if raw else self.last_response
+        except Exception as e:
             raise exceptions.FailedToGenerateResponseError(f"Failed to process response: {e}") from e
 
     def chat(
@@ -302,26 +307,32 @@ class MultiChatAI(Provider):
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-        # Add stream parameter for consistency
-        stream: bool = False
-    ) -> str:
-        """Generate response."""
-        # Since ask() now handles both stream=True/False by returning the full response dict/str:
-        response_data = self.ask(
-            prompt, 
-            stream=False, # Call ask in non-stream mode internally
-            raw=False, # Ensure ask returns dict
-            optimizer=optimizer, 
-            conversationally=conversationally
-        )
-        # If stream=True was requested, simulate streaming by yielding the full message at once
+        stream: bool = False,
+        raw: bool = False
+    ) -> Union[str, Generator[str, None, None]]:
+        """Generate response. Supports raw output and streaming."""
         if stream:
-            def stream_wrapper():
-                yield self.get_message(response_data)
-            return stream_wrapper()
+            # Streaming mode: yield chunks from ask
+            return self.ask(
+                prompt,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
+                stream=True
+            )
         else:
-            # If stream=False, return the full message directly
-            return self.get_message(response_data)
+            # Non-streaming mode: return full message
+            response_data = self.ask(
+                prompt,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
+                stream=False
+            )
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
 
     def get_message(self, response: Union[Dict[str, Any], str]) -> str:
         """

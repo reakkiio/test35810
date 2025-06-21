@@ -153,7 +153,7 @@ class LearnFast(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         image_path: Optional[str] = None,
-    ) -> Union[dict, Generator[dict, None, None]]:
+    ) -> Union[dict, Generator[dict, None, None], str]:
         """Chat with LearnFast
 
         Args:
@@ -166,7 +166,7 @@ class LearnFast(Provider):
                                                  Defaults to None.
 
         Returns:
-           Union[dict, Generator[dict, None, None]]: Response generated
+           Union[dict, Generator[dict, None, None], str]: Response generated
         """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -202,68 +202,59 @@ class LearnFast(Provider):
         data = json.dumps(payload)
 
         def for_stream():
-            full_response = "" # Initialize outside try block
+            full_response = ""
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint, 
                     headers=current_headers, # Use headers with uniqueid
                     data=data, 
                     stream=True, 
                     timeout=self.timeout,
-                    # proxies are set on the session
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status()  # Check for HTTP errors
+                response.raise_for_status()
 
-                # Use sanitize_stream
-                processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No prefix
-                    to_json=True,     # Stream sends JSON lines
-                    skip_markers=["[DONE]"],
-                    content_extractor=self._learnfast_extractor, # Use the specific extractor
-                    yield_raw_on_error=False # Skip non-JSON lines or lines where extractor fails
-                )
-
-                for content_chunk in processed_stream:
-                    # content_chunk is the string extracted by _learnfast_extractor
-                    if content_chunk and isinstance(content_chunk, str):
-                        full_response += content_chunk
-                        resp = {"text": content_chunk}
-                        yield resp if not raw else content_chunk
-                
-                # Update history after stream finishes
+                # Iterate over each line in the response
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except Exception:
+                        continue
+                    # Only yield message_type == "text"
+                    data_field = chunk.get("data", {})
+                    if (
+                        chunk.get("code") == 200 and
+                        data_field.get("code") == 200 and
+                        data_field.get("message_type") == "text" and
+                        data_field.get("message")
+                    ):
+                        message = data_field["message"]
+                        full_response += message
+                        if raw:
+                            yield message
+                        else:
+                            yield {"text": message}
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
-
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"An error occurred (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"An error occurred ({type(e).__name__}): {e} - {err_text}") from e
-
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
             full_response_text = ""
             try:
-                # Ensure raw=False so for_stream yields dicts
                 for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict) and "text" in chunk_data:
+                    if raw and isinstance(chunk_data, str):
+                        full_response_text += chunk_data
+                    elif isinstance(chunk_data, dict) and "text" in chunk_data:
                         full_response_text += chunk_data["text"]
-                    # Handle raw string case if raw=True was passed
-                    elif raw and isinstance(chunk_data, str):
-                         full_response_text += chunk_data
             except Exception as e:
-                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
-                 if not full_response_text:
-                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
-            # last_response and history are updated within for_stream
-            # Return the final aggregated response dict or raw string
+                if not full_response_text:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
             return full_response_text if raw else self.last_response
-
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -273,36 +264,30 @@ class LearnFast(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         image_path: Optional[str] = None,
+        raw: bool = False
     ) -> Union[str, Generator[str, None, None]]:
-        """Generate response `str`
-        Args:
-            prompt (str): Prompt to be send.
-            stream (bool, optional): Flag for streaming response. Defaults to False.
-            optimizer (str, optional): Prompt optimizer name - `[code, shell_command]`. Defaults to None.
-            conversationally (bool, optional): Chat conversationally when using optimizer. Defaults to False.
-            image_path (Optional[str], optional): Path to the image to be uploaded.
-                                                 Defaults to None.
-        Returns:
-            Union[str, Generator[str, None, None]]: Response generated
-        """
+        """Generate response `str` or stream, with raw support"""
         try:
-            # ask() yields dicts or strings when streaming
             response_gen = self.ask(
-                prompt, stream=stream, raw=False, # Ensure ask yields dicts/dict
+                prompt, stream=stream, raw=raw,
                 optimizer=optimizer, conversationally=conversationally, 
                 image_path=image_path
             )
             if stream:
                 def stream_wrapper():
-                    for chunk_dict in response_gen:
-                        yield self.get_message(chunk_dict) # get_message expects dict
+                    for chunk in response_gen:
+                        if raw:
+                            yield chunk
+                        else:
+                            yield self.get_message(chunk)
                 return stream_wrapper()
             else:
-                # response_gen is the final dict in non-stream mode
-                return self.get_message(response_gen) # get_message expects dict
+                if raw:
+                    return response_gen if isinstance(response_gen, str) else self.get_message(response_gen)
+                else:
+                    return self.get_message(response_gen)
         except Exception as e:
-            # Return error message directly, consider raising instead for better error handling upstream
-            return f"Error: {str(e)}" 
+            return f"Error: {str(e)}"
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response
@@ -320,6 +305,6 @@ if __name__ == "__main__":
     # Ensure curl_cffi is installed
     from rich import print
     ai = LearnFast()
-    response = ai.chat(input(">>> "), stream=True)
+    response = ai.chat(input(">>> "), stream=True, raw=False)
     for chunk in response:
-        print(chunk, end="", flush=True)
+        print(chunk, end='', flush=True)

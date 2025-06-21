@@ -141,7 +141,6 @@ class VercelAI(Provider):
                 raise Exception(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
         payload = {
             "id": "guest",
             "messages": [
@@ -155,7 +154,6 @@ class VercelAI(Provider):
             ],
             "selectedChatModelId": self.model
         }
-
         def for_stream():
             response = self.session.post(
                 self.api_endpoint, headers=self.headers, json=payload, stream=True, timeout=self.timeout
@@ -163,31 +161,32 @@ class VercelAI(Provider):
             if not response.ok:
                 error_msg = f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                 raise exceptions.FailedToGenerateResponseError(error_msg)
-
             streaming_text = ""
-            # Use sanitize_stream with the custom extractor
             processed_stream = sanitize_stream(
                 data=response.iter_content(chunk_size=None), # Pass byte iterator
                 intro_value=None, # No simple prefix
                 to_json=False,    # Content is not JSON
-                content_extractor=self._vercelai_extractor # Use the specific extractor
+                content_extractor=self._vercelai_extractor, # Use the specific extractor
+                raw=raw
             )
-
             for content_chunk in processed_stream:
-                if content_chunk and isinstance(content_chunk, str):
-                    streaming_text += content_chunk
-                    yield content_chunk if raw else dict(text=content_chunk)
-
+                # Always yield as string, even in raw mode
+                if isinstance(content_chunk, bytes):
+                    content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                if raw:
+                    yield content_chunk
+                else:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk)
             self.last_response.update(dict(text=streaming_text))
             self.conversation.update_chat_history(
                 prompt, self.get_message(self.last_response)
             )
-
         def for_non_stream():
             for _ in for_stream():
                 pass
             return self.last_response
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -196,24 +195,28 @@ class VercelAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> str:
-        """Generate response `str`"""
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
-
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
-
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

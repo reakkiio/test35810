@@ -163,6 +163,7 @@ class TeachAnything(Provider):
         stream: bool = False, # Keep stream param for interface consistency
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Any]:
         """Generate response `str` or yield for streaming compatibility
         Args:
@@ -170,22 +171,29 @@ class TeachAnything(Provider):
             stream (bool, optional): Flag for streaming response. Defaults to False.
             optimizer (str, optional): Prompt optimizer name - `[code, shell_command]`. Defaults to None.
             conversationally (bool, optional): Chat conversationally when using optimizer. Defaults to False.
+            raw (bool, optional): If True, return raw string output.
         Returns:
             str or generator: Response generated
         """
         response_data = self.ask(
             prompt, 
             stream=False, # Call ask in non-stream mode internally
-            raw=False, # Ensure ask returns dict
+            raw=raw, # Pass raw flag
             optimizer=optimizer, 
             conversationally=conversationally
         )
         if stream:
             def stream_wrapper():
-                yield self.get_message(response_data)
+                if raw:
+                    yield response_data if isinstance(response_data, str) else self.get_message(response_data)
+                else:
+                    yield self.get_message(response_data)
             return stream_wrapper()
         else:
-            return self.get_message(response_data)
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
 
     def get_message(self, response: Union[dict, str]) -> str:
         """Retrieves message only from response

@@ -224,14 +224,22 @@ class Toolbaz(Provider):
                     intro_value=None, # No simple prefix
                     to_json=False,    # Content is text
                     content_extractor=self._toolbaz_extractor, # Use the tag remover
-                    yield_raw_on_error=True # Yield even if extractor somehow fails (though unlikely for regex)
+                    yield_raw_on_error=True, # Yield even if extractor somehow fails (though unlikely for regex)
+                    raw=raw
                 )
 
                 for content_chunk in processed_stream:
                     # content_chunk is the string with tags removed
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield {"text": content_chunk} if not raw else content_chunk
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if content_chunk is None:
+                        continue
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield {"text": content_chunk}
 
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)
@@ -275,28 +283,36 @@ class Toolbaz(Provider):
         stream: bool = False,
         optimizer: Optional[str] = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         """Generates a response from the Toolbaz API."""
         def for_stream_chat():
             # ask() yields dicts when raw=False
-            for response_dict in self.ask(
+            for response in self.ask(
                 prompt,
                 stream=True,
-                raw=False, # Ensure ask yields dicts
+                raw=raw,
                 optimizer=optimizer,
                 conversationally=conversationally
             ):
-                yield self.get_message(response_dict)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
 
         def for_non_stream_chat():
             # ask() returns a dict when stream=False
             response_dict = self.ask(
                 prompt,
                 stream=False,
+                raw=raw,
                 optimizer=optimizer,
                 conversationally=conversationally,
             )
-            return self.get_message(response_dict)
+            if raw:
+                return response_dict
+            else:
+                return self.get_message(response_dict)
 
         return for_stream_chat() if stream else for_non_stream_chat()
 

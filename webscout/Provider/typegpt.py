@@ -107,7 +107,6 @@ class TypeGPT(Provider):
                 raise exceptions.FailedToGenerateResponseError(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
         payload = {
             "messages": [
                 {"role": "system", "content": self.system_prompt},
@@ -121,10 +120,8 @@ class TypeGPT(Provider):
             "top_p": self.top_p,
             "max_tokens": self.max_tokens_to_sample,
         }
-
         def for_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint, 
                     headers=self.headers, 
@@ -137,36 +134,33 @@ class TypeGPT(Provider):
                 raise exceptions.FailedToGenerateResponseError(
                     f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
-
             response.raise_for_status() # Check for HTTP errors first
-
             streaming_text = ""
-            # Use sanitize_stream
             processed_stream = sanitize_stream(
                 data=response.iter_content(chunk_size=None), # Pass byte iterator
                 intro_value="data:",
                 to_json=True,     # Stream sends JSON
                 skip_markers=["[DONE]"],
                 content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('delta', {}).get('content') if isinstance(chunk, dict) else None,
-                yield_raw_on_error=False # Skip non-JSON or lines where extractor fails
+                yield_raw_on_error=False,
+                raw=raw
             )
-
             for content_chunk in processed_stream:
-                # content_chunk is the string extracted by the content_extractor
-                if content_chunk and isinstance(content_chunk, str):
-                    streaming_text += content_chunk
-                    yield dict(text=content_chunk) if not raw else content_chunk
-                    # Update last_response incrementally
-                    self.last_response = dict(text=streaming_text)
-
-            # Update conversation history after stream finishes
-            if streaming_text: # Only update if something was received
+                if isinstance(content_chunk, bytes):
+                    content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                if content_chunk is None:
+                    continue
+                if raw:
+                    yield content_chunk
+                else:
+                    if content_chunk and isinstance(content_chunk, str):
+                        streaming_text += content_chunk
+                        yield dict(text=content_chunk)
+                        self.last_response = dict(text=streaming_text)
+            if streaming_text:
                  self.conversation.update_chat_history(prompt, streaming_text)
-
-
         def for_non_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.api_endpoint, 
                     headers=self.headers, 
@@ -178,34 +172,32 @@ class TypeGPT(Provider):
                 raise exceptions.FailedToGenerateResponseError(
                     f"Network connection failed (CurlError). Check your firewall or antivirus settings. Original error: {ce}"
                 ) from ce
-
             response.raise_for_status() # Check for HTTP errors
-
             try:
                 response_text = response.text # Get raw text
-
-                # Use sanitize_stream for non-streaming JSON response
                 processed_stream = sanitize_stream(
                     data=response_text,
                     to_json=True, # Parse the whole text as JSON
                     intro_value=None,
-                    # Extractor for non-stream structure
                     content_extractor=lambda chunk: chunk.get('choices', [{}])[0].get('message', {}).get('content') if isinstance(chunk, dict) else None,
-                    yield_raw_on_error=False
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
-                # Extract the single result
                 content = ""
                 for extracted_content in processed_stream:
-                    content = extracted_content if isinstance(extracted_content, str) else ""
-
-                self.last_response = {"text": content} # Store in expected format
+                    if isinstance(extracted_content, bytes):
+                        extracted_content = extracted_content.decode('utf-8', errors='ignore')
+                    if extracted_content is None:
+                        continue
+                    if raw:
+                        content += extracted_content
+                    else:
+                        content = extracted_content if isinstance(extracted_content, str) else ""
+                self.last_response = {"text": content}
                 self.conversation.update_chat_history(prompt, content)
-                return self.last_response
-            except (json.JSONDecodeError, Exception) as je: # Catch potential JSON errors or others
+                return self.last_response if not raw else content
+            except (json.JSONDecodeError, Exception) as je:
                  raise exceptions.FailedToGenerateResponseError(f"Failed to decode JSON response: {je} - Response text: {response.text}")
-
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -214,25 +206,27 @@ class TypeGPT(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
-        """Generate response string or stream."""
         if stream:
-            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                prompt, stream=True, raw=raw, # Ensure ask yields dicts or raw
                 optimizer=optimizer, conversationally=conversationally
             )
-            for chunk_dict in gen:
-                 # get_message expects a dict
-                yield self.get_message(chunk_dict) 
+            for chunk in gen:
+                if raw:
+                    yield chunk
+                else:
+                    yield self.get_message(chunk)
         else:
-            # ask() returns a dict when not streaming
-            response_dict = self.ask(
-                prompt, stream=False, 
+            response = self.ask(
+                prompt, stream=False, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response_dict)
-
+            if raw:
+                return response
+            else:
+                return self.get_message(response)
     def get_message(self, response: Dict[str, Any]) -> str:
         """Retrieves message from response."""
         if isinstance(response, dict):

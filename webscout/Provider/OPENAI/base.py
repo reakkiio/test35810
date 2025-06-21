@@ -8,12 +8,11 @@ from webscout.Litlogger import Logger, LogLevel
 
 logger = Logger(name="OpenAIBase", level=LogLevel.INFO)
 
-# Import the ProxyAutoMeta metaclass
+# Import the LitMeta metaclass from Litproxy
 try:
-    from .autoproxy import ProxyAutoMeta
+    from litproxy import LitMeta 
 except ImportError:
-    # Fallback if autoproxy is not available
-    ProxyAutoMeta = type
+    from .autoproxy import ProxyAutoMeta as LitMeta
 
 
 # Import the utils for response structures
@@ -183,81 +182,11 @@ class BaseChat(ABC):
     completions: BaseCompletions
 
 
-# class ProxyAutoMeta(ABCMeta):
-#     """
-#     Metaclass to ensure all OpenAICompatibleProvider subclasses automatically get proxy support.
-#     This will inject proxies into any requests.Session, httpx.Client, or curl_cffi session attributes found on the instance.
-
-#     To disable automatic proxy injection, set disable_auto_proxy=True in the constructor or
-#     set the class attribute DISABLE_AUTO_PROXY = True.
-#     """
-#     def __call__(cls, *args, **kwargs):
-#         instance = super().__call__(*args, **kwargs)
-
-#         # Check if auto proxy is disabled
-#         disable_auto_proxy = kwargs.get('disable_auto_proxy', False) or getattr(cls, 'DISABLE_AUTO_PROXY', False)
-
-#         proxies = getattr(instance, 'proxies', None) or kwargs.get('proxies', None)
-#         if proxies is None and not disable_auto_proxy:
-#             try:
-#                 proxies = {"http": get_auto_proxy(), "https": get_auto_proxy()}
-#             except Exception as e:
-#                 logger.warning(f"Failed to get auto proxy, disabling proxy support: {e}")
-#                 proxies = {}
-#         elif proxies is None:
-#             proxies = {}
-#         instance.proxies = proxies
-#         # Patch sessions if we have valid proxies
-#         if proxies:
-#             for attr in dir(instance):
-#                 obj = getattr(instance, attr)
-#                 if isinstance(obj, requests.Session):
-#                     obj.proxies.update(proxies)
-#                 if httpx and isinstance(obj, httpx.Client):
-#                     try:
-#                         obj._proxies = proxies
-#                     except Exception:
-#                         pass
-#                 # Patch curl_cffi sessions if present
-#                 if CurlSession and isinstance(obj, CurlSession):
-#                     try:
-#                         obj.proxies.update(proxies)
-#                     except Exception:
-#                         pass
-#                 if CurlAsyncSession and isinstance(obj, CurlAsyncSession):
-#                     try:
-#                         obj.proxies.update(proxies)
-#                     except Exception:
-#                         pass
-#         # Provide helpers for proxied sessions
-#         def get_proxied_session():
-#             s = requests.Session()
-#             s.proxies.update(proxies)
-#             return s
-#         instance.get_proxied_session = get_proxied_session
-
-#         def get_proxied_curl_session(impersonate="chrome120", **kwargs):
-#             """Get a curl_cffi Session with proxies configured"""
-#             if CurlSession:
-#                 return CurlSession(proxies=proxies, impersonate=impersonate, **kwargs)
-#             else:
-#                 raise ImportError("curl_cffi is not installed")
-#         instance.get_proxied_curl_session = get_proxied_curl_session
-
-#         def get_proxied_curl_async_session(impersonate="chrome120", **kwargs):
-#             """Get a curl_cffi AsyncSession with proxies configured"""
-#             if CurlAsyncSession:
-#                 return CurlAsyncSession(proxies=proxies, impersonate=impersonate, **kwargs)
-#             else:
-#                 raise ImportError("curl_cffi is not installed")
-#         instance.get_proxied_curl_async_session = get_proxied_curl_async_session
-
-#         return instance
-class OpenAICompatibleProvider(ABC, metaclass=ProxyAutoMeta):
+class OpenAICompatibleProvider(ABC, metaclass=LitMeta):
     """
     Abstract Base Class for providers mimicking the OpenAI Python client structure.
     Requires a nested 'chat.completions' structure with tool support.
-    All subclasses automatically get proxy support via ProxyAutoMeta.
+    All subclasses automatically get proxy support via LitMeta.
 
     # Available proxy helpers:
     # - self.get_proxied_session() - returns a requests.Session with proxies
@@ -269,6 +198,8 @@ class OpenAICompatibleProvider(ABC, metaclass=ProxyAutoMeta):
     # - httpx.Client objects
     # - curl_cffi.requests.Session objects
     # - curl_cffi.requests.AsyncSession objects
+    #
+    # Inbuilt auto-retry is also enabled for all requests.Session and curl_cffi.Session objects.
     """
     chat: BaseChat
     available_tools: Dict[str, Tool] = {}  # Dictionary of available tools

@@ -208,23 +208,24 @@ class SonusAI(Provider):
         optimizer: str = None,
         conversationally: bool = False,
         reasoning: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         def for_stream_chat():
-            # ask() yields dicts when raw=False
-            for response_dict in self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
-                optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
+            for response in self.ask(
+                prompt, stream=True, raw=raw, optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
             ):
-                yield self.get_message(response_dict)
-        
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
-             # ask() returns dict or str when raw=False/True
             response_data = self.ask(
-                prompt, stream=False, raw=False, # Ensure ask returns dict
-                optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
+                prompt, stream=False, raw=raw, optimizer=optimizer, conversationally=conversationally, reasoning=reasoning
             )
-            return self.get_message(response_data) # get_message expects dict
-
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:

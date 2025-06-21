@@ -165,8 +165,6 @@ class UncovrAI(Provider):
                 )
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
-
-        # Prepare the request payload
         payload = {
             "content": conversation_prompt,
             "chatId": self.chat_id,
@@ -180,78 +178,72 @@ class UncovrAI(Provider):
                 "creativity": creativity
             }
         }
-
         def for_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.url, 
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate=self.fingerprint.get("browser_type", "chrome110") # Use fingerprint browser type
+                    impersonate=self.fingerprint.get("browser_type", "chrome110")
                 )
-                
                 if response.status_code != 200:
-                    # If we get a non-200 response, try refreshing our identity once
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        # Retry with new identity using curl_cffi session
                         retry_response = self.session.post(
                             self.url, 
                             json=payload, 
                             stream=True, 
                             timeout=self.timeout,
-                            impersonate=self.fingerprint.get("browser_type", "chrome110") # Use updated fingerprint
+                            impersonate=self.fingerprint.get("browser_type", "chrome110")
                         )
                         if not retry_response.ok:
                             raise exceptions.FailedToGenerateResponseError(
                                 f"Failed to generate response after identity refresh - ({retry_response.status_code}, {retry_response.reason}) - {retry_response.text}"
                             )
-                        response = retry_response # Use the successful retry response
+                        response = retry_response
                     else:
                         raise exceptions.FailedToGenerateResponseError(
                             f"Request failed with status code {response.status_code} - {response.text}"
                         )
-
                 streaming_text = ""
-                # Use sanitize_stream with the custom extractor
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No simple prefix
-                    to_json=False,    # Content is not JSON
-                    content_extractor=self._uncovr_extractor, # Use the specific extractor
-                    yield_raw_on_error=True # Keep yielding even if extractor fails, for potential error messages? (Adjust if needed)
+                    data=response.iter_content(chunk_size=None),
+                    intro_value=None,
+                    to_json=False,
+                    content_extractor=self._uncovr_extractor,
+                    yield_raw_on_error=True,
+                    raw=raw
                 )
-
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield dict(text=content_chunk) if not raw else content_chunk
-                
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if content_chunk is None:
+                        continue  # Ignore non-content lines
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
                 self.last_response = {"text": streaming_text}
                 self.conversation.update_chat_history(prompt, streaming_text)
-                    
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
-            except Exception as e: # Catch other potential exceptions
+            except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
-
-
         def for_non_stream():
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     self.url, 
                     json=payload, 
                     timeout=self.timeout,
                     impersonate=self.fingerprint.get("browser_type", "chrome110")
                 )
-                
                 if response.status_code != 200:
                     if response.status_code in [403, 429]:
                         self.refresh_identity()
-                        # Retry with new identity using curl_cffi session
                         response = self.session.post(
                             self.url, 
                             json=payload, 
@@ -266,36 +258,32 @@ class UncovrAI(Provider):
                         raise exceptions.FailedToGenerateResponseError(
                             f"Request failed with status code {response.status_code} - {response.text}"
                         )
-
-                response_text = response.text # Get the full response text
-                
-                # Use sanitize_stream to process the non-streaming text
-                # It won't parse as JSON, but will apply the extractor line by line
+                response_text = response.text
                 processed_stream = sanitize_stream(
-                    data=response_text.splitlines(), # Split into lines first
+                    data=response_text.splitlines(),
                     intro_value=None,
                     to_json=False,
                     content_extractor=self._uncovr_extractor,
-                    yield_raw_on_error=True 
+                    yield_raw_on_error=True,
+                    raw=raw
                 )
-
-                # Aggregate the results from the generator
                 full_response = ""
                 for content in processed_stream:
-                    if content and isinstance(content, str):
+                    if isinstance(content, bytes):
+                        content = content.decode('utf-8', errors='ignore')
+                    if content is None:
+                        continue  # Ignore non-content lines
+                    if raw:
                         full_response += content
-
-                # Check if aggregation resulted in empty response (might indicate error not caught by extractor)
+                    elif content and isinstance(content, str):
+                        full_response += content
                 self.last_response = {"text": full_response}
                 self.conversation.update_chat_history(prompt, full_response)
-                return {"text": full_response}
-                
-            except CurlError as e: # Catch CurlError
+                return {"text": full_response} if not raw else full_response
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
-            except Exception as e: # Catch other potential exceptions
+            except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {e}")
-
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -307,23 +295,29 @@ class UncovrAI(Provider):
         temperature: int = 32,
         creativity: str = "medium",
         selected_focus: list = ["web"],
-        selected_tools: list = []
+        selected_tools: list = [],
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally,
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally,
                 temperature=temperature, creativity=creativity,
                 selected_focus=selected_focus, selected_tools=selected_tools
             ):
-                yield self.get_message(response)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt, False, optimizer=optimizer, conversationally=conversationally,
-                    temperature=temperature, creativity=creativity,
-                    selected_focus=selected_focus, selected_tools=selected_tools
-                )
+            result = self.ask(
+                prompt, False, raw=raw, optimizer=optimizer, conversationally=conversationally,
+                temperature=temperature, creativity=creativity,
+                selected_focus=selected_focus, selected_tools=selected_tools
             )
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:
@@ -333,36 +327,7 @@ class UncovrAI(Provider):
         return text.replace('\\n', '\n').replace('\\n\\n', '\n\n') # Keep newline replacement
 
 if __name__ == "__main__":
-    # Ensure curl_cffi is installed
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
-
-    for model in UncovrAI.AVAILABLE_MODELS:
-        try:
-            test_ai = UncovrAI(model=model, timeout=60)
-            # Test non-stream first as stream logic depends on it
-            response_non_stream = test_ai.chat("Say 'Hello' in one word", stream=False) 
-            
-            if response_non_stream and len(response_non_stream.strip()) > 0:
-                 # Now test stream
-                response_stream = test_ai.chat("Say 'Hi' in one word", stream=True)
-                response_text = ""
-                for chunk in response_stream:
-                    response_text += chunk
-                
-                if response_text and len(response_text.strip()) > 0:
-                    status = "✓"
-                    # Clean and truncate response
-                    clean_text = response_text.strip().encode('utf-8', errors='ignore').decode('utf-8')
-                    display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
-                else:
-                    status = "✗ (Stream)"
-                    display_text = "Empty or invalid stream response"
-            else:
-                status = "✗ (Non-Stream)"
-                display_text = "Empty or invalid non-stream response"
-                
-            print(f"\r{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}")
+    ai = UncovrAI()
+    response = ai.chat("who is pm of india?", raw=False, stream=True)
+    for chunk in response:
+        print(chunk, end='', flush=True)

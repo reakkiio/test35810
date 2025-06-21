@@ -244,7 +244,6 @@ class WrDoChat(Provider):
         def for_stream():
             try:
                 self.headers["referer"] = f"https://oi.wr.do/chat/{chat_id}"
-                
                 response = self.session.post(
                     self.api_endpoint,
                     json=payload,
@@ -252,31 +251,27 @@ class WrDoChat(Provider):
                     timeout=self.timeout,
                     impersonate="chrome110"
                 )
-                
                 if response.status_code == 401:
                     raise exceptions.AuthenticationError("Authentication failed. Please check your cookies.")
-                
                 response.raise_for_status()
-                
                 streaming_response = ""
                 has_content = False
-                
-                # Use sanitize_stream with the custom extractor
                 processed_stream = sanitize_stream(
                     data=response.iter_lines(),
                     intro_value=None,  # No intro to remove
                     to_json=False,     # Response is not JSON
                     content_extractor=self._wrdo_extractor,
-                    yield_raw_on_error=False
+                    yield_raw_on_error=False,
+                    raw=raw
                 )
-
                 for content in processed_stream:
+                    # Always yield as string, even in raw mode
+                    if isinstance(content, bytes):
+                        content = content.decode('utf-8', errors='ignore')
                     if content and isinstance(content, str):
                         streaming_response += content
                         has_content = True
-                        yield {"text": content} if not raw else content
-
-                # Only update conversation history if we received content
+                        yield content if raw else {"text": content}
                 if has_content:
                     self.last_response = {"text": streaming_response}
                     self.conversation.update_chat_history(
@@ -286,12 +281,10 @@ class WrDoChat(Provider):
                     raise exceptions.FailedToGenerateResponseError(
                         "No content received from API"
                     )
-
             except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"An error occurred: {str(e)}")
-
         def for_non_stream():
             response_text = ""
             try:
@@ -303,9 +296,7 @@ class WrDoChat(Provider):
             except Exception as e:
                 if not response_text:
                     raise exceptions.FailedToGenerateResponseError(f"Failed to get response: {str(e)}")
-
             return response_text if raw else {"text": response_text}
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -314,6 +305,7 @@ class WrDoChat(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         """
         Generate a response to a prompt.
@@ -329,20 +321,24 @@ class WrDoChat(Provider):
         """
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
-
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
-
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

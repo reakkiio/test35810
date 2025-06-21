@@ -172,9 +172,10 @@ class PiAI(Provider):
         voice: bool = None,
         voice_name: str = None,
         output_file: str = None
-    ) -> dict:
+    ) -> Union[dict, str, Any]:
         """
         Interact with Pi.ai by sending a prompt and receiving a response.
+        Now supports raw streaming and non-streaming output, matching the pattern in other providers.
 
         Args:
             prompt (str): The prompt to send
@@ -209,103 +210,82 @@ class PiAI(Provider):
         }
 
         def process_stream():
-            try: # Add outer try block for error handling
-                # Try primary URL first
+            try:
                 current_url = self.url
                 response = self.session.post(
                     current_url,
-                    # headers are set on the session
-                    # cookies are handled by the session
                     json=data,
                     stream=True,
                     timeout=self.timeout,
-                    # proxies are set on the session
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-
-                # If primary URL fails, try fallback URL
                 if not response.ok and current_url == self.primary_url:
                     current_url = self.fallback_url
                     response = self.session.post(
                         current_url,
-                        # headers are set on the session
-                        # cookies are handled by the session
                         json=data,
                         stream=True,
                         timeout=self.timeout,
-                        # proxies are set on the session
-                        impersonate="chrome110" # Use a common impersonation profile
+                        impersonate="chrome110"
                     )
-
-                response.raise_for_status() # Check for HTTP errors after potential fallback
-
-                # --- Process response content ---
-                # Note: curl_cffi's response.content might behave differently for streams.
-                # It's often better to iterate directly.
-                # output_str = response.content.decode('utf-8') # Avoid reading full content at once for streams
+                response.raise_for_status()
 
                 sids = []
                 streaming_text = ""
-                full_raw_data_for_sids = "" # Accumulate raw data to find SIDs later
+                full_raw_data_for_sids = ""
 
-                # Iterate over bytes and decode manually
+                processed_stream = sanitize_stream(
+                    data=response.iter_lines(),
+                    intro_value="data: ",
+                    to_json=True,
+                    content_extractor=self._pi_extractor,
+                    raw=raw
+                )
+                for content in processed_stream:
+                    if raw:
+                        yield content
+                    else:
+                        if content and isinstance(content, str):
+                            streaming_text += content
+                            yield {"text": streaming_text}
+                # SID extraction for voice
                 for line_bytes in response.iter_lines():
                     if line_bytes:
                         line = line_bytes.decode('utf-8')
-                        full_raw_data_for_sids += line + "\n" # Accumulate for SID extraction
-                        
-                        if line.startswith("data: "):
-                            json_line_str = line[6:] # Get the JSON part as string
-                            try:
-                                # Process this single JSON line string with sanitize_stream
-                                processed_gen = sanitize_stream(
-                                    data=json_line_str,
-                                    to_json=True,
-                                    content_extractor=self._pi_extractor
-                                )
-                                chunk_text = next(processed_gen, None) # Get the single extracted text item
-                                if chunk_text and isinstance(chunk_text, str):
-                                    streaming_text += chunk_text
-                                    yield {"text": streaming_text} # Always yield dict with aggregated text
-                            except (StopIteration, json.JSONDecodeError, UnicodeDecodeError):
-                                continue # Skip if sanitize_stream fails or yields nothing
-                # Extract SIDs after processing the stream
+                        full_raw_data_for_sids += line + "\n"
                 sids = re.findall(r'"sid":"(.*?)"', full_raw_data_for_sids)
                 second_sid = sids[1] if len(sids) >= 2 else None
-
                 if voice and voice_name and second_sid:
                     threading.Thread(
                         target=self.download_audio_threaded,
                         args=(voice_name, second_sid, output_file)
                     ).start()
-
-                # Update history and last response after stream finishes
-                self.last_response = dict(text=streaming_text)
-                self.conversation.update_chat_history(
-                    prompt, streaming_text
-                )
-
-            except CurlError as e: # Catch CurlError
+                if not raw:
+                    self.last_response = dict(text=streaming_text)
+                    self.conversation.update_chat_history(prompt, streaming_text)
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"API request failed (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"API request failed ({type(e).__name__}): {e} - {err_text}") from e
-
 
         if stream:
             return process_stream()
         else:
-            # For non-stream, collect all responses and return the final one
-            final_text = ""
-            # process_stream always yields dicts now
-            for res in process_stream():
-                 if isinstance(res, dict) and "text" in res:
-                     final_text = res["text"] # Keep updating with the latest aggregated text
-
-            # last_response and history are updated within process_stream
-            # Return the final aggregated response dict or raw text
-            return final_text if raw else self.last_response
-
+            full_response = ""
+            for chunk in process_stream():
+                if raw:
+                    if isinstance(chunk, str):
+                        full_response += chunk
+                else:
+                    if isinstance(chunk, dict) and "text" in chunk:
+                        full_response = chunk["text"]
+            if not raw:
+                self.last_response = {"text": full_response}
+                self.conversation.update_chat_history(prompt, full_response)
+                return self.last_response
+            else:
+                return full_response
 
     def chat(
         self,
@@ -315,8 +295,9 @@ class PiAI(Provider):
         conversationally: bool = False,
         voice: bool = None,
         voice_name: str = None,
-        output_file: str = None
-    ) -> str:
+        output_file: str = None,
+        raw: bool = False,  # Added raw parameter
+    ) -> Union[str, Any]:
         """
         Generates a response based on the provided prompt.
 
@@ -339,35 +320,37 @@ class PiAI(Provider):
 
         if stream:
             def stream_generator():
-                # ask() yields dicts or raw JSON objects when streaming
                 gen = self.ask(
                     prompt,
                     stream=True,
-                    raw=False, # Ensure ask yields dicts for get_message
+                    raw=raw,
                     optimizer=optimizer,
                     conversationally=conversationally,
                     voice=voice,
                     voice_name=voice_name,
                     output_file=output_file
                 )
-                for response_dict in gen:
-                    # get_message expects dict
-                    yield self.get_message(response_dict) 
+                for response in gen:
+                    if raw:
+                        yield response
+                    else:
+                        yield self.get_message(response)
             return stream_generator()
         else:
-            # ask() returns dict or raw text when not streaming
             response_data = self.ask(
                 prompt,
                 stream=False,
-                raw=False, # Ensure ask returns dict for get_message
+                raw=raw,
                 optimizer=optimizer,
                 conversationally=conversationally,
                 voice=voice,
                 voice_name=voice_name,
                 output_file=output_file
             )
-             # get_message expects dict
-            return self.get_message(response_data)
+            if raw:
+                return response_data
+            else:
+                return self.get_message(response_data)
 
     def get_message(self, response: dict) -> str:
         """Retrieves message only from response"""
@@ -411,19 +394,10 @@ if __name__ == '__main__':
     try: # Add try-except block for testing
         ai = PiAI(timeout=60)
         print("[bold blue]Testing Chat (Stream):[/bold blue]")
-        response = ai.chat(input(">>> "), stream=True)
+        response = ai.chat("hi", stream=True, raw=False)
         full_response = ""
         for chunk in response:
             print(chunk, end="", flush=True)
-            full_response += chunk
-        print("\n[bold green]Stream Test Complete.[/bold green]")
-
-        # Optional: Test non-stream
-        # print("\n[bold blue]Testing Chat (Non-Stream):[/bold blue]")
-        # response_non_stream = ai.chat("Hello again", stream=False)
-        # print(response_non_stream)
-        # print("[bold green]Non-Stream Test Complete.[/bold green]")
-
     except exceptions.FailedToGenerateResponseError as e:
         print(f"\n[bold red]API Error:[/bold red] {e}")
     except Exception as e:

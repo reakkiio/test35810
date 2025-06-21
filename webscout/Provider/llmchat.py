@@ -3,7 +3,7 @@ from curl_cffi import CurlError
 import json
 from typing import Union, Any, Dict, Optional, Generator, List
 
-from webscout.AIutel import Optimizers
+from webscout.AIutel import Optimizers, sanitize_stream
 from webscout.AIutel import Conversation
 from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
@@ -95,8 +95,8 @@ class LLMChat(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Union[Dict[str, Any], Generator[Any, None, None]]: # Corrected return type hint
-        """Chat with LLMChat with logging capabilities"""
+    ) -> Union[Dict[str, Any], Generator[Any, None, None], str]:
+        """Chat with LLMChat with logging capabilities and raw output support using sanitize_stream."""
 
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
@@ -116,79 +116,59 @@ class LLMChat(Provider):
                 {"role": "user", "content": conversation_prompt}
             ],
             "max_tokens": self.max_tokens_to_sample,
-            "stream": True # API seems to always stream based on endpoint name
+            "stream": True
         }
 
         def for_stream():
-            full_response = "" # Initialize outside try block
+            full_response = ""
             try:
-                # Use curl_cffi session post with impersonate
                 response = self.session.post(
                     url, 
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate="chrome110" # Use a common impersonation profile
+                    impersonate="chrome110"
                 )
-                response.raise_for_status() # Check for HTTP errors
+                response.raise_for_status()
 
-                # Iterate over bytes and decode manually
-                for line_bytes in response.iter_lines():
-                    if line_bytes:
-                        try:
-                            line = line_bytes.decode('utf-8')
-                            if line.startswith('data: '):
-                                data_str = line[6:]
-                                if data_str == '[DONE]':
-                                    break
-                                try:
-                                    data = json.loads(data_str)
-                                    if data.get('response'):
-                                        response_text = data['response']
-                                        full_response += response_text
-                                        resp = dict(text=response_text)
-                                        # Yield dict or raw string chunk
-                                        yield resp if not raw else response_text
-                                except json.JSONDecodeError:
-                                    continue # Ignore invalid JSON data
-                        except UnicodeDecodeError:
-                            continue # Ignore decoding errors
-
-                # Update history after stream finishes
+                # Use sanitize_stream to process SSE lines
+                processed_stream = sanitize_stream(
+                    data=response.iter_lines(),
+                    intro_value="data: ",
+                    to_json=True,
+                    skip_markers=["[DONE]"],
+                    content_extractor=lambda chunk: chunk.get('response') if isinstance(chunk, dict) else None,
+                    yield_raw_on_error=False,
+                    raw=raw
+                )
+                for content_chunk in processed_stream:
+                    if content_chunk and isinstance(content_chunk, str):
+                        full_response += content_chunk
+                        if raw:
+                            yield content_chunk
+                        else:
+                            yield dict(text=content_chunk)
                 self.last_response = dict(text=full_response)
                 self.conversation.update_chat_history(
                     prompt, full_response
                 )
-
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
-            except Exception as e: # Catch other potential exceptions (like HTTPError)
+            except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
                 raise exceptions.FailedToGenerateResponseError(f"Request failed ({type(e).__name__}): {e} - {err_text}") from e
-        
         def for_non_stream():
-            # Aggregate the stream using the updated for_stream logic
-            full_response_text = ""
+            full_response = ""
             try:
-                # Ensure raw=False so for_stream yields dicts
-                for chunk_data in for_stream():
-                    if isinstance(chunk_data, dict) and "text" in chunk_data:
-                        full_response_text += chunk_data["text"]
-                    # Handle raw string case if raw=True was passed
-                    elif raw and isinstance(chunk_data, str):
-                         full_response_text += chunk_data
+                for content_chunk in for_stream():
+                    if raw and isinstance(content_chunk, str):
+                        full_response += content_chunk
+                    elif isinstance(content_chunk, dict) and "text" in content_chunk:
+                        full_response += content_chunk["text"]
             except Exception as e:
-                 # If aggregation fails but some text was received, use it. Otherwise, re-raise.
-                 if not full_response_text:
-                     raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
-
-            # last_response and history are updated within for_stream
-            # Return the final aggregated response dict or raw string
-            return full_response_text if raw else self.last_response
-
-
-        # Since the API endpoint suggests streaming, always call the stream generator.
-        # The non-stream wrapper will handle aggregation if stream=False.
+                if not full_response:
+                    raise exceptions.FailedToGenerateResponseError(f"Failed to get non-stream response: {str(e)}") from e
+            return full_response if raw else self.last_response
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -197,29 +177,31 @@ class LLMChat(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False
     ) -> Union[str, Generator[str, None, None]]:
-        """Generate response with logging capabilities"""
-
+        """Generate response with logging capabilities and raw output support"""
         def for_stream_chat():
-            # ask() yields dicts or strings when streaming
             gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
+                prompt, stream=True, raw=raw,
                 optimizer=optimizer, conversationally=conversationally
             )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
-
+            for response in gen:
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
-            # ask() returns dict or str when not streaming
             response_data = self.ask(
                 prompt,
                 stream=False,
-                raw=False, # Ensure ask returns dict
+                raw=raw,
                 optimizer=optimizer,
-                conversationally=conversationally,
+                conversationally=conversationally
             )
-            return self.get_message(response_data) # get_message expects dict
-
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: Dict[str, Any]) -> str:
@@ -228,31 +210,35 @@ class LLMChat(Provider):
         return response["text"]
 
 if __name__ == "__main__":
-    # Ensure curl_cffi is installed
-    print("-" * 80)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 80)
+    # # Ensure curl_cffi is installed
+    # print("-" * 80)
+    # print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    # print("-" * 80)
     
-    # Test all available models
-    working = 0
-    total = len(LLMChat.AVAILABLE_MODELS)
+    # # Test all available models
+    # working = 0
+    # total = len(LLMChat.AVAILABLE_MODELS)
     
-    for model in LLMChat.AVAILABLE_MODELS:
-        try:
-            test_ai = LLMChat(model=model, timeout=60)
-            response = test_ai.chat("Say 'Hello' in one word", stream=True)
-            response_text = ""
-            for chunk in response:
-                response_text += chunk
-                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
+    # for model in LLMChat.AVAILABLE_MODELS:
+    #     try:
+    #         test_ai = LLMChat(model=model, timeout=60)
+    #         response = test_ai.chat("Say 'Hello' in one word", stream=True)
+    #         response_text = ""
+    #         for chunk in response:
+    #             response_text += chunk
+    #             print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
             
-            if response_text and len(response_text.strip()) > 0:
-                status = "✓"
-                # Truncate response if too long
-                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-            print(f"\r{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}")
+    #         if response_text and len(response_text.strip()) > 0:
+    #             status = "✓"
+    #             # Truncate response if too long
+    #             display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+    #         else:
+    #             status = "✗"
+    #             display_text = "Empty or invalid response"
+    #         print(f"\r{model:<50} {status:<10} {display_text}")
+    #     except Exception as e:
+    #         print(f"\r{model:<50} {'✗':<10} {str(e)}")
+    ai = LLMChat(model="@cf/meta/llama-3.1-70b-instruct")
+    response = ai.chat("Say 'Hello' in one word", stream=True, raw=False)
+    for chunk in response:
+        print(chunk, end="", flush=True)

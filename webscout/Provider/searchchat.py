@@ -232,6 +232,7 @@ class SearchChatAI(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str, None, None]]:
         """
         Chat with the API.
@@ -246,22 +247,21 @@ class SearchChatAI(Provider):
             Either a string response or a generator for streaming
         """
         def for_stream_chat():
-            # ask() yields dicts or strings when streaming
-            gen = self.ask(
-                prompt, stream=True, raw=False, # Ensure ask yields dicts
-                optimizer=optimizer, conversationally=conversationally
-            )
-            for response_dict in gen:
-                yield self.get_message(response_dict) # get_message expects dict
-                
+            for response in self.ask(
+                prompt, stream=True, raw=raw, optimizer=optimizer, conversationally=conversationally
+            ):
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream_chat():
-             # ask() returns dict or str when not streaming
             response_data = self.ask(
-                prompt, stream=False, raw=False, # Ensure ask returns dict
-                optimizer=optimizer, conversationally=conversationally
+                prompt, stream=False, raw=raw, optimizer=optimizer, conversationally=conversationally
             )
-            return self.get_message(response_data) # get_message expects dict
-            
+            if raw:
+                return response_data if isinstance(response_data, str) else self.get_message(response_data)
+            else:
+                return self.get_message(response_data)
         return for_stream_chat() if stream else for_non_stream_chat()
 
     def get_message(self, response: dict) -> str:

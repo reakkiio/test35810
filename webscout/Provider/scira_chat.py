@@ -154,14 +154,20 @@ class SciraAI(Provider):
         return self.fingerprint
 
     @staticmethod
-    def _scira_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from the Scira stream format '0:"..."'."""
+    def _scira_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[dict]:
+        """Extracts g and 0 chunks from the Scira stream format.
+        Returns a dict: {"g": [g1, g2, ...], "0": zero} if present.
+        """
         if isinstance(chunk, str):
-            match = re.search(r'0:"(.*?)"(?=,|$)', chunk) # Look for 0:"...", possibly followed by comma or end of string
-            if match:
-                # Decode potential unicode escapes like \u00e9 and handle escaped quotes/backslashes
-                content = match.group(1).encode().decode('unicode_escape')
-                return content.replace('\\\\', '\\').replace('\\"', '"')
+            g_matches = re.findall(r'g:"(.*?)"', chunk)
+            zero_match = re.search(r'0:"(.*?)"(?=,|$)', chunk)
+            result = {}
+            if g_matches:
+                result["g"] = [g.encode().decode('unicode_escape').replace('\\', '\\').replace('\\"', '"') for g in g_matches]
+            if zero_match:
+                result["0"] = zero_match.group(1).encode().decode('unicode_escape').replace('\\', '\\').replace('\\"', '"')
+            if result:
+                return result
         return None
 
     def ask(
@@ -169,7 +175,9 @@ class SciraAI(Provider):
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> Dict[str, Any]: # Note: Stream parameter removed as API doesn't seem to support it
+        stream: bool = True,  # Default to True, always stream
+        raw: bool = False,    # Added raw parameter
+    ) -> Union[Dict[str, Any], Any]:
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -194,107 +202,162 @@ class SciraAI(Provider):
             "timezone": "Asia/Calcutta"
         }
 
-        try:
-            # Use curl_cffi post with impersonate
-            response = self.session.post(
-                self.url,
-                json=payload,
-                timeout=self.timeout,
-                impersonate="chrome120" # Add impersonate
-            )
-            if response.status_code != 200:
-                # Try to get response content for better error messages
-                try: # Use try-except for reading response content
-                    error_content = response.text
-                except:
-                    error_content = "<could not read response content>"
+        def for_stream():
+            try:
+                response = self.session.post(
+                    self.url,
+                    json=payload,
+                    timeout=self.timeout,
+                    impersonate="chrome120",
+                    stream=True
+                )
+                if response.status_code != 200:
+                    try:
+                        error_content = response.text
+                    except:
+                        error_content = "<could not read response content>"
 
-                if response.status_code in [403, 429]:
-                    print(f"Received status code {response.status_code}, refreshing identity...")
-                    self.refresh_identity()
-                    response = self.session.post(
-                        self.url, json=payload, timeout=self.timeout,
-                        impersonate="chrome120" # Add impersonate to retry
-                    )
-                    if not response.ok:
-                        raise exceptions.FailedToGenerateResponseError(
-                            f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}"
+                    if response.status_code in [403, 429]:
+                        print(f"Received status code {response.status_code}, refreshing identity...")
+                        self.refresh_identity()
+                        response = self.session.post(
+                            self.url, json=payload, timeout=self.timeout,
+                            impersonate="chrome120", stream=True
                         )
-                    print("Identity refreshed successfully.")
-                else:
-                    raise exceptions.FailedToGenerateResponseError(
-                        f"Request failed with status code {response.status_code}. Response: {error_content}"
-                    )
+                        if not response.ok:
+                            raise exceptions.FailedToGenerateResponseError(
+                                f"Failed to generate response after identity refresh - ({response.status_code}, {response.reason}) - {error_content}"
+                            )
+                        print("Identity refreshed successfully.")
+                    else:
+                        raise exceptions.FailedToGenerateResponseError(
+                            f"Request failed with status code {response.status_code}. Response: {error_content}"
+                        )
 
-            response_text_raw = response.text # Get raw response text
+                processed_stream = sanitize_stream(
+                    data=response.iter_content(chunk_size=None),
+                    intro_value=None,
+                    to_json=False,
+                    content_extractor=self._scira_extractor,
+                    raw=raw
+                )
 
-            # Process the text using sanitize_stream line by line
-            processed_stream = sanitize_stream(
-                data=response_text_raw.splitlines(), # Split into lines
-                intro_value=None, # No simple prefix
-                to_json=False,    # Content is not JSON
-                content_extractor=self._scira_extractor # Use the specific extractor
-            )
+                streaming_response = ""
+                in_think = False
+                for content in processed_stream:
+                    if content is None:
+                        continue
+                    if isinstance(content, dict):
+                        # Handle g chunks
+                        g_chunks = content.get("g", [])
+                        zero_chunk = content.get("0")
+                        if g_chunks:
+                            if not in_think:
+                                if raw:
+                                    yield "<think>\n\n"
+                                else:
+                                    yield "<think>\n\n"
+                                in_think = True
+                            for g in g_chunks:
+                                if raw:
+                                    yield g
+                                else:
+                                    yield dict(text=g)
+                        if zero_chunk is not None:
+                            if in_think:
+                                if raw:
+                                    yield "</think>\n\n"
+                                else:
+                                    yield "</think>\n\n"
+                                in_think = False
+                            if raw:
+                                yield zero_chunk
+                            else:
+                                streaming_response += zero_chunk
+                                yield dict(text=zero_chunk)
+                    else:
+                        # fallback for old string/list logic
+                        if raw:
+                            yield content
+                        else:
+                            if content and isinstance(content, str):
+                                streaming_response += content
+                                yield dict(text=content)
+                if not raw:
+                    self.last_response = {"text": streaming_response}
+                    self.conversation.update_chat_history(prompt, streaming_response)
+            except CurlError as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
+            except Exception as e:
+                raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
 
-            # Aggregate the results from the generator
+        def for_non_stream():
+            # Always use streaming logic, but aggregate the result
             full_response = ""
-            for content in processed_stream:
-                if content and isinstance(content, str):
-                    full_response += content
+            for chunk in for_stream():
+                if raw:
+                    if isinstance(chunk, str):
+                        full_response += chunk
+                else:
+                    if isinstance(chunk, dict) and "text" in chunk:
+                        full_response += chunk["text"]
+            if not raw:
+                self.last_response = {"text": full_response}
+                self.conversation.update_chat_history(prompt, full_response)
+                return {"text": full_response}
+            else:
+                return full_response
 
-            self.last_response = {"text": full_response}
-            self.conversation.update_chat_history(prompt, full_response)
-            return {"text": full_response}
-        except CurlError as e: # Catch CurlError
-            raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}") from e
-        except Exception as e:
-            raise exceptions.FailedToGenerateResponseError(f"Request failed: {e}")
+        return for_stream() if stream else for_non_stream()
 
     def chat(
         self,
         prompt: str,
         optimizer: str = None,
         conversationally: bool = False,
-    ) -> str:
-        return self.get_message(
-            self.ask(
-                prompt, optimizer=optimizer, conversationally=conversationally
+        stream: bool = True,  # Default to True, always stream
+        raw: bool = False,    # Added raw parameter
+    ) -> Any:
+        def for_stream():
+            for response in self.ask(
+                prompt, optimizer=optimizer, conversationally=conversationally, stream=True, raw=raw
+            ):
+                if raw:
+                    yield response
+                else:
+                    if isinstance(response, dict):
+                        yield self.get_message(response)
+                    else:
+                        # For <think> and </think> tags (strings), yield as is
+                        yield response
+        def for_non_stream():
+            result = self.ask(
+                prompt, optimizer=optimizer, conversationally=conversationally, stream=False, raw=raw
             )
-        )
+            if raw:
+                return result
+            else:
+                if isinstance(result, dict):
+                    return self.get_message(result)
+                else:
+                    return result
+        return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:
+        """
+        Retrieves message only from response
+
+        Args:
+            response (dict): Response generated by `self.ask`
+
+        Returns:
+            str: Message extracted
+        """
         assert isinstance(response, dict), "Response should be of dict data-type only"
-        # Extractor handles formatting
-        return response.get("text", "").replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        return response.get("text", "")
 
 if __name__ == "__main__":
-    print("-" * 100)
-    print(f"{'Model':<50} {'Status':<10} {'Response'}")
-    print("-" * 100)
-
-    test_prompt = "Say 'Hello' in one word"
-
-    # Test each model
-    for model in SciraAI.AVAILABLE_MODELS:
-        print(f"\rTesting {model}...", end="")
-
-        try:
-            test_ai = SciraAI(model=model, timeout=120)  # Increased timeout
-            response = test_ai.chat(test_prompt)
-
-            if response and len(response.strip()) > 0:
-                status = "✓"
-                # Clean and truncate response
-                clean_text = response.strip().encode('utf-8', errors='ignore').decode('utf-8')
-                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
-            else:
-                status = "✗"
-                display_text = "Empty or invalid response"
-
-            print(f"\r{model:<50} {status:<10} {display_text}")
-        except Exception as e:
-            error_msg = str(e)
-            # Truncate very long error messages
-            if len(error_msg) > 100:
-                error_msg = error_msg[:97] + "..."
-            print(f"\r{model:<50} {'✗':<10} Error: {error_msg}")
+    ai = SciraAI()
+    resp = ai.chat("What is the capital of France?", stream=True, raw=False)
+    for chunk in resp:
+        print(chunk, end="", flush=True)

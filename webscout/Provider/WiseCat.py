@@ -106,7 +106,6 @@ class WiseCat(Provider):
                 raise Exception(
                     f"Optimizer is not one of {self.__available_optimizers}"
                 )
-
         payload = {
             "id": "ephemeral",
             "messages": [
@@ -121,52 +120,49 @@ class WiseCat(Provider):
             ],
             "selectedChatModel": self.model
         }
-
         def for_stream():
-            try: # Add try block for CurlError
-                # Use curl_cffi session post with impersonate
+            try:
                 response = self.session.post(
                     self.api_endpoint, 
                     headers=self.headers, 
                     json=payload, 
                     stream=True, 
                     timeout=self.timeout,
-                    impersonate="chrome120" # Add impersonate
+                    impersonate="chrome120"
                 )
                 if not response.ok:
                     error_msg = f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                     raise exceptions.FailedToGenerateResponseError(error_msg)
-
                 streaming_text = ""
-                # Use sanitize_stream with the custom extractor
                 processed_stream = sanitize_stream(
-                    data=response.iter_content(chunk_size=None), # Pass byte iterator
-                    intro_value=None, # No simple prefix to remove here
-                    to_json=False,    # Content is not JSON
-                    content_extractor=self._wisecat_extractor # Use the specific extractor
+                    data=response.iter_content(chunk_size=None),
+                    intro_value=None,
+                    to_json=False,
+                    content_extractor=self._wisecat_extractor,
+                    raw=raw
                 )
-
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield content_chunk if raw else dict(text=content_chunk)
-
-                self.last_response.update(dict(text=streaming_text)) # Use streaming_text here
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
+                self.last_response.update(dict(text=streaming_text))
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)
                 )
-            except CurlError as e: # Catch CurlError
+            except CurlError as e:
                 raise exceptions.FailedToGenerateResponseError(f"Request failed (CurlError): {e}")
-            except Exception as e: # Catch other potential exceptions
+            except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
-
-
         def for_non_stream():
-            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
             return self.last_response
-
         return for_stream() if stream else for_non_stream()
 
     def chat(
@@ -175,24 +171,28 @@ class WiseCat(Provider):
         stream: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> str:
-        """Generate response `str`"""
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
-
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
-
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:

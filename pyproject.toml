@@ -72,7 +72,8 @@ dependencies = [
     "psutil",
     "aiohttp",
     "zstandard",
-    "brotli"
+    "brotli",
+    "litproxy"
 ]
 
 [project.scripts]

@@ -178,13 +178,20 @@ class WritingMate(Provider):
                     data=response.iter_content(chunk_size=None), # Pass byte iterator
                     intro_value=None, # No simple prefix
                     to_json=False,    # Content is not JSON
-                    content_extractor=self._writingmate_extractor # Use the specific extractor
+                    content_extractor=self._writingmate_extractor, # Use the specific extractor
+                    raw=raw
                 )
 
                 for content_chunk in processed_stream:
-                    if content_chunk and isinstance(content_chunk, str):
-                        streaming_text += content_chunk
-                        yield content_chunk if raw else dict(text=content_chunk)
+                    # Always yield as string, even in raw mode
+                    if isinstance(content_chunk, bytes):
+                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    if raw:
+                        yield content_chunk
+                    else:
+                        if content_chunk and isinstance(content_chunk, str):
+                            streaming_text += content_chunk
+                            yield dict(text=content_chunk)
 
                 self.last_response.update(dict(text=streaming_text))
                 self.conversation.update_chat_history(
@@ -196,12 +203,10 @@ class WritingMate(Provider):
                 raise exceptions.FailedToGenerateResponseError(f"An unexpected error occurred ({type(e).__name__}): {e}")
 
         def for_non_stream():
-            # This function implicitly uses the updated for_stream
             for _ in for_stream():
                 pass
             return self.last_response
 
-        # Ensure stream defaults to True if not provided, matching original behavior
         effective_stream = stream if stream is not None else True 
         return for_stream() if effective_stream else for_non_stream()
 
@@ -210,36 +215,35 @@ class WritingMate(Provider):
         prompt: str,
         stream: bool = False, # Default stream to False as per original chat method
         optimizer: str = None,
-        conversationally: bool = False
+        conversationally: bool = False,
+        raw: bool = False,  # Added raw parameter
     ) -> Union[str, Generator[str,None,None]]:
         if stream:
-            # yield decoded text chunks
             def text_stream():
-                # Call ask with stream=True, raw=False to get dicts
-                for response_dict in self.ask(
-                    prompt, stream=True, raw=False,
+                for response in self.ask(
+                    prompt, stream=True, raw=raw,
                     optimizer=optimizer, conversationally=conversationally
                 ):
-                    # Extract text from dict
-                    yield self.get_message(response_dict) 
+                    if raw:
+                        yield response
+                    else:
+                        yield self.get_message(response)
             return text_stream()
-        else: # non‐stream: return aggregated text
-            # Call ask with stream=False, raw=False
+        else:
             response_data = self.ask(
                 prompt,
                 stream=False,
-                raw=False,
+                raw=raw,
                 optimizer=optimizer,
                 conversationally=conversationally,
             )
-            # Ensure response_data is a dict before passing to get_message
+            if raw:
+                return response_data
             if isinstance(response_data, dict):
-                 return self.get_message(response_data)
+                return self.get_message(response_data)
             else:
-                 # Handle unexpected generator case if ask(stream=False) behaves differently
-                 # This part might need adjustment based on actual behavior
-                 full_text = "".join(self.get_message(chunk) for chunk in response_data if isinstance(chunk, dict))
-                 return full_text
+                full_text = "".join(self.get_message(chunk) for chunk in response_data if isinstance(chunk, dict))
+                return full_text
 
 
     def get_message(self, response: dict) -> str:

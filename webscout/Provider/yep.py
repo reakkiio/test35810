@@ -3,9 +3,6 @@ from curl_cffi import CurlError
 from curl_cffi.requests import Session
 
 from typing import Any, Dict, Optional, Generator, Union, List, TypeVar
-
-from mistralai import ContentChunk
-
 from webscout.AIutel import Optimizers
 from webscout.AIutel import AwesomePrompts, sanitize_stream # Import sanitize_stream
 from webscout.AIbase import Provider

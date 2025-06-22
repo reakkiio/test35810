@@ -72,6 +72,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - GeminiProxy
 - MonoChat
 - Friendli
+- MiniMax
 
 ## 💻 Usage Examples
 

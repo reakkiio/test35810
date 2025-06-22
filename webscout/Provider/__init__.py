@@ -86,8 +86,10 @@ from .XenAI import XenAI
 from .deepseek_assistant import DeepSeekAssistant
 from .GeminiProxy import GeminiProxy
 from .TogetherAI import TogetherAI
+from .MiniMax import MiniMax
 __all__ = [
     'SCNet',
+    'MiniMax',
     'GeminiProxy',
     'TogetherAI',
     'oivscode',

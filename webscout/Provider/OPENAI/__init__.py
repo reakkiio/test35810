@@ -45,6 +45,7 @@ from .xenai import *  # Add XenAI provider
 from .GeminiProxy import *  # Add GeminiProxy provider
 from .friendli import *
 from .monochat import *
+from .MiniMax import *  # Add MiniMaxAI provider
 # Export auto-proxy functionality
 from .autoproxy import (
     get_auto_proxy,

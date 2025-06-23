@@ -6,8 +6,8 @@ import json
 from typing import List, Dict, Optional, Union, Generator, Any
 
 # Import base classes and utility structures
-from .base import OpenAICompatibleProvider, BaseChat, BaseCompletions
-from .utils import (
+from webscout.Provider.OPENAI.base import OpenAICompatibleProvider, BaseChat, BaseCompletions
+from webscout.Provider.OPENAI.utils import (
     ChatCompletionChunk, ChatCompletion, Choice, ChoiceDelta,
     ChatCompletionMessage, CompletionUsage, count_tokens
 )
@@ -365,3 +365,15 @@ class X0GPT(OpenAICompatibleProvider):
         """
         # X0GPT doesn't actually use model names, but we'll keep this for compatibility
         return model
+
+if __name__ == "__main__":
+    from rich import print
+    client = X0GPT()
+    response = client.chat.completions.create(
+        model="X0GPT",
+        messages=[{"role": "user", "content": "Hello!"}],
+        stream=True
+    )
+
+    for chunk in response:
+        print(chunk, end='', flush=True)

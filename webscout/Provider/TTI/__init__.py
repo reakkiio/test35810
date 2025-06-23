@@ -8,3 +8,4 @@ from .imagen import *
 from .together import *
 from .bing import *
 from .infip import *
+from .monochat import *

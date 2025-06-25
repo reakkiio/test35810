@@ -116,17 +116,6 @@ class X0GPT(Provider):
         )
         self.conversation.history_offset = history_offset
 
-    @staticmethod
-    def _x0gpt_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from the x0gpt stream format '0:"..."'."""
-        if isinstance(chunk, str):
-            match = re.search(r'0:"(.*?)"', chunk)
-            if match:
-                # Decode potential unicode escapes like \u00e9
-                content = match.group(1).encode().decode('unicode_escape')
-                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
-        return None
-
     def ask(
         self,
         prompt: str,
@@ -192,12 +181,22 @@ class X0GPT(Provider):
                     )
                 
                 streaming_response = ""
-                # Use sanitize_stream with the custom extractor
+                # Use sanitize_stream with regex-based extraction and filtering
                 processed_stream = sanitize_stream(
                     data=response.iter_content(chunk_size=None), # Pass byte iterator
                     intro_value=None, # No simple prefix to remove here
                     to_json=False,    # Content is not JSON
-                    content_extractor=self._x0gpt_extractor, # Use the specific extractor
+                    # Use regex to extract content from x0gpt format '0:"..."'
+                    extract_regexes=[r'0:"(.*?)"'],
+                    # Skip empty chunks, connection status messages, and control characters
+                    skip_regexes=[
+                        r'^\s*$',                    # Empty lines
+                        r'data:\s*\[DONE\]',         # Stream end markers
+                        r'event:\s*',                # SSE event headers
+                        r'^\d+:\s*$',                # Standalone numbers
+                        r'^:\s*$',                   # Colon-only lines
+                        r'^\s*[\x00-\x1f]+\s*$'     # Control characters
+                    ],
                     raw=raw
                 )
 
@@ -205,12 +204,23 @@ class X0GPT(Provider):
                     # Always yield as string, even in raw mode
                     if isinstance(content_chunk, bytes):
                         content_chunk = content_chunk.decode('utf-8', errors='ignore')
+                    
                     if raw:
                         yield content_chunk
                     else:
                         if content_chunk and isinstance(content_chunk, str):
-                            streaming_response += content_chunk
-                            yield dict(text=content_chunk)
+                            # Handle unicode escapes and clean up the content
+                            try:
+                                # Decode unicode escapes like \u00e9
+                                clean_content = content_chunk.encode().decode('unicode_escape')
+                                # Handle escaped backslashes and quotes
+                                clean_content = clean_content.replace('\\\\', '\\').replace('\\"', '"')
+                                streaming_response += clean_content
+                                yield dict(text=clean_content)
+                            except (UnicodeDecodeError, UnicodeEncodeError):
+                                # Fallback to original content if unicode processing fails
+                                streaming_response += content_chunk
+                                yield dict(text=content_chunk)
 
                 self.last_response.update(dict(text=streaming_response))
                 self.conversation.update_chat_history(
@@ -248,6 +258,7 @@ class X0GPT(Provider):
             stream (bool): Whether to stream the response.
             optimizer (str): Optimizer to use for the prompt.
             conversationally (bool): Whether to generate the prompt conversationally.
+            raw (bool): Whether to return raw response chunks.
 
         Returns:
             str: The API response.
@@ -303,13 +314,12 @@ class X0GPT(Provider):
         assert isinstance(response, dict), "Response should be of dict data-type only"
         # Ensure text exists before processing
         text = response.get("text", "")
-        # Formatting is now mostly handled by the extractor, just return
-        formatted_text = text
-        return formatted_text
+        # Text is now cleaned by the regex-based sanitize_stream processing
+        return text
 
 if __name__ == "__main__":
     from rich import print
     ai = X0GPT(timeout=5000)
-    response = ai.chat("write a poem about AI", stream=True, raw=True)
+    response = ai.chat("write a poem about AI", stream=True, raw=False)
     for chunk in response:
         print(chunk, end="", flush=True)

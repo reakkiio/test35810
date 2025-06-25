@@ -12,6 +12,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Pattern,
     Union,
 )
 
@@ -19,6 +20,36 @@ from typing import (
 EncodingType = Literal['utf-8', 'utf-16', 'utf-32', 'ascii', 'latin1', 'cp1252', 'iso-8859-1',
                         'iso-8859-2', 'windows-1250', 'windows-1251', 'windows-1252', 'gbk', 'big5',
                         'shift_jis', 'euc-jp', 'euc-kr']
+
+def _compile_regexes(patterns: Optional[List[Union[str, Pattern[str]]]]) -> Optional[List[Pattern[str]]]:
+    """
+    Compile regex patterns from strings or return compiled patterns as-is.
+    
+    Args:
+        patterns: List of regex patterns as strings or compiled Pattern objects.
+        
+    Returns:
+        List of compiled Pattern objects, or None if input is None.
+        
+    Raises:
+        ValueError: If any pattern is invalid.
+    """
+    if not patterns:
+        return None
+    
+    compiled_patterns = []
+    for i, pattern in enumerate(patterns):
+        try:
+            if isinstance(pattern, str):
+                compiled_patterns.append(re.compile(pattern))
+            elif isinstance(pattern, Pattern):
+                compiled_patterns.append(pattern)
+            else:
+                raise ValueError(f"Pattern at index {i} must be a string or compiled regex pattern, got {type(pattern)}")
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern at index {i}: '{pattern}' - {str(e)}")
+    
+    return compiled_patterns
 
 def _process_chunk(
     chunk: str,
@@ -28,6 +59,8 @@ def _process_chunk(
     strip_chars: Optional[str],
     yield_raw_on_error: bool,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    skip_regexes: Optional[List[Pattern[str]]] = None,
+    extract_regexes: Optional[List[Pattern[str]]] = None,
 ) -> Union[str, Dict[str, Any], None]:
     """
     Sanitizes and potentially parses a single chunk of text.
@@ -36,6 +69,8 @@ def _process_chunk(
     - Removes a specified prefix (`intro_value`).
     - Strips leading/trailing characters (`strip_chars`).
     - Skips chunks matching specific markers (`skip_markers`).
+    - Skips chunks matching regex patterns (`skip_regexes`).
+    - Extracts content using regex capturing groups (`extract_regexes`).
     - Optionally parses the chunk as JSON (`to_json`).
     - Handles JSON parsing errors with an optional callback (`error_handler`).
 
@@ -48,6 +83,8 @@ def _process_chunk(
         yield_raw_on_error (bool): If True, returns the raw chunk when JSON parsing fails; otherwise, returns None.
         error_handler (Optional[Callable[[Exception, str], Optional[Any]]]): An optional callback function that is called when JSON parsing fails.
             It receives the exception and the sanitized chunk as arguments.  It should return a value to yield instead of the raw chunk, or None to ignore.
+        skip_regexes (Optional[List[Pattern[str]]]): A list of compiled regex patterns; chunks matching any of these are skipped.
+        extract_regexes (Optional[List[Pattern[str]]]): A list of compiled regex patterns for extracting content using capturing groups.
 
     """
     if not isinstance(chunk, str):
@@ -72,6 +109,28 @@ def _process_chunk(
     # Skip empty chunks and markers
     if not sanitized_chunk or any(marker == sanitized_chunk for marker in skip_markers):
         return None
+
+    # Apply regex-based extraction first (if provided)
+    if extract_regexes:
+        for regex in extract_regexes:
+            match = regex.search(sanitized_chunk)
+            if match:
+                # If there are capturing groups, return the first group or all groups as a tuple
+                if match.groups():
+                    if len(match.groups()) == 1:
+                        sanitized_chunk = match.group(1)
+                    else:
+                        # Multiple groups - return as tuple converted to string for JSON compatibility
+                        sanitized_chunk = str(match.groups())
+                else:
+                    # No capturing groups, return the full match
+                    sanitized_chunk = match.group(0)
+                break  # Use first matching extraction regex
+
+    # Apply regex-based skipping (after extraction)
+    if skip_regexes:
+        if any(regex.search(sanitized_chunk) for regex in skip_regexes):
+            return None
 
     # JSON parsing with optimized error handling
     if to_json:
@@ -226,13 +285,15 @@ def _sanitize_stream_sync(
     buffer_size: int = 8192,
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
 ) -> Generator[Any, None, None]:
     """
     Processes a stream of data (strings or bytes) in real-time, applying various transformations and filtering.
 
     This function is designed to handle streaming data, allowing for operations such as
-    prefix removal, JSON parsing, skipping lines based on markers, and extracting specific content.
-    It also supports custom error handling for JSON parsing failures.
+    prefix removal, JSON parsing, skipping lines based on markers, regex-based filtering,
+    and extracting specific content. It also supports custom error handling for JSON parsing failures.
 
     Args:
         data: String, iterable of strings, or iterable of bytes to process.
@@ -251,14 +312,21 @@ def _sanitize_stream_sync(
             uses ``str.splitlines()``.
         error_handler: Callback invoked with ``(Exception, str)`` when JSON
             parsing fails. If the callback returns a value, it is yielded instead of the raw line.
+        skip_regexes: List of regex patterns (strings or compiled) for skipping lines that match.
+        extract_regexes: List of regex patterns (strings or compiled) for extracting content using capturing groups.
 
     Yields:
         Any: Processed data, which can be a string, a dictionary (if `to_json` is True), or the result of `content_extractor`.
 
     Raises:
         TypeError: If the input `data` is not a string or an iterable.
+        ValueError: If any regex pattern is invalid.
     """
     effective_skip_markers = skip_markers or []
+    # Compile regex patterns
+    compiled_skip_regexes = _compile_regexes(skip_regexes)
+    compiled_extract_regexes = _compile_regexes(extract_regexes)
+    
     processing_active = start_marker is None
     buffer = ""
     found_start = False if start_marker else True
@@ -343,6 +411,8 @@ def _sanitize_stream_sync(
                                 strip_chars,
                                 yield_raw_on_error,
                                 error_handler,
+                                compiled_skip_regexes,
+                                compiled_extract_regexes,
                             )
                             if result is None:
                                 continue
@@ -373,6 +443,8 @@ def _sanitize_stream_sync(
                                 strip_chars,
                                 yield_raw_on_error,
                                 error_handler,
+                                compiled_skip_regexes,
+                                compiled_extract_regexes,
                             )
                             if result is None:
                                 continue
@@ -408,14 +480,16 @@ async def _sanitize_stream_async(
     buffer_size: int = 8192,
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
 ) -> AsyncGenerator[Any, None]:
     """
     Asynchronously processes a stream of data (strings or bytes), applying transformations and filtering.
 
     This function is the asynchronous counterpart to `_sanitize_stream_sync`. It handles
     streaming data, allowing for operations such as prefix removal, JSON parsing,
-    skipping lines based on markers, and extracting specific content. It also supports
-    custom error handling for JSON parsing failures.
+    skipping lines based on markers, regex-based filtering, and extracting specific content. 
+    It also supports custom error handling for JSON parsing failures.
 
     Args:
         data: String, iterable of strings, or iterable of bytes to process.
@@ -432,6 +506,8 @@ async def _sanitize_stream_async(
         buffer_size: Buffer size for byte decoding.
         line_delimiter: Delimiter used to split incoming text into lines. ``None`` uses ``str.splitlines()``.
         error_handler: Callback invoked with ``(Exception, str)`` when JSON parsing fails. If the callback returns a value, it is yielded in place of the raw line.
+        skip_regexes: List of regex patterns (strings or compiled) for skipping lines that match.
+        extract_regexes: List of regex patterns (strings or compiled) for extracting content using capturing groups.
     """
     if isinstance(data, str):
         for item in _sanitize_stream_sync(
@@ -449,6 +525,8 @@ async def _sanitize_stream_async(
             buffer_size=buffer_size,
             line_delimiter=line_delimiter,
             error_handler=error_handler,
+            skip_regexes=skip_regexes,
+            extract_regexes=extract_regexes,
         ):
             yield item
         return
@@ -470,11 +548,17 @@ async def _sanitize_stream_async(
             buffer_size=buffer_size,
             line_delimiter=line_delimiter,
             error_handler=error_handler,
+            skip_regexes=skip_regexes,
+            extract_regexes=extract_regexes,
         ):
             yield item
         return
 
     effective_skip_markers = skip_markers or []
+    # Compile regex patterns
+    compiled_skip_regexes = _compile_regexes(skip_regexes)
+    compiled_extract_regexes = _compile_regexes(extract_regexes)
+    
     processing_active = start_marker is None
     buffer = ""
     found_start = False if start_marker else True
@@ -543,6 +627,8 @@ async def _sanitize_stream_async(
                             strip_chars,
                             yield_raw_on_error,
                             error_handler,
+                            compiled_skip_regexes,
+                            compiled_extract_regexes,
                         )
                         if result is None:
                             continue
@@ -576,6 +662,8 @@ async def _sanitize_stream_async(
                             strip_chars,
                             yield_raw_on_error,
                             error_handler,
+                            compiled_skip_regexes,
+                            compiled_extract_regexes,
                         )
                         if result is None:
                             continue
@@ -621,12 +709,15 @@ def sanitize_stream(
     buffer_size: int = 8192,
     line_delimiter: Optional[str] = None,
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
     object_mode: Literal["as_is", "json", "str"] = "json",
     raw: bool = False,
 ) -> Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
     """
     Processes streaming data (strings or bytes) in either synchronous or asynchronous mode.
     Now supports non-iterable and miscellaneous input types (dict, list, int, float, bool, None).
+    Includes regex-based content filtering and extraction capabilities.
 
     Args:
         data: The data to be processed. Can be a string, bytes, a synchronous iterable of strings or bytes,
@@ -648,6 +739,10 @@ def sanitize_stream(
         error_handler (Optional[Callable[[Exception, str], Optional[Any]]]):
             Callback invoked with ``(Exception, str)`` when JSON parsing fails.
             If the callback returns a value, it is yielded in place of the raw line. Defaults to None.
+        skip_regexes (Optional[List[Union[str, Pattern[str]]]]): List of regex patterns (strings or compiled) 
+            for skipping lines that match any pattern. Defaults to None.
+        extract_regexes (Optional[List[Union[str, Pattern[str]]]]): List of regex patterns (strings or compiled) 
+            for extracting content using capturing groups. If multiple groups are captured, they are returned as a tuple string. Defaults to None.
         object_mode (Literal["as_is", "json", "str"]): How to handle non-string, non-iterable objects.
             "json" (default) yields as JSON string, "str" yields as str(obj), "as_is" yields the object as-is.
         raw (bool): If True, yields the raw response as returned by the API, chunk by chunk (no splitting or joining).
@@ -655,6 +750,9 @@ def sanitize_stream(
     Returns:
         Union[Generator[Any, None, None], AsyncGenerator[Any, None]]:
             A generator or an asynchronous generator yielding the processed data, or raw data if raw=True.
+            
+    Raises:
+        ValueError: If any regex pattern is invalid.
     """    # --- RAW MODE: yield each chunk exactly as returned by the API ---
     if raw:
         def _raw_passthrough_sync(source_iter):
@@ -713,6 +811,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
 
     # Handle string directly
@@ -721,6 +820,7 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
 
     # Handle dict, list, int, float, bool (non-iterable, non-string/bytes)
@@ -734,6 +834,7 @@ def sanitize_stream(
                 str(data), intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+                skip_regexes, extract_regexes,
             )
         else:  # "json"
             try:
@@ -744,6 +845,7 @@ def sanitize_stream(
                 json_str, intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+                skip_regexes, extract_regexes,
             )
 
     # Handle file-like objects (optional, treat as string if .read exists)
@@ -756,6 +858,7 @@ def sanitize_stream(
                 file_content, intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+                skip_regexes, extract_regexes,
             )
         except Exception:
             pass  # fallback to next
@@ -767,6 +870,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
     elif isinstance(content_attr, bytes):
         try:
@@ -777,6 +881,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
 
     # Handle async iterables
@@ -785,6 +890,7 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
     # Handle sync iterables (but not strings/bytes)
     if hasattr(data, "__iter__"):
@@ -792,12 +898,14 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+            skip_regexes, extract_regexes,
         )
     # Fallback: treat as string
     return _sanitize_stream_sync(
         str(data), intro_value, to_json, skip_markers, strip_chars,
         start_marker, end_marker, content_extractor, yield_raw_on_error,
         encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
+        skip_regexes, extract_regexes,
     )
 from .conversation import Conversation  # noqa: E402,F401
 from .Extra.autocoder import AutoCoder  # noqa: E402,F401

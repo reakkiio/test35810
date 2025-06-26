@@ -17,19 +17,66 @@ class SciraAI(Provider):
     A class to interact with the Scira AI chat API.
     """
 
-    AVAILABLE_MODELS = {
-        "scira-default": "Grok3-mini", # thinking model
-        "scira-grok-3": "Grok3",
-        "scira-anthropic": "Claude 4 Sonnet",
-        "scira-anthropic-thinking": "Claude 4 Sonnet Thinking", # thinking model
-        "scira-vision" : "Grok2-Vision", # vision model
-        "scira-4o": "GPT4o",
-        "scira-qwq": "QWQ-32B",
-        "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash Thinking", # thinking model
-        "scira-google-pro": "gemini 2.5 pro",
-        "scira-llama-4": "llama 4 Maverick",
+    # Model mapping: actual model names to Scira API format
+    MODEL_MAPPING = {
+        "grok-3-mini": "scira-default",
+        "grok-3-mini-fast-latest": "scira-fast", 
+        "grok-3": "scira-grok-3",
+        "grok-2-vision-1212": "scira-vision",
+        "grok-2-latest": "scira-g2",
+        "gpt-4o-mini": "scira-4o-mini",
+        "o4-mini-2025-04-16": "scira-o4-mini",
+        "o3": "scira-o3",
+        "qwen-qwq-32b": "scira-qwq",
+        "qwen/qwen3-32b": "scira-qwen-32b",
+        "claude-3-5-haiku-20241022": "scira-haiku",
+        "mistral-small-latest": "scira-mistral",
+        "gemini-2.5-flash-lite-preview-06-17": "scira-google-lite",
+        "gemini-2.5-flash": "scira-google",
+        "gemini-2.5-pro": "scira-google-pro",
+        "claude-sonnet-4-20250514": "scira-anthropic",
+        "claude-4-opus-20250514": "scira-opus",
+        "meta-llama/llama-4-maverick-17b-128e-instruct": "scira-llama-4",
     }
+    
+    # Reverse mapping: Scira format to actual model names
+    SCIRA_TO_MODEL = {v: k for k, v in MODEL_MAPPING.items()}
+    
+    # Add special case for anthropic-thinking (same as anthropic)
+    SCIRA_TO_MODEL["scira-anthropic-thinking"] = "claude-sonnet-4-20250514"
+    MODEL_MAPPING["claude-sonnet-4-20250514-thinking"] = "scira-anthropic-thinking"
+    
+    # Add special case for opus-pro (same as opus)  
+    SCIRA_TO_MODEL["scira-opus-pro"] = "claude-4-opus-20250514"
+    MODEL_MAPPING["claude-4-opus-20250514-pro"] = "scira-opus-pro"
+    
+    # Available models list (actual model names + scira aliases)
+    AVAILABLE_MODELS = list(MODEL_MAPPING.keys()) + list(SCIRA_TO_MODEL.keys())
+    
+    @classmethod
+    def _resolve_model(cls, model: str) -> str:
+        """
+        Resolve a model name to its Scira API format.
+        
+        Args:
+            model: Either an actual model name or a Scira alias
+            
+        Returns:
+            The Scira API format model name
+            
+        Raises:
+            ValueError: If the model is not supported
+        """
+        # If it's already a Scira format, return as-is
+        if model in cls.SCIRA_TO_MODEL:
+            return model
+            
+        # If it's an actual model name, convert to Scira format
+        if model in cls.MODEL_MAPPING:
+            return cls.MODEL_MAPPING[model]
+            
+        # Model not found
+        raise ValueError(f"Invalid model: {model}. Choose from: {cls.AVAILABLE_MODELS}")
 
     def __init__(
         self,
@@ -42,7 +89,7 @@ class SciraAI(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        model: str = "scira-default",
+        model: str = "grok-3-mini",
         chat_id: str = None,
         user_id: str = None,
         browser: str = "chrome",
@@ -67,9 +114,9 @@ class SciraAI(Provider):
             system_prompt (str): System prompt for the AI.
 
         """
-        if model not in self.AVAILABLE_MODELS:
-            raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-
+        # Resolve the model to Scira format
+        self.model = self._resolve_model(model)
+        
         self.url = "https://scira.ai/api/search"
 
         # Initialize LitAgent for user agent generation
@@ -103,7 +150,6 @@ class SciraAI(Provider):
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
         self.last_response = {}
-        self.model = model
         self.chat_id = chat_id or str(uuid.uuid4())
         self.user_id = user_id or f"user_{str(uuid.uuid4())[:8].upper()}"
 
@@ -357,7 +403,43 @@ class SciraAI(Provider):
         return response.get("text", "")
 
 if __name__ == "__main__":
-    ai = SciraAI()
-    resp = ai.chat("What is the capital of France?", stream=True, raw=False)
-    for chunk in resp:
-        print(chunk, end="", flush=True)
+    print("-" * 80)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 80)
+    
+    # Test all available models
+    working = 0
+    total = len(SciraAI.AVAILABLE_MODELS)
+    
+    for model in SciraAI.AVAILABLE_MODELS:
+        try:
+            test_ai = SciraAI(model=model, timeout=60)
+            # Test stream first
+            response_stream = test_ai.chat("Say 'Hello' in one word", stream=True)
+            response_text = ""
+            print(f"\r{model:<50} {'Streaming...':<10}", end="", flush=True)
+            for chunk in response_stream:
+                response_text += chunk
+                # Optional: print chunks as they arrive for visual feedback
+                # print(chunk, end="", flush=True) 
+            
+            if response_text and len(response_text.strip()) > 0:
+                status = "✓"
+                # Clean and truncate response
+                clean_text = response_text.strip() # Already decoded in get_message
+                display_text = clean_text[:50] + "..." if len(clean_text) > 50 else clean_text
+            else:
+                status = "✗ (Stream)"
+                display_text = "Empty or invalid stream response"
+            print(f"\r{model:<50} {status:<10} {display_text}")
+            
+            # Optional: Add non-stream test if needed, but stream test covers basic functionality
+            # print(f"\r{model:<50} {'Non-Stream...':<10}", end="", flush=True)
+            # response_non_stream = test_ai.chat("Say 'Hi' again", stream=False)
+            # if not response_non_stream or len(response_non_stream.strip()) == 0:
+            #      print(f"\r{model:<50} {'✗ (Non-Stream)':<10} Empty non-stream response")
+
+
+        except Exception as e:
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")
+

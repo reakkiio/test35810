@@ -322,35 +322,77 @@ class SciraChat(OpenAICompatibleProvider):
         )
     """
     # List of model display names for registration (aliases)
-    AVAILABLE_MODELS = [
-        "Grok3-mini (thinking)",
-        "Grok3",
-        "Claude 4 Sonnet",
-        "Claude 4 Sonnet Thinking",
-        "Grok2-Vision (vision)",
-        "GPT4o",
-        "QWQ-32B",
-        "o4-mini",
-        "Gemini 2.5 Flash Thinking",
-        "Gemini 2.5 Pro",
-        "Llama 4 Maverick",
-    ]
-    # Mapping from display name to internal model key
-    MODEL_NAME_MAP = {
-        "Grok3-mini (thinking)": "scira-default",
-        "Grok3": "scira-grok-3",
-        "Claude 4 Sonnet": "scira-anthropic",
-        "Claude 4 Sonnet Thinking": "scira-anthropic-thinking",
-        "Grok2-Vision (vision)": "scira-vision",
-        "GPT4o": "scira-4o",
-        "QWQ-32B": "scira-qwq",
-        "o4-mini": "scira-o4-mini",
-        "Gemini 2.5 Flash Thinking": "scira-google",
-        "Gemini 2.5 Pro": "scira-google-pro",
-        "Llama 4 Maverick": "scira-llama-4",
+    # Model mapping: actual model names to Scira API format
+    MODEL_MAPPING = {
+        "grok-3-mini": "scira-default",
+        "grok-3-mini-fast-latest": "scira-fast",
+        "grok-3": "scira-grok-3",
+        "grok-2-vision-1212": "scira-vision",
+        "grok-2-latest": "scira-g2",
+        "gpt-4o-mini": "scira-4o-mini",
+        "o4-mini-2025-04-16": "scira-o4-mini",
+        "o3": "scira-o3",
+        "qwen-qwq-32b": "scira-qwq",
+        "qwen/qwen3-32b": "scira-qwen-32b",
+        "claude-3-5-haiku-20241022": "scira-haiku",
+        "mistral-small-latest": "scira-mistral",
+        "gemini-2.5-flash-lite-preview-06-17": "scira-google-lite",
+        "gemini-2.5-flash": "scira-google",
+        "gemini-2.5-pro": "scira-google-pro",
+        "claude-sonnet-4-20250514": "scira-anthropic",
+        "claude-4-opus-20250514": "scira-opus",
+        "meta-llama/llama-4-maverick-17b-128e-instruct": "scira-llama-4",
     }
+    # Reverse mapping: Scira format to actual model names
+    SCIRA_TO_MODEL = {v: k for k, v in MODEL_MAPPING.items()}
+    # Add special case for anthropic-thinking (same as anthropic)
+    SCIRA_TO_MODEL["scira-anthropic-thinking"] = "claude-sonnet-4-20250514"
+    MODEL_MAPPING["claude-sonnet-4-20250514-thinking"] = "scira-anthropic-thinking"
+    # Add special case for opus-pro (same as opus)
+    SCIRA_TO_MODEL["scira-opus-pro"] = "claude-4-opus-20250514"
+    MODEL_MAPPING["claude-4-opus-20250514-pro"] = "scira-opus-pro"
+    # Available models list (actual model names + scira aliases)
+    AVAILABLE_MODELS = list(MODEL_MAPPING.keys()) + list(SCIRA_TO_MODEL.keys())
     # Optional: pretty display names for UI (reverse mapping)
-    MODEL_DISPLAY_NAMES = {v: k for k, v in MODEL_NAME_MAP.items()}
+    MODEL_DISPLAY_NAMES = {v: k for k, v in MODEL_MAPPING.items()}
+
+    @classmethod
+    def _resolve_model(cls, model: str) -> str:
+        """
+        Resolve a model name to its Scira API format.
+
+        Args:
+            model: Either an actual model name or a Scira alias
+
+        Returns:
+            The Scira API format model name
+
+        Raises:
+            ValueError: If the model is not supported
+        """
+        # If it's already a Scira format, return as-is
+        if model in cls.SCIRA_TO_MODEL:
+            return model
+        # If it's an actual model name, convert to Scira format
+        if model in cls.MODEL_MAPPING:
+            return cls.MODEL_MAPPING[model]
+        # Model not found
+        raise ValueError(f"Invalid model: {model}. Choose from: {cls.AVAILABLE_MODELS}")
+
+    def convert_model_name(self, model: str) -> str:
+        """
+        Convert model display names or internal keys to ones supported by SciraChat.
+        Args:
+            model: Model name or alias to convert
+        Returns:
+            SciraChat model name
+        """
+        # Use the new _resolve_model logic
+        try:
+            return self._resolve_model(model)
+        except Exception as e:
+            print(f"Warning: {e} Using 'scira-default' instead.")
+            return "scira-default"
 
     def __init__(
         self, 
@@ -447,25 +489,6 @@ class SciraChat(OpenAICompatibleProvider):
             print(f"Warning: Error formatting text: {e}")
             return text
     
-    def convert_model_name(self, model: str) -> str:
-        """
-        Convert model display names or internal keys to ones supported by SciraChat.
-        
-        Args:
-            model: Model name or alias to convert
-            
-        Returns:
-            SciraChat model name
-        """
-        # If model is a display name (alias), map to internal key
-        if model in self.MODEL_NAME_MAP:
-            return self.MODEL_NAME_MAP[model]
-        # If model is already an internal key, return it if valid
-        if model in self.MODEL_DISPLAY_NAMES:
-            return model
-        # Default to scira-default if model not found
-        print(f"Warning: Unknown model '{model}'. Using 'scira-default' instead.")
-        return "scira-default"
 
     @property
     def models(self):
@@ -478,9 +501,9 @@ class SciraChat(OpenAICompatibleProvider):
 if __name__ == "__main__":
     ai = SciraChat()
     response = ai.chat.completions.create(
-        model="Gemini 2.5 Pro",
+        model="grok-3-mini-fast-latest",
         messages=[
-            {"role": "user", "content": "who is pm of india?"}
+            {"role": "user", "content": "who are u?"}
         ],
         stream=True
     )

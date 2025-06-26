@@ -288,10 +288,10 @@ class TypeGPT(OpenAICompatibleProvider):
         # Working Models (based on testing)
         "gpt-4o-mini",
         "chatgpt-4o-latest",
-        "deepseek-r1",
+        # "deepseek-r1",
         "deepseek-v3",
-        "uncensored-r1",
-        "Image-Generator",
+        # "uncensored-r1",
+        # "Image-Generator",
     ]
 
     def __init__(

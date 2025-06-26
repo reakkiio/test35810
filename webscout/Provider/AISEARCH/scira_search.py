@@ -43,17 +43,26 @@ class Scira(AISearch):
     """
 
     AVAILABLE_MODELS = {
-        "scira-default": "Grok3-mini", # thinking model
-        "scira-grok-3": "Grok3",
-        "scira-anthropic": "Claude 4 Sonnet",
-        "scira-anthropic-thinking": "Claude 4 Sonnet Thinking", # thinking model
-        "scira-vision" : "Grok2-Vision", # vision model
-        "scira-4o": "GPT4o",
-        "scira-qwq": "QWQ-32B",
-        "scira-o4-mini": "o4-mini",
-        "scira-google": "gemini 2.5 flash Thinking", # thinking model
-        "scira-google-pro": "gemini 2.5 pro",
-        "scira-llama-4": "llama 4 Maverick",
+        "scira-default": "grok-3-mini",  # thinking model
+        "scira-fast": "grok-3-mini-fast-latest",
+        "scira-grok-3": "grok-3",
+        "scira-vision": "grok-2-vision-1212",
+        "scira-g2": "grok-2-latest",
+        "scira-4o-mini": "gpt-4o-mini",
+        "scira-o4-mini": "o4-mini-2025-04-16",
+        "scira-o3": "o3",
+        "scira-qwq": "qwen-qwq-32b",
+        "scira-qwen-32b": "qwen/qwen3-32b",
+        "scira-haiku": "claude-3-5-haiku-20241022",
+        "scira-mistral": "mistral-small-latest",
+        "scira-google-lite": "gemini-2.5-flash-lite-preview-06-17",
+        "scira-google": "gemini-2.5-flash",
+        "scira-google-pro": "gemini-2.5-pro",
+        "scira-anthropic": "claude-sonnet-4-20250514",
+        "scira-anthropic-thinking": "claude-sonnet-4-20250514",
+        "scira-opus": "claude-4-opus-20250514",
+        "scira-opus-pro": "claude-4-opus-20250514",
+        "scira-llama-4": "meta-llama/llama-4-maverick-17b-128e-instruct",
     }
     def __init__(
         self,

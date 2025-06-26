@@ -19,9 +19,9 @@ class TypeGPT(Provider):
         # "gpt-4o-mini-2024-07-18",
         "gpt-4o-mini",
         "chatgpt-4o-latest",
-        "deepseek-r1",
+        # "deepseek-r1",
         "deepseek-v3",
-        "uncensored-r1",
+        # "uncensored-r1",
         # "Image-Generator",
     ]
 

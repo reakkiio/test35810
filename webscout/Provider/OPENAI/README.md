@@ -39,7 +39,6 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - TypeGPT
 - SciraChat
 - LLMChatCo
-- FreeAIChat
 - YEPCHAT
 - HeckAI
 - SonusAI

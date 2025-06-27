@@ -83,7 +83,7 @@ class FreeGemini(Provider):
         self.last_response = {}
         self.system_prompt = system_prompt # Stored for consistency
 
-        self.api_endpoint = "https://free-gemini.vercel.app/api/google/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"
+        self.api_endpoint = "https://free-gemini.vercel.app/api/google/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
 
         self.agent = LitAgent()
         self.headers = {
@@ -246,5 +246,5 @@ class FreeGemini(Provider):
 if __name__ == "__main__":
     # Example usage
     free_gemini = FreeGemini()
-    response = free_gemini.chat("What is the capital of France?", stream=False)
+    response = free_gemini.chat("how many r in strawberry", stream=False)
     print(response)  # Should print the response from the API

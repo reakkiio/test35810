@@ -2,6 +2,8 @@ import re
 import requests
 import json
 import uuid
+import random
+import string
 from typing import Any, Dict, Optional, Generator, Union
 
 from webscout.AIutel import Optimizers
@@ -18,70 +20,74 @@ class FreeAIChat(Provider):
 
     AVAILABLE_MODELS = [
         # OpenAI Models
+        "Deepseek R1 Latest",
         "GPT 4o",
-        "GPT 4.5 Preview",
-        "GPT 4o Latest",
-        "GPT 4o mini",
-        "GPT 4o Search Preview",
-        "O1",
-        "O1 Mini",
-        "O3 Mini",
-        "O3 Mini High",
-        "O3 Mini Low",
         "O4 Mini",
         "O4 Mini High",
-        "GPT 4.1",
-        "o3",
-        "GPT 4.1 Mini",
-
-
-        # Anthropic Models
-        "Claude 3.5 haiku",
-        "claude 3.5 sonnet",
-        "Claude 3.7 Sonnet",
-        "Claude 3.7 Sonnet (Thinking)",
-
-        # Deepseek Models
-        "Deepseek R1",
-        "Deepseek R1 Fast",
-        "Deepseek V3",
-        "Deepseek v3 0324",
-
-        # Google Models
-        "Gemini 1.5 Flash",
-        "Gemini 1.5 Pro",
-        "Gemini 2.0 Flash",
-        "Gemini 2.0 Pro",
-        "Gemini 2.5 Pro",
-
-        # Llama Models
-        "Llama 3.1 405B",
-        "Llama 3.1 70B Fast",
-        "Llama 3.3 70B",
-        "Llama 3.2 90B Vision",
-        "Llama 4 Scout",
-        "Llama 4 Maverick",
-
-        # Mistral Models
-        "Mistral Large",
-        "Mistral Nemo",
-        "Mixtral 8x22B",
-
-        # Qwen Models
-        "Qwen Max",
-        "Qwen Plus",
-        "Qwen Turbo",
-        "QwQ 32B",
         "QwQ Plus",
-
-        # XAI Models
-        "Grok 2",
+        "Llama 4 Maverick",
         "Grok 3",
+        "GPT 4o mini",
+        "Deepseek v3 0324",
+        "Grok 3 Mini",
+        "GPT 4.1",
+        "GPT 4.1 Mini",
+        "Claude 3.7 Sonnet (Thinking)",
+        "Llama 4 Scout",
+        "O3 High",
+        "Gemini 2.5 Pro",
+        "Magistral Medium 2506",
+        "O3",
+        "Gemini 2.5 Flash",
+        "Qwen 3 235B A22B",
+        "Claude 4 Sonnet",
+        "Claude 4 Sonnet (Thinking)",
+        "Claude 4 Opus",
+        "Claude 4 Opus (Thinking)",
+        "Google: Gemini 2.5 Pro (thinking)",
     ]
+
+    def _auto_fetch_api_key(self, proxies=None, timeout=30):
+        """
+        Automatically register a new user and fetch an API key from FreeAIChat Playground.
+        """
+        session = requests.Session()
+        if proxies:
+            session.proxies.update(proxies)
+        def random_email():
+            user = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+            return f"{user}@bltiwd.com"
+        email = random_email()
+        payload = {"email": email, "password": email}
+        headers = {
+            'User-Agent': LitAgent().random(),
+            'Accept': '*/*',
+            'Content-Type': 'application/json',
+            'Origin': 'https://freeaichatplayground.com',
+            'Referer': 'https://freeaichatplayground.com/register',
+        }
+        try:
+            resp = session.post(
+                "https://freeaichatplayground.com/api/v1/auth/register",
+                headers=headers,
+                json=payload,
+                timeout=timeout
+            )
+            if resp.status_code == 201:
+                data = resp.json()
+                apikey = data.get("user", {}).get("apikey")
+                if apikey:
+                    return apikey
+                else:
+                    raise exceptions.FailedToGenerateResponseError("API key not found in registration response.")
+            else:
+                raise exceptions.FailedToGenerateResponseError(f"Registration failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            raise exceptions.FailedToGenerateResponseError(f"API key auto-fetch failed: {e}")
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = None,
         is_conversation: bool = True,
         max_tokens: int = 150,
         timeout: int = 30,
@@ -95,7 +101,7 @@ class FreeAIChat(Provider):
         system_prompt: str = "You are a helpful AI assistant.",
         temperature: float = 0.7,
     ):
-        """Initializes the FreeAIChat API client."""
+        """Initializes the FreeAIChat API client. If api_key is not provided, auto-register and fetch one."""
         if model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
 
@@ -120,7 +126,10 @@ class FreeAIChat(Provider):
         self.model = model
         self.system_prompt = system_prompt
         self.temperature = temperature
-        self.api_key = api_key
+        if not api_key:
+            self.api_key = self._auto_fetch_api_key(proxies=proxies, timeout=timeout)
+        else:
+            self.api_key = api_key
 
         self.__available_optimizers = (
             method

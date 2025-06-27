@@ -22,6 +22,7 @@ MODEL_CONFIGS = {
             "gemini-2.0-flash-exp-image-generation",
             "gemini-2.0-flash-thinking-exp-01-21",
             "gemini-2.5-pro-exp-03-25",
+            "gemini-2.5-flash-lite-preview-06-17",
             "gemini-2.0-pro-exp-02-05",
             "gemini-2.5-flash-preview-04-17",
 
@@ -62,7 +63,9 @@ MODEL_CONFIGS = {
         "endpoint": "https://ayle.chat/api/cerebras",
         "models": [
             "llama3.1-8b",
-            "llama-3.3-70b"
+            "llama-3.3-70b",
+            "llama-4-scout-17b-16e-instruct",
+            "qwen-3-32b"
         ],
     },
     "xai": {

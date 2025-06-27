@@ -14,10 +14,11 @@ class GeminiProxy(Provider):
     AVAILABLE_MODELS = [
         "gemini-2.0-flash-lite",
         "gemini-2.0-flash",
-        "gemini-2.5-pro-preview-06-05",
-        "gemini-2.5-pro-preview-05-06",
         "gemini-2.5-flash-preview-04-17",
         "gemini-2.5-flash-preview-05-20",
+        "gemini-2.5-flash-lite-preview-06-17",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
 
     ]
 
@@ -135,6 +136,31 @@ class GeminiProxy(Provider):
             return str(response)
 
 if __name__ == "__main__":
-    ai = GeminiProxy(timeout=30, model="gemini-2.5-flash-preview-05-20")
-    response = ai.chat("write a poem about AI")
-    print(response)
+    # Ensure curl_cffi is installed
+    print("-" * 80)
+    print(f"{'Model':<50} {'Status':<10} {'Response'}")
+    print("-" * 80)
+    
+    # Test all available models
+    working = 0
+    total = len(GeminiProxy.AVAILABLE_MODELS)
+    
+    for model in GeminiProxy.AVAILABLE_MODELS:
+        try:
+            test_ai = GeminiProxy(model=model, timeout=60)
+            response = test_ai.chat("Say 'Hello' in one word", stream=True)
+            response_text = ""
+            for chunk in response:
+                response_text += chunk
+                print(f"\r{model:<50} {'Testing...':<10}", end="", flush=True)
+            
+            if response_text and len(response_text.strip()) > 0:
+                status = "✓"
+                # Truncate response if too long
+                display_text = response_text.strip()[:50] + "..." if len(response_text.strip()) > 50 else response_text.strip()
+            else:
+                status = "✗"
+                display_text = "Empty or invalid response"
+            print(f"\r{model:<50} {status:<10} {display_text}")
+        except Exception as e:
+            print(f"\r{model:<50} {'✗':<10} {str(e)}")

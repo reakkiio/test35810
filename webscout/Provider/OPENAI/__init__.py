@@ -8,7 +8,6 @@ from .venice import *
 from .exaai import *
 from .typegpt import *
 from .scirachat import *
-from .freeaichat import *
 from .llmchatco import *
 from .yep import * # Add YEPCHAT
 from .heckai import *

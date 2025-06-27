@@ -44,6 +44,7 @@ from .auth_system import get_auth_components
 from webscout.DWEBS import GoogleSearch
 from webscout.yep_search import YepSearch
 from webscout.webscout_search import WEBS
+from webscout.Bing_search import BingSearch
 
 # Setup logger
 logger = Logger(
@@ -483,11 +484,11 @@ class Api:
         @self.app.get(
             "/search",
             tags=["Web search"],
-            description="Unified web search endpoint supporting Google, Yep, and DuckDuckGo with text, news, images, and suggestions search types."
+            description="Unified web search endpoint supporting Google, Yep, DuckDuckGo, and Bing with text, news, images, and suggestions search types."
         )
         async def websearch(
             q: str = Query(..., description="Search query"),
-            engine: str = Query("google", description="Search engine: google, yep, duckduckgo"),
+            engine: str = Query("google", description="Search engine: google, yep, duckduckgo, bing"),
             max_results: int = Query(10, description="Maximum number of results"),
             region: str = Query("all", description="Region code (optional)"),
             safesearch: str = Query("moderate", description="Safe search: on, moderate, off"),
@@ -532,8 +533,24 @@ class Api:
                         return {"engine": "duckduckgo", "type": "suggestions", "results": results}
                     else:
                         return {"error": "DuckDuckGo only supports text and suggestions in this API.", "footer": github_footer}
+                elif engine == "bing":
+                    bs = BingSearch()
+                    if type == "text":
+                        results = bs.text(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "bing", "type": "text", "results": [r.__dict__ for r in results]}
+                    elif type == "news":
+                        results = bs.news(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "bing", "type": "news", "results": [r.__dict__ for r in results]}
+                    elif type == "images":
+                        results = bs.images(keywords=q, region=region, safesearch=safesearch, max_results=max_results)
+                        return {"engine": "bing", "type": "images", "results": [r.__dict__ for r in results]}
+                    elif type == "suggestions":
+                        results = bs.suggestions(q, region=region)
+                        return {"engine": "bing", "type": "suggestions", "results": results}
+                    else:
+                        return {"error": "Bing only supports text, news, images, and suggestions in this API.", "footer": github_footer}
                 else:
-                    return {"error": "Unknown engine. Use one of: google, yep, duckduckgo.", "footer": github_footer}
+                    return {"error": "Unknown engine. Use one of: google, yep, duckduckgo, bing.", "footer": github_footer}
             except Exception as e:
                 # Special handling for rate limit errors
                 msg = str(e)

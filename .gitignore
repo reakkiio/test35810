@@ -19,6 +19,4 @@ venv/
 *.egg-info/
 .ipynb_checkpoints/
 uv.lock
-blackbox_private_key.pem
 gpu.py
-lol.py

@@ -87,9 +87,11 @@ from .deepseek_assistant import DeepSeekAssistant
 from .GeminiProxy import GeminiProxy
 from .TogetherAI import TogetherAI
 from .MiniMax import MiniMax
+from .Qodo import *
 __all__ = [
     'SCNet',
     'MiniMax',
+    'QodoAI',
     'GeminiProxy',
     'TogetherAI',
     'oivscode',

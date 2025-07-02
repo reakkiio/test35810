@@ -1,14 +1,16 @@
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
-from webscout.AIbase import Provider, AsyncProvider
-from webscout import exceptions
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
-import ollama
-from ollama import AsyncClient, Client, ResponseError
-import asyncio
-import base64
-from pathlib import Path
+from webscout.AIutel import AwesomePrompts
+from webscout.AIbase import Provider
+from typing import AsyncGenerator, Dict, List, Optional, Union
+
+try:
+    from ollama import AsyncClient, Client, ResponseError
+except ImportError as e:
+    raise ImportError(
+        "The 'ollama' package is required to use the OLLAMA provider. "
+        "Please install it with 'pip install ollama'."
+    ) from e
 
 class OLLAMA(Provider):
     def __init__(

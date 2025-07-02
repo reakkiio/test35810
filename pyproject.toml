@@ -61,7 +61,6 @@ dependencies = [
     "lxml>=5.2.2",
     "orjson",
     "PyYAML",
-    "ollama",
     "pillow",
     "bson",
     "cloudscraper",

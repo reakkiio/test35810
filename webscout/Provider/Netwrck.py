@@ -14,23 +14,20 @@ class Netwrck(Provider):
     greeting = """Hello! I'm a helpful assistant. How can I help you today?"""
 
     AVAILABLE_MODELS = [
-        "neversleep/llama-3-lumimaid-8b:extended",
-        "x-ai/grok-2",
-        "anthropic/claude-3-7-sonnet-20250219",
+        "thedrummer/valkyrie-49b-v1",
         "sao10k/l3-euryale-70b",
+        "deepseek/deepseek-chat",
+        "deepseek/deepseek-r1",
+        "anthropic/claude-sonnet-4-20250514",
         "openai/gpt-4.1-mini",
         "gryphe/mythomax-l2-13b",
-        "google/gemini-pro-1.5",
         "google/gemini-2.5-flash-preview-04-17",
         "nvidia/llama-3.1-nemotron-70b-instruct",
-        "deepseek/deepseek-r1",
-        "deepseek/deepseek-chat"
-
     ]
 
     def __init__(
         self,
-        model: str = "anthropic/claude-3-7-sonnet-20250219",
+        model: str = "anthropic/claude-sonnet-4-20250514",
         is_conversation: bool = True,
         max_tokens: int = 4096, # Note: max_tokens is not used by this API
         timeout: int = 30,

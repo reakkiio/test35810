@@ -44,7 +44,9 @@ class Scira(AISearch):
 
     AVAILABLE_MODELS = {
         "scira-default": "grok-3-mini",  # thinking model
-        "scira-fast": "grok-3-mini-fast-latest",
+        "scira-x-fast-mini": "grok-3-mini-fast",
+        "scira-x-fast": "grok-3-fast",
+        "scira-nano": "gpt-4.1-nano",
         "scira-grok-3": "grok-3",
         "scira-vision": "grok-2-vision-1212",
         "scira-g2": "grok-2-latest",

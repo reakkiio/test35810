@@ -321,11 +321,12 @@ class SciraChat(OpenAICompatibleProvider):
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
-    # List of model display names for registration (aliases)
     # Model mapping: actual model names to Scira API format
     MODEL_MAPPING = {
         "grok-3-mini": "scira-default",
-        "grok-3-mini-fast-latest": "scira-fast",
+        "grok-3-mini-fast": "scira-x-fast-mini",
+        "grok-3-fast": "scira-x-fast",
+        "gpt-4.1-nano": "scira-nano",
         "grok-3": "scira-grok-3",
         "grok-2-vision-1212": "scira-vision",
         "grok-2-latest": "scira-g2",
@@ -340,17 +341,23 @@ class SciraChat(OpenAICompatibleProvider):
         "gemini-2.5-flash": "scira-google",
         "gemini-2.5-pro": "scira-google-pro",
         "claude-sonnet-4-20250514": "scira-anthropic",
+        "claude-sonnet-4-20250514-thinking": "scira-anthropic-thinking",
         "claude-4-opus-20250514": "scira-opus",
+        "claude-4-opus-20250514-pro": "scira-opus-pro",
         "meta-llama/llama-4-maverick-17b-128e-instruct": "scira-llama-4",
     }
     # Reverse mapping: Scira format to actual model names
     SCIRA_TO_MODEL = {v: k for k, v in MODEL_MAPPING.items()}
     # Add special case for anthropic-thinking (same as anthropic)
     SCIRA_TO_MODEL["scira-anthropic-thinking"] = "claude-sonnet-4-20250514"
-    MODEL_MAPPING["claude-sonnet-4-20250514-thinking"] = "scira-anthropic-thinking"
     # Add special case for opus-pro (same as opus)
     SCIRA_TO_MODEL["scira-opus-pro"] = "claude-4-opus-20250514"
-    MODEL_MAPPING["claude-4-opus-20250514-pro"] = "scira-opus-pro"
+    # Add special case for x-fast (grok-3-fast)
+    SCIRA_TO_MODEL["scira-x-fast"] = "grok-3-fast"
+    # Add special case for x-fast-mini (grok-3-mini-fast)
+    SCIRA_TO_MODEL["scira-x-fast-mini"] = "grok-3-mini-fast"
+    # Add special case for nano (gpt-4.1-nano)
+    SCIRA_TO_MODEL["scira-nano"] = "gpt-4.1-nano"
     # Available models list (actual model names + scira aliases)
     AVAILABLE_MODELS = list(MODEL_MAPPING.keys()) + list(SCIRA_TO_MODEL.keys())
     # Optional: pretty display names for UI (reverse mapping)

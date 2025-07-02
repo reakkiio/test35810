@@ -24,7 +24,6 @@ from .yep import *
 from .Cloudflare import *
 from .turboseek import *
 from .TeachAnything import *
-from .AI21 import *
 from .x0gpt import *
 from .cerebras import *
 from .geminiapi import *
@@ -52,7 +51,6 @@ from .AllenAI import *
 from .HeckAI import *
 from .TwoAI import *
 from .Venice import *
-from .HuggingFaceChat import *
 from .GithubChat import *
 from .copilot import *
 from .sonus import *
@@ -111,7 +109,6 @@ __all__ = [
     'Venice',
     'ExaAI',
     'Copilot',
-    'HuggingFaceChat',
     'TwoAI',
     'HeckAI',
     'AllenAI',
@@ -147,7 +144,6 @@ __all__ = [
     'Cloudflare',
     'TurboSeek',
     'TeachAnything',
-    'AI21',
     'X0GPT',
     'Cerebras',
     'GEMINIAPI',

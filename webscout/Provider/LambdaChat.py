@@ -93,49 +93,49 @@ class LambdaChat(Provider):
         self.session.proxies = proxies # Assign proxies directly
 
     def create_conversation(self, model: str):
-        """Create a new conversation with the specified model."""
+        """Create a new conversation with the specified model, using updated headers and cookies."""
         url = f"{self.url}/conversation"
         payload = {
             "model": model,
-            "preprompt": self.system_prompt,
-
+            "preprompt": self.system_prompt
         }
-        
-        # Update referer for this specific request
+
+        # Update headers for this specific request
         headers = self.headers.copy()
-        headers["Referer"] = f"{self.url}/models/{model}"
-        
+        headers["Referer"] = f"{self.url}/"
+        # Add browser-like headers for best compatibility
+        headers["Accept-Encoding"] = "gzip, deflate, br, zstd"
+        headers["Accept-Language"] = "en-US,en;q=0.9,en-IN;q=0.8"
+        headers["Sec-GPC"] = "1"
+        headers["Sec-Ch-Ua"] = '"Not)A;Brand";v="8", "Chromium";v="138", "Microsoft Edge";v="138"'
+        headers["Sec-Ch-Ua-Mobile"] = "?0"
+        headers["Sec-Ch-Ua-Platform"] = '"Windows"'
+        headers["User-Agent"] = LitAgent().random() # Use LitAgent for User-Agent
+        headers["Origin"] = self.url
+        # cookies are handled by curl_cffi session automatically
+
         try:
-            # Use curl_cffi session post with impersonate
             response = self.session.post(
-                url, 
-                json=payload, 
-                headers=headers, # Use updated headers with specific Referer
-                impersonate="chrome110" # Use a common impersonation profile
+                url,
+                json=payload,
+                headers=headers,
+                impersonate="chrome110"
             )
-            
             if response.status_code == 401:
                 raise exceptions.AuthenticationError("Authentication failed.")
-            
-            # Handle other error codes
             if response.status_code != 200:
                 return None
-                
             data = response.json()
             conversation_id = data.get("conversationId")
-            
-            # Store conversation data
             if model not in self._conversation_data:
                 self._conversation_data[model] = {
                     "conversationId": conversation_id,
-                    "messageId": str(uuid.uuid4())  # Initial message ID
+                    "messageId": str(uuid.uuid4())
                 }
-                
             return conversation_id
-        except CurlError as e: # Catch CurlError
-            # Log or handle CurlError specifically if needed
+        except CurlError:
             return None
-        except Exception: # Catch other potential exceptions (like JSONDecodeError, HTTPError)
+        except Exception:
             return None
     
     def fetch_message_id(self, conversation_id: str) -> str:
@@ -230,35 +230,43 @@ class LambdaChat(Provider):
         url = f"{self.url}/conversation/{conversation_id}"
         message_id = self._conversation_data[model]["messageId"]
         
-        # Data to send
+        # Data to send (tools should be empty list by default)
         request_data = {
             "inputs": prompt,
             "id": message_id,
             "is_retry": False,
             "is_continue": False,
             "web_search": web_search,
-            "tools": ["66e85bb396d054c5771bc6cb", "00000000000000000000000a"]
+            "tools": []
         }
-        
+
         # Update headers for this specific request
         headers = self.headers.copy()
         headers["Referer"] = f"{self.url}/conversation/{conversation_id}"
-        
+        headers["Accept-Encoding"] = "gzip, deflate, br, zstd"
+        headers["Accept-Language"] = "en-US,en;q=0.9,en-IN;q=0.8"
+        headers["Sec-GPC"] = "1"
+        headers["Sec-Ch-Ua"] = '"Not)A;Brand";v="8", "Chromium";v="138", "Microsoft Edge";v="138"'
+        headers["Sec-Ch-Ua-Mobile"] = "?0"
+        headers["Sec-Ch-Ua-Platform"] = '"Windows"'
+        headers["User-Agent"] = LitAgent().random() # Use LitAgent for User-Agent
+        headers["Origin"] = self.url
+
         # Create multipart form data
         boundary = self.generate_boundary()
         multipart_headers = headers.copy()
         multipart_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-        
+
         # Serialize the data to JSON
         data_json = json.dumps(request_data, separators=(',', ':'))
-        
+
         # Create the multipart form data body
         body = f"--{boundary}\r\n"
         body += f'Content-Disposition: form-data; name="data"\r\n'
-        body += f"Content-Type: application/json\r\n\r\n"
+        body += f"\r\n"
         body += f"{data_json}\r\n"
         body += f"--{boundary}--\r\n"
-        
+
         multipart_headers["Content-Length"] = str(len(body))
         
         def for_stream():

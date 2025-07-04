@@ -7,10 +7,7 @@ from typing import AsyncGenerator, Dict, List, Optional, Union
 try:
     from ollama import AsyncClient, Client, ResponseError
 except ImportError as e:
-    raise ImportError(
-        "The 'ollama' package is required to use the OLLAMA provider. "
-        "Please install it with 'pip install ollama'."
-    ) from e
+    pass
 
 class OLLAMA(Provider):
     def __init__(

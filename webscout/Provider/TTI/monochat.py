@@ -175,15 +175,15 @@ class MonoChatAI(TTICompatibleProvider):
     AVAILABLE_MODELS = ["nextlm-image-1", "gpt-image-1", "dall-e-3", "dall-e-2"]
 
     def __init__(self):
-        self.api_endpoint = "https://www.chatwithmono.xyz/api"
+        self.api_endpoint = "https://gg.is-a-furry.dev/api"
         self.session = requests.Session()
         self._setup_session_with_retries()
         self.user_agent = LitAgent().random()
         self.headers = {
             "accept": "*/*",
             "content-type": "application/json",
-            "origin": "https://www.chatwithmono.xyz",
-            "referer": "https://www.chatwithmono.xyz/",
+            "origin": "https://gg.is-a-furry.dev",
+            "referer": "https://gg.is-a-furry.dev/",
             "user-agent": self.user_agent,
         }
         self.session.headers.update(self.headers)

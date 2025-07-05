@@ -251,7 +251,7 @@ class MonoChat(OpenAICompatibleProvider):
             browser: Browser to emulate in user agent
         """
         self.timeout = None
-        self.api_endpoint = "https://www.chatwithmono.xyz/api/chat"
+        self.api_endpoint = "https://gg.is-a-furry.dev/api/chat"
         self.session = requests.Session()
 
         agent = LitAgent()
@@ -262,8 +262,8 @@ class MonoChat(OpenAICompatibleProvider):
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": self.fingerprint["accept_language"],
             "content-type": "application/json",
-            "origin": "https://www.chatwithmono.xyz",
-            "referer": "https://www.chatwithmono.xyz/",
+            "origin": "https://gg.is-a-furry.dev",
+            "referer": "https://gg.is-a-furry.dev/",
             "user-agent": self.fingerprint["user_agent"]
         }
 

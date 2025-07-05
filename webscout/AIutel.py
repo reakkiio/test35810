@@ -907,6 +907,115 @@ def sanitize_stream(
         encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
         skip_regexes, extract_regexes,
     )
+
+# --- Decorator version of sanitize_stream ---
+import functools
+from typing import overload
+
+def _sanitize_stream_decorator(
+    _func=None,
+    *,
+    intro_value: str = "data:",
+    to_json: bool = True,
+    skip_markers: Optional[List[str]] = None,
+    strip_chars: Optional[str] = None,
+    start_marker: Optional[str] = None,
+    end_marker: Optional[str] = None,
+    content_extractor: Optional[Callable[[Union[str, Dict[str, Any]]], Optional[Any]]] = None,
+    yield_raw_on_error: bool = True,
+    encoding: EncodingType = "utf-8",
+    encoding_errors: str = "replace",
+    buffer_size: int = 8192,
+    line_delimiter: Optional[str] = None,
+    error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
+    skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    object_mode: Literal["as_is", "json", "str"] = "json",
+    raw: bool = False,
+):
+    """
+    Decorator for sanitize_stream. Can be used as @sanitize_stream or @sanitize_stream(...).
+    All arguments are the same as sanitize_stream().
+    """
+    def decorator(func):
+        if asyncio.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                result = await func(*args, **kwargs)
+                return sanitize_stream(
+                    result,
+                    intro_value=intro_value,
+                    to_json=to_json,
+                    skip_markers=skip_markers,
+                    strip_chars=strip_chars,
+                    start_marker=start_marker,
+                    end_marker=end_marker,
+                    content_extractor=content_extractor,
+                    yield_raw_on_error=yield_raw_on_error,
+                    encoding=encoding,
+                    encoding_errors=encoding_errors,
+                    buffer_size=buffer_size,
+                    line_delimiter=line_delimiter,
+                    error_handler=error_handler,
+                    skip_regexes=skip_regexes,
+                    extract_regexes=extract_regexes,
+                    object_mode=object_mode,
+                    raw=raw,
+                )
+            return async_wrapper
+        else:
+            @functools.wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                result = func(*args, **kwargs)
+                return sanitize_stream(
+                    result,
+                    intro_value=intro_value,
+                    to_json=to_json,
+                    skip_markers=skip_markers,
+                    strip_chars=strip_chars,
+                    start_marker=start_marker,
+                    end_marker=end_marker,
+                    content_extractor=content_extractor,
+                    yield_raw_on_error=yield_raw_on_error,
+                    encoding=encoding,
+                    encoding_errors=encoding_errors,
+                    buffer_size=buffer_size,
+                    line_delimiter=line_delimiter,
+                    error_handler=error_handler,
+                    skip_regexes=skip_regexes,
+                    extract_regexes=extract_regexes,
+                    object_mode=object_mode,
+                    raw=raw,
+                )
+            return sync_wrapper
+    if _func is None:
+        return decorator
+    else:
+        return decorator(_func)
+
+# Alias for decorator usage
+LITSTREAM = sanitize_stream
+
+# Decorator aliases
+sanitize_stream_decorator = _sanitize_stream_decorator
+lit_streamer = _sanitize_stream_decorator
+
+# Allow @sanitize_stream and @lit_streamer as decorators
+import asyncio
+sanitize_stream.__decorator__ = _sanitize_stream_decorator
+LITSTREAM.__decorator__ = _sanitize_stream_decorator
+lit_streamer.__decorator__ = _sanitize_stream_decorator
+
+def __getattr__(name):
+    if name == 'sanitize_stream':
+        return sanitize_stream
+    if name == 'LITSTREAM':
+        return LITSTREAM
+    if name == 'sanitize_stream_decorator':
+        return _sanitize_stream_decorator
+    if name == 'lit_streamer':
+        return _sanitize_stream_decorator
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 from .conversation import Conversation  # noqa: E402,F401
 from .Extra.autocoder import AutoCoder  # noqa: E402,F401
 from .optimizers import Optimizers  # noqa: E402,F401

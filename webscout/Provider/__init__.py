@@ -86,8 +86,10 @@ from .GeminiProxy import GeminiProxy
 from .TogetherAI import TogetherAI
 from .MiniMax import MiniMax
 from .Qodo import *
+from .monochat import MonoChat
 __all__ = [
     'SCNet',
+    'MonoChat',
     'MiniMax',
     'QodoAI',
     'GeminiProxy',

@@ -86,14 +86,8 @@ class Completions(BaseCompletions):
                     raise RuntimeError(f"Image upload failed: {r.text}")
                 images.append({"type": "image", "url": r.json().get("url")})
 
-            # Connect to websocket
-            # Note: ws_connect might not use timeout in the same way as POST/GET
             ws = s.ws_connect(self._client.websocket_url)
-
-            # Use model to set mode ("reasoning" for Think Deeper)
             mode = "reasoning" if "Think" in model else "chat"
-
-            # Send the message to Copilot
             ws.send(json.dumps({
                 "event": "send",
                 "conversationId": conv_id,
@@ -101,79 +95,132 @@ class Completions(BaseCompletions):
                 "mode": mode
             }).encode(), CurlWsFlag.TEXT)
 
-            # Track token usage using count_tokens
             prompt_tokens = count_tokens(prompt_text)
             completion_tokens = 0
             total_tokens = prompt_tokens
-
             started = False
+            image_prompt = None
             while True:
                 try:
                     msg = json.loads(ws.recv()[0])
                 except Exception:
                     break
 
-                if msg.get("event") == "appendText":
+                event = msg.get("event")
+                if event not in ["appendText", "done", "error", "generatingImage", "imageGenerated", "suggestedFollowups", "replaceText"]:
+                    print(f"[Copilot] Unhandled event: {event} | msg: {msg}")
+
+                if event == "appendText":
                     started = True
                     content = msg.get("text", "")
-                    
-                    # Update token counts using count_tokens
                     content_tokens = count_tokens(content)
                     completion_tokens += content_tokens
                     total_tokens = prompt_tokens + completion_tokens
-
-                    # Create the delta object
                     delta = ChoiceDelta(
                         content=content,
                         role="assistant"
                     )
-
-                    # Create the choice object
                     choice = Choice(
                         index=0,
                         delta=delta,
                         finish_reason=None
                     )
-
-                    # Create the chunk object
                     chunk = ChatCompletionChunk(
                         id=request_id,
                         choices=[choice],
                         created=created_time,
                         model=model
                     )
-
                     yield chunk
-                elif msg.get("event") == "done":
-                    # Final chunk with finish_reason
+                elif event == "replaceText":
+                    # treat as appendText for OpenAI compatibility
+                    content = msg.get("text", "")
+                    content_tokens = count_tokens(content)
+                    completion_tokens += content_tokens
+                    total_tokens = prompt_tokens + completion_tokens
+                    delta = ChoiceDelta(
+                        content=content,
+                        role="assistant"
+                    )
+                    choice = Choice(
+                        index=0,
+                        delta=delta,
+                        finish_reason=None
+                    )
+                    chunk = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model
+                    )
+                    yield chunk
+                elif event == "generatingImage":
+                    image_prompt = msg.get("prompt")
+                elif event == "imageGenerated":
+                    # Yield a chunk with image metadata in the delta (custom extension)
                     delta = ChoiceDelta(
                         content=None,
                         role=None
                     )
-
+                    choice = Choice(
+                        index=0,
+                        delta=delta,
+                        finish_reason=None
+                    )
+                    chunk = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model
+                    )
+                    chunk.image_url = msg.get("url")
+                    chunk.image_prompt = image_prompt
+                    chunk.image_preview = msg.get("thumbnailUrl")
+                    yield chunk
+                elif event == "suggestedFollowups":
+                    # Yield a chunk with followups in the delta (custom extension)
+                    delta = ChoiceDelta(
+                        content=None,
+                        role=None
+                    )
+                    choice = Choice(
+                        index=0,
+                        delta=delta,
+                        finish_reason=None
+                    )
+                    chunk = ChatCompletionChunk(
+                        id=request_id,
+                        choices=[choice],
+                        created=created_time,
+                        model=model
+                    )
+                    chunk.suggested_followups = msg.get("suggestions")
+                    yield chunk
+                elif event == "done":
+                    delta = ChoiceDelta(
+                        content=None,
+                        role=None
+                    )
                     choice = Choice(
                         index=0,
                         delta=delta,
                         finish_reason="stop"
                     )
-
                     chunk = ChatCompletionChunk(
                         id=request_id,
                         choices=[choice],
                         created=created_time,
                         model=model
                     )
-
                     yield chunk
                     break
-                elif msg.get("event") == "error":
+                elif event == "error":
+                    print(f"[Copilot] Error event: {msg}")
                     raise RuntimeError(f"Copilot error: {msg}")
 
             ws.close()
-
             if not started:
                 raise RuntimeError("No response received from Copilot")
-
         except Exception as e:
             raise RuntimeError(f"Stream error: {e}") from e
         finally:

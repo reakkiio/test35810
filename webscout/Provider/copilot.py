@@ -112,10 +112,18 @@ class Copilot(Provider):
         raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
-        images = None,
+        images=None,
         api_key: str = None,
         **kwargs
     ) -> Union[Dict[str, Any], Generator]:
+        """
+        Enhanced Copilot.ask with:
+        - return_conversation support
+        - multiple image upload
+        - event dispatch for websocket events
+        - suggested followups and metadata
+        - improved error handling
+        """
         conversation_prompt = self.conversation.gen_complete_prompt(prompt)
         if optimizer:
             if optimizer in self.__available_optimizers:
@@ -125,7 +133,33 @@ class Copilot(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
 
-        # Main logic for calling Copilot API
+        def handle_event(msg, state):
+            event = msg.get("event")
+            if event == "appendText":
+                state["is_started"] = True
+                content = msg.get("text")
+                state["streaming_text"] += content
+                resp = {"text": content}
+                return resp if raw else resp
+            elif event == "generatingImage":
+                state["image_prompt"] = msg.get("prompt")
+            elif event == "imageGenerated":
+                return {"type": "image", "url": msg.get("url"), "prompt": state.get("image_prompt"), "preview": msg.get("thumbnailUrl")}
+            elif event == "done":
+                state["done"] = True
+            elif event == "suggestedFollowups":
+                return {"type": "suggested_followups", "suggestions": msg.get("suggestions")}
+            elif event == "replaceText":
+                content = msg.get("text")
+                state["streaming_text"] += content
+                resp = {"text": content}
+                return resp if raw else resp
+            elif event == "error":
+                raise exceptions.FailedToGenerateResponseError(f"Error: {msg}")
+            elif event not in ["received", "startMessage", "citation", "partCompleted"]:
+                pass
+            return None
+
         def for_stream():
             try:
                 if not has_curl_cffi:
@@ -133,15 +167,15 @@ class Copilot(Provider):
 
                 websocket_url = self.websocket_url
                 headers = None
-                
-                if images is not None:
+
+                # Auth logic (token/cookies)
+                if images is not None or api_key is not None:
                     if api_key is not None:
                         self._access_token = api_key
                     if self._access_token is None:
                         try:
                             self._access_token, self._cookies = readHAR(self.url)
                         except NoValidHarFileError as h:
-                            # print(f"Copilot: {h}")
                             if has_nodriver:
                                 yield {"type": "login", "provider": self.label, "url": os.environ.get("webscout_login", "")}
                                 self._access_token, self._cookies = asyncio.run(get_access_token_and_cookies(self.url, self.proxies.get("https")))
@@ -159,7 +193,7 @@ class Copilot(Provider):
                 ) as session:
                     if self._access_token is not None:
                         self._cookies = session.cookies.jar if hasattr(session.cookies, "jar") else session.cookies
-                    
+
                     response = session.get(f"{self.url}/c/api/user")
                     if response.status_code == 401:
                         raise exceptions.AuthenticationError("Status 401: Invalid access token")
@@ -168,9 +202,8 @@ class Copilot(Provider):
                     user = response.json().get('firstName')
                     if user is None:
                         self._access_token = None
-                    # print(f"Copilot: User: {user or 'null'}")
 
-                    # Create or use existing conversation
+                    # Conversation management
                     conversation = kwargs.get("conversation", None)
                     if conversation is None:
                         response = session.post(self.conversation_url)
@@ -180,30 +213,26 @@ class Copilot(Provider):
                         conversation = CopilotConversation(conversation_id)
                         if kwargs.get("return_conversation", False):
                             yield conversation
-                        # print(f"Copilot: Created conversation: {conversation_id}")
                     else:
                         conversation_id = conversation.conversation_id
-                        # print(f"Copilot: Use conversation: {conversation_id}")
 
-                    # Handle image uploads if any
+                    # Multiple image upload
                     uploaded_images = []
                     if images is not None:
-                        for image, _ in images:
+                        for image_tuple in images:
+                            image = image_tuple[0] if isinstance(image_tuple, (tuple, list)) else image_tuple
                             # Convert image to bytes if needed
                             if isinstance(image, str):
                                 if image.startswith("data:"):
-                                    # Data URL
                                     header, encoded = image.split(",", 1)
                                     data = base64.b64decode(encoded)
                                 else:
-                                    # File path or URL
                                     with open(image, "rb") as f:
                                         data = f.read()
                             else:
                                 data = image
-                                
                             # Get content type
-                            content_type = "image/jpeg"  # Default
+                            content_type = "image/jpeg"
                             if data[:2] == b'\xff\xd8':
                                 content_type = "image/jpeg"
                             elif data[:8] == b'\x89PNG\r\n\x1a\n':
@@ -212,7 +241,6 @@ class Copilot(Provider):
                                 content_type = "image/gif"
                             elif data[:2] in (b'BM', b'BA'):
                                 content_type = "image/bmp"
-                            
                             response = session.post(
                                 f"{self.url}/c/api/attachments",
                                 headers={"content-type": content_type},
@@ -220,12 +248,11 @@ class Copilot(Provider):
                             )
                             if response.status_code != 200:
                                 raise exceptions.APIConnectionError(f"Status {response.status_code}: {response.text}")
-                            uploaded_images.append({"type":"image", "url": response.json().get("url")})
-                            break
+                            uploaded_images.append({"type": "image", "url": response.json().get("url")})
 
-                    # Connect to WebSocket
+                    # WebSocket connection
                     wss = session.ws_connect(websocket_url)
-                    wss.send(json.dumps({"event":"setOptions","supportedCards":["weather","local","image","sports","video","ads","finance"],"ads":{"supportedTypes":["multimedia","product","tourActivity","propertyPromotion","text"]}}));
+                    wss.send(json.dumps({"event": "setOptions", "supportedCards": ["weather", "local", "image", "sports", "video", "ads", "finance"], "ads": {"supportedTypes": ["multimedia", "product", "tourActivity", "propertyPromotion", "text"]}}))
                     wss.send(json.dumps({
                         "event": "send",
                         "conversationId": conversation_id,
@@ -236,56 +263,26 @@ class Copilot(Provider):
                         "mode": "reasoning" if "Think" in self.model else "chat"
                     }).encode(), CurlWsFlag.TEXT)
 
-                    # Process response
-                    is_started = False
-                    msg = None
-                    image_prompt: str = None
+                    # Event-driven response loop
+                    state = {"is_started": False, "image_prompt": None, "done": False, "streaming_text": ""}
                     last_msg = None
-                    streaming_text = ""
-                    
                     try:
-                        while True:
+                        while not state["done"]:
                             try:
                                 msg = wss.recv()[0]
                                 msg = json.loads(msg)
-                            except:
+                            except Exception:
                                 break
                             last_msg = msg
-                            if msg.get("event") == "appendText":
-                                is_started = True
-                                content = msg.get("text")
-                                streaming_text += content
-                                resp = {"text": content}
-                                yield resp if raw else resp
-                            elif msg.get("event") == "generatingImage":
-                                image_prompt = msg.get("prompt")
-                            elif msg.get("event") == "imageGenerated":
-                                yield {"type": "image", "url": msg.get("url"), "prompt": image_prompt, "preview": msg.get("thumbnailUrl")}
-                            elif msg.get("event") == "done":
-                                break
-                            elif msg.get("event") == "suggestedFollowups":
-                                yield {"type": "suggested_followups", "suggestions": msg.get("suggestions")}
-                                break
-                            elif msg.get("event") == "replaceText":
-                                content = msg.get("text")
-                                streaming_text += content
-                                resp = {"text": content}
-                                yield resp if raw else resp
-                            elif msg.get("event") == "error":
-                                raise exceptions.FailedToGenerateResponseError(f"Error: {msg}")
-                            elif msg.get("event") not in ["received", "startMessage", "citation", "partCompleted"]:
-                                print(f"Copilot Message: {msg}")
-                        
-                        if not is_started:
+                            result = handle_event(msg, state)
+                            if result is not None:
+                                yield result
+                        if not state["is_started"]:
                             raise exceptions.FailedToGenerateResponseError(f"Invalid response: {last_msg}")
-                            
-                        # Update conversation history
-                        self.conversation.update_chat_history(prompt, streaming_text)
-                        self.last_response = {"text": streaming_text}
-                        
+                        self.conversation.update_chat_history(prompt, state["streaming_text"])
+                        self.last_response = {"text": state["streaming_text"]}
                     finally:
                         wss.close()
-                        
             except Exception as e:
                 raise exceptions.FailedToGenerateResponseError(f"Error: {str(e)}")
 

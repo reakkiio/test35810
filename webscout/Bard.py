@@ -81,37 +81,17 @@ class Model(Enum):
         model_header (dict): Additional headers required for the model.
         advanced_only (bool): Whether the model is available only for advanced users.
     """
-    # Updated model definitions based on reference implementation
+    # Only the specified models
     UNSPECIFIED = ("unspecified", {}, False)
-    G_2_0_FLASH = (
-        "gemini-2.0-flash",
-        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"f299729663a2343f"]'},
-        False,
-    )
-    G_2_0_FLASH_THINKING = (
-        "gemini-2.0-flash-thinking",
-        {"x-goog-ext-525001261-jspb": '[null,null,null,null,"7ca48d02d802f20a"]'},
-        False,
-    )
     G_2_5_FLASH = (
         "gemini-2.5-flash",
-        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"35609594dbe934d8"]'},
+        {"x-goog-ext-525001261-jspb": '[1,null,null,null,"71c2d248d3b102ff"]'},
         False,
     )
     G_2_5_PRO = (
         "gemini-2.5-pro",
         {"x-goog-ext-525001261-jspb": '[1,null,null,null,"2525e3954d185b3c"]'},
         False,
-    )
-    G_2_0_EXP_ADVANCED = (
-        "gemini-2.0-exp-advanced",
-        {"x-goog-ext-525001261-jspb": '[null,null,null,null,"b1e46a6037e6aa9f"]'},
-        True,
-    )
-    G_2_5_EXP_ADVANCED = (
-        "gemini-2.5-exp-advanced",
-        {"x-goog-ext-525001261-jspb": '[null,null,null,null,"203e6bb81620bcfe"]'},
-        True,
     )
 
     def __init__(self, name, header, advanced_only):

@@ -15,7 +15,7 @@ class Flowith(Provider):
     """
     A provider class for interacting with the Flowith API.
     """
-    AVAILABLE_MODELS = ["gpt-4.1-mini", "deepseek-chat", "deepseek-reasoner", "claude-3.5-haiku", "gemini-2.0-flash", "gemini-2.5-flash", "grok-3-mini"]
+    AVAILABLE_MODELS = ["gpt-4.1-nano", "gpt-4.1-mini", "deepseek-chat", "deepseek-reasoner", "claude-3.5-haiku", "gemini-2.0-flash", "gemini-2.5-flash", "grok-3-mini"]
 
     def __init__(
         self,

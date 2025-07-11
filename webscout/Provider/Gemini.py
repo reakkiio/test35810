@@ -10,22 +10,15 @@ from ..Bard import Chatbot, Model
 
 warnings.simplefilter("ignore", category=UserWarning)
 
-# Define model aliases for easy usage
+# Define model aliases for easy usage (only supported models)
 MODEL_ALIASES: Dict[str, Model] = {
     "unspecified": Model.UNSPECIFIED,
-    "gemini-2.0-flash": Model.G_2_0_FLASH,
-    "gemini-2.0-flash-thinking": Model.G_2_0_FLASH_THINKING,
-    "gemini-2.5-pro": Model.G_2_5_PRO,
-    "gemini-2.0-exp-advanced": Model.G_2_0_EXP_ADVANCED,
-    "gemini-2.5-exp-advanced": Model.G_2_5_EXP_ADVANCED,
     "gemini-2.5-flash": Model.G_2_5_FLASH,
+    "gemini-2.5-pro": Model.G_2_5_PRO,
     # Add shorter aliases for convenience
-    "flash": Model.G_2_0_FLASH,
     "flash-2.5": Model.G_2_5_FLASH,
-    "thinking": Model.G_2_0_FLASH_THINKING,
     "pro": Model.G_2_5_PRO,
-    "advanced": Model.G_2_0_EXP_ADVANCED,
-    "advanced-2.5": Model.G_2_5_EXP_ADVANCED,
+    "unspecified": Model.UNSPECIFIED,
 }
 
 # List of available models (friendly names)

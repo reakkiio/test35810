@@ -24,13 +24,15 @@ class SciraAI(Provider):
         "grok-3-fast": "scira-x-fast",
         "gpt-4.1-nano": "scira-nano",
         "grok-3": "scira-grok-3",
+        "grok-4": "scira-grok-4",
         "grok-2-vision-1212": "scira-vision",
         "grok-2-latest": "scira-g2",
         "gpt-4o-mini": "scira-4o-mini",
         "o4-mini-2025-04-16": "scira-o4-mini",
         "o3": "scira-o3",
-        "qwen-qwq-32b": "scira-qwq",
         "qwen/qwen3-32b": "scira-qwen-32b",
+        "qwen3-30b-a3b": "scira-qwen-30b",
+        "deepseek-v3-0324": "scira-deepseek-v3",
         "claude-3-5-haiku-20241022": "scira-haiku",
         "mistral-small-latest": "scira-mistral",
         "gemini-2.5-flash-lite-preview-06-17": "scira-google-lite",
@@ -45,21 +47,17 @@ class SciraAI(Provider):
     
     # Reverse mapping: Scira format to actual model names
     SCIRA_TO_MODEL = {v: k for k, v in MODEL_MAPPING.items()}
-    # Add special case for anthropic-thinking (same as anthropic)
+    # Add special cases for aliases and duplicate mappings
     SCIRA_TO_MODEL["scira-anthropic-thinking"] = "claude-sonnet-4-20250514"
-    # Add special case for opus-pro (same as opus)
     SCIRA_TO_MODEL["scira-opus-pro"] = "claude-4-opus-20250514"
-    # Add special case for x-fast (grok-3-fast)
     SCIRA_TO_MODEL["scira-x-fast"] = "grok-3-fast"
-    # Add special case for x-fast-mini (grok-3-mini-fast)
     SCIRA_TO_MODEL["scira-x-fast-mini"] = "grok-3-mini-fast"
-    # Add special case for nano (gpt-4.1-nano)
     SCIRA_TO_MODEL["scira-nano"] = "gpt-4.1-nano"
-    
-    # Add special case for opus-pro (same as opus)  
-    SCIRA_TO_MODEL["scira-opus-pro"] = "claude-4-opus-20250514"
+    SCIRA_TO_MODEL["scira-qwen-32b"] = "qwen/qwen3-32b"
+    SCIRA_TO_MODEL["scira-qwen-30b"] = "qwen3-30b-a3b"
+    SCIRA_TO_MODEL["scira-deepseek-v3"] = "deepseek-v3-0324"
+    SCIRA_TO_MODEL["scira-grok-4"] = "grok-4"
     MODEL_MAPPING["claude-4-opus-20250514-pro"] = "scira-opus-pro"
-    
     # Available models list (actual model names + scira aliases)
     AVAILABLE_MODELS = list(MODEL_MAPPING.keys()) + list(SCIRA_TO_MODEL.keys())
     

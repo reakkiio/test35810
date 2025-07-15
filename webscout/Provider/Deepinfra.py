@@ -339,7 +339,7 @@ if __name__ == "__main__":
 
     for model in DeepInfra.AVAILABLE_MODELS:
         try:
-            test_ai = DeepInfra(model=model, timeout=60, api_key="jwt:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJnaDoxNTg5ODg0NzgiLCJleHAiOjE3NTI3NDI5NDV9.qM93p6bPZYi_ejaOo1Dbe4UjYXrFiM7XvBLN4-9BWag")
+            test_ai = DeepInfra(model=model, timeout=60,)
             response = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
             for chunk in response:

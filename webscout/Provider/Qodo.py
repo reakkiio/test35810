@@ -23,6 +23,7 @@ class QodoAI(Provider):
         "o4-mini",
         "claude-4-sonnet",
         "gemini-2.5-pro",
+        "grok-4"
 
     ]
 
@@ -225,15 +226,27 @@ class QodoAI(Provider):
         payload = self._build_payload(conversation_prompt)
         payload["stream"] = stream
 
+
         def for_stream():
             try:
                 response = self.session.post(
-                    self.url, 
-                    json=payload, 
-                    stream=True, 
+                    self.url,
+                    json=payload,
+                    stream=True,
                     timeout=self.timeout,
                     impersonate=self.fingerprint.get("browser_type", "chrome110")
                 )
+                # Check for internal server error with session ID in the response
+                if response.status_code == 500 and response.text and "Internal server error, session ID:" in response.text:
+                    # Switch to continue-task endpoint and retry
+                    self.url = "https://api.cli.qodo.ai/v2/agentic/continue-task"
+                    response = self.session.post(
+                        self.url,
+                        json=payload,
+                        stream=True,
+                        timeout=self.timeout,
+                        impersonate=self.fingerprint.get("browser_type", "chrome110")
+                    )
                 if response.status_code == 401:
                     raise exceptions.FailedToGenerateResponseError(
                         "Invalid API key. You need to provide your own API key.\n"
@@ -270,11 +283,20 @@ class QodoAI(Provider):
             try:
                 payload["stream"] = False
                 response = self.session.post(
-                    self.url, 
-                    json=payload, 
+                    self.url,
+                    json=payload,
                     timeout=self.timeout,
                     impersonate=self.fingerprint.get("browser_type", "chrome110")
                 )
+                # Check for internal server error with session ID in the response
+                if response.status_code == 500 and response.text and "Internal server error, session ID:" in response.text:
+                    self.url = "https://api.cli.qodo.ai/v2/agentic/continue-task"
+                    response = self.session.post(
+                        self.url,
+                        json=payload,
+                        timeout=self.timeout,
+                        impersonate=self.fingerprint.get("browser_type", "chrome110")
+                    )
                 if response.status_code == 401:
                     raise exceptions.FailedToGenerateResponseError(
                         "Invalid API key. You need to provide your own API key.\n"
@@ -386,7 +408,9 @@ class QodoAI(Provider):
                 )
                     
             # Fallback to generated session ID if API call fails
-            return f"20250630-{str(uuid.uuid4())}"
+            from datetime import datetime
+            today = datetime.now().strftime("%Y%m%d")
+            return f"{today}-{str(uuid.uuid4())}"
             
         except exceptions.FailedToGenerateResponseError:
             # Re-raise our custom exceptions

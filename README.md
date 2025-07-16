@@ -40,7 +40,7 @@
 
 <hr/>
 
-> [!IMPORTANT] >
+> [!IMPORTANT]
 > **Webscout supports three types of compatibility:**
 >
 > - **Native Compatibility:** Webscout's own native API for maximum flexibility
@@ -306,7 +306,7 @@ For more information, visit the [Inferno GitHub repository](https://github.com/H
 </p>
 </details>
 
-> [!NOTE] > **Hardware requirements for running models with Inferno:**
+> [!NOTE]  **Hardware requirements for running models with Inferno:**
 >
 > - Around 2 GB of RAM for 1B models
 > - Around 4 GB of RAM for 3B models

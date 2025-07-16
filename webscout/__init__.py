@@ -17,17 +17,9 @@ from .litagent import LitAgent
 from .scout import *
 from .zeroart import *
 from .yep_search import *
+from .AIutel import *
 
-# Import litprinter components for direct access from webscout (uncomment if needed)
-# from .litprinter import lit, litprint, ic, install, uninstall
-
-# Import sanitize_stream and lit_streamer for easy access
-from .AIutel import sanitize_stream, lit_streamer, LITSTREAM
-
-agent = LitAgent()
-
-__repo__ = "https://github.com/OE-LUCIFER/Webscout"
-
+useragent = LitAgent()
 # Add update checker
 from .update_checker import check_for_updates
 try:
@@ -36,9 +28,5 @@ try:
         print(update_message)
 except Exception:
     pass  # Silently handle any update check errors
-
-import logging
-logging.getLogger("webscout").addHandler(logging.NullHandler())
-
 # Import models for easy access
 from .models import model

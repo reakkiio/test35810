@@ -104,6 +104,8 @@
 - **[Scout](webscout/scout/README.md):** Advanced web parsing and crawling library with intelligent HTML/XML parsing
 - **[Inferno](https://github.com/HelpingAI/inferno):** Run local LLMs with an OpenAI-compatible API and interactive CLI (now a standalone package: `pip install inferno-llm`)
 - **[GGUF Conversion](webscout/Extra/gguf.md):** Convert and quantize Hugging Face models to GGUF format
+- **[Utility Decorators](docs/decorators.md):** Easily measure function execution time (`timeIt`) and add retry logic (`retry`) to any function
+- **[Stream Sanitization Utilities](docs/sanitize.md):** Advanced tools for cleaning, decoding, and processing data streams
 </p>
 </details>
 
@@ -318,6 +320,8 @@ For more information, visit the [Inferno GitHub repository](https://github.com/H
 <p>
 
 Webscout includes an OpenAI-compatible API server that allows you to use any supported provider with tools and applications designed for OpenAI's API.
+- **Function Timing & Retry:** Use `timeIt` to measure execution time and `retry` to automatically retry failed functions (see [docs/decorators.md](docs/decorators.md))
+- **Stream Sanitization:** Clean and process data streams with flexible utilities (see [docs/sanitize.md](docs/sanitize.md))
 
 ### Starting the API Server
 

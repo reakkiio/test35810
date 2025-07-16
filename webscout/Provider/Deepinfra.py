@@ -18,6 +18,7 @@ class DeepInfra(Provider):
 
     AVAILABLE_MODELS = [
         "anthropic/claude-4-opus",
+        "moonshotai/Kimi-K2-Instruct",
         "anthropic/claude-4-sonnet",
         "deepseek-ai/DeepSeek-R1-0528-Turbo",
         "Qwen/Qwen3-235B-A22B",

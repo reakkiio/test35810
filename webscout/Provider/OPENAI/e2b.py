@@ -1340,7 +1340,6 @@ class E2B(OpenAICompatibleProvider):
             "csrf_token": base64.b64encode(f"{self.random_uuid()}-{int(current_time)}".encode()).decode(),
             "request_id": self.random_uuid()
         }
-        print(f"device_id: {session_data['device_id']} - browser_fingerprint: {session_data['browser_fingerprint']}")
 
         self._session_rotation_data = session_data
         self._last_rotation_time = current_time

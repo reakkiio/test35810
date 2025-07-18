@@ -1066,7 +1066,7 @@ class Completions(BaseCompletions):
                 )
 
                 # Enhanced rate limit detection
-                print(f"E2B res: {response.status_code} - {response.text}")
+                print(f"E2B Status code: {response.status_code}")
                 if self._client.is_rate_limited(response.text, response.status_code):
                     self._client.handle_rate_limit_retry(attempt, retries)
                     continue

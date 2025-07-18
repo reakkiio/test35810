@@ -1,19 +1,17 @@
-import ssl
 import json
 import time
-import socket
 import random
-from threading import Thread, Event
+from threading import Event
 from curl_cffi import requests
-from websocket import WebSocketApp
-from typing import Dict, Any, Union, Generator, List, Optional
+from typing import Dict, Any, Union, Generator
 
 from webscout.AIutel import Optimizers
 from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
+from webscout.AIutel import AwesomePrompts
 from webscout.AIbase import Provider
 from webscout import exceptions
-from webscout.litagent import LitAgent
+
+API_URL = "https://www.perplexity.ai/socket.io/"
 
 class PerplexityLabs(Provider):
     """
@@ -70,26 +68,16 @@ class PerplexityLabs(Provider):
         self.connected = Event()
         self.last_answer = None
         
-        # Initialize session with headers using LitAgent user agent
-        self.session = requests.Session(headers={
-            'User-Agent': LitAgent().random(),
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'max-age=0',
-            'dnt': '1',
-            'priority': 'u=0, i',
-            'sec-ch-ua': '"Not;A=Brand";v="24", "Chromium";v="128"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-        })
+        # Initialize session with headers matching the working example
+        self.headers = {
+            "Origin": "https://labs.perplexity.ai",
+            "Referer": "https://labs.perplexity.ai/",
+        }
+        self.session = requests.Session(impersonate="chrome")
         
         # Apply proxies if provided
-        self.session.proxies.update(proxies)
+        if proxies:
+            self.session.proxies.update(proxies)
         
         # Set up conversation handling
         self.is_conversation = is_conversation
@@ -117,14 +105,14 @@ class PerplexityLabs(Provider):
         self._initialize_connection()
 
     def _initialize_connection(self) -> None:
-        """Initialize the connection to Perplexity with retries"""
+        """Initialize the connection to Perplexity using polling approach"""
         for attempt in range(1, self.max_retries + 1):
             try:
                 # Get a session ID via polling
                 self.timestamp = format(random.getrandbits(32), '08x')
-                poll_url = f'https://www.perplexity.ai/socket.io/?EIO=4&transport=polling&t={self.timestamp}'
+                poll_url = f'{API_URL}?EIO=4&transport=polling&t={self.timestamp}'
                 
-                response = self.session.get(poll_url)
+                response = self.session.get(poll_url, headers=self.headers)
                 if response.status_code != 200:
                     if attempt == self.max_retries:
                         raise ConnectionError(f"Failed to get session ID: HTTP {response.status_code}")
@@ -132,57 +120,35 @@ class PerplexityLabs(Provider):
                 
                 # Extract the session ID
                 try:
-                    self.sid = json.loads(response.text[1:])['sid']
+                    text = response.text
+                    if not text.startswith("0"):
+                        raise ConnectionError("Invalid response format")
+                    self.sid = json.loads(text[1:])['sid']
                 except (json.JSONDecodeError, KeyError) as e:
                     if attempt == self.max_retries:
                         raise ConnectionError(f"Failed to parse session ID: {e}")
                     continue
                 
                 # Authenticate the session
-                auth_url = f'https://www.perplexity.ai/socket.io/?EIO=4&transport=polling&t={self.timestamp}&sid={self.sid}'
-                auth_response = self.session.post(auth_url, data='40{"jwt":"anonymous-ask-user"}')
+                self.auth_url = f'{API_URL}?EIO=4&transport=polling&t={self.timestamp}&sid={self.sid}'
+                post_data = '40{"jwt":"anonymous-ask-user"}'
+                auth_response = self.session.post(self.auth_url, data=post_data, headers=self.headers)
                 
                 if auth_response.status_code != 200 or auth_response.text != 'OK':
                     if attempt == self.max_retries:
                         raise ConnectionError("Authentication failed")
                     continue
                 
-                # Setup SSL socket
-                context = ssl.create_default_context()
-                context.minimum_version = ssl.TLSVersion.TLSv1_3
-                try:
-                    self.sock = context.wrap_socket(
-                        socket.create_connection(('www.perplexity.ai', 443), timeout=self.connection_timeout), 
-                        server_hostname='www.perplexity.ai'
-                    )
-                except (socket.timeout, socket.error, ssl.SSLError) as e:
+                # Get additional response to complete handshake
+                get_response = self.session.get(self.auth_url, headers=self.headers)
+                if get_response.status_code != 200:
                     if attempt == self.max_retries:
-                        raise ConnectionError(f"Socket connection failed: {e}")
+                        raise ConnectionError("Failed to complete authentication handshake")
                     continue
                 
-                # Setup WebSocket
-                ws_url = f'wss://www.perplexity.ai/socket.io/?EIO=4&transport=websocket&sid={self.sid}'
-                cookies = '; '.join([f'{key}={value}' for key, value in self.session.cookies.get_dict().items()])
-                
-                self.connected.clear()
-                self.ws = WebSocketApp(
-                    url=ws_url,
-                    header={'User-Agent': self.session.headers['User-Agent']},
-                    cookie=cookies,
-                    on_open=self._on_open,
-                    on_message=self._on_message,
-                    on_error=self._on_error,
-                    on_close=self._on_close,
-                    socket=self.sock
-                )
-                
-                # Start WebSocket in a thread
-                self.ws_thread = Thread(target=self.ws.run_forever, daemon=True)
-                self.ws_thread.start()
-                
-                # Wait for connection to be established
-                if self.connected.wait(timeout=self.connection_timeout):
-                    return
+                # Connection successful - using polling instead of WebSocket
+                self.connected.set()
+                return
                 
             except Exception as e:
                 if attempt == self.max_retries:
@@ -195,37 +161,107 @@ class PerplexityLabs(Provider):
         
         raise exceptions.FailedToGenerateResponseError("Failed to connect to Perplexity after multiple attempts")
 
-    def _on_open(self, ws):
-        """Handle websocket open event"""
-        ws.send('2probe')
-        ws.send('5')
+    def _send_query_polling(self, message_data):
+        """Send query using polling approach"""
+        payload = '42' + json.dumps(["perplexity_labs", message_data])
+        response = self.session.post(self.auth_url, data=payload, headers=self.headers, timeout=10)
+        return response.status_code == 200
     
-    def _on_close(self, ws, close_status_code, close_msg):
-        """Handle websocket close event"""
-        self.connected.clear()
-    
-    def _on_message(self, ws, message):
-        """Handle websocket message events"""
-        if message == '2':
-            ws.send('3')
+    def _poll_for_response(self, timeout_seconds):
+        """Poll for response using the polling approach"""
+        start_time = time.time()
+        last_message = 0
+        full_output = ""
+        
+        while True:
+            if time.time() - start_time > timeout_seconds:
+                if last_message == 0:
+                    raise exceptions.FailedToGenerateResponseError("Response timed out")
+                else:
+                    # Return partial response if we got some content
+                    yield {"text": "", "final": True, "full_output": full_output}
+                    return
             
-        elif message == '3probe':
-            self.connected.set()
-
-        elif message.startswith('40'):
-            self.connected.set()
-            
-        elif message.startswith('42'):
             try:
-                response = json.loads(message[2:])[1]
-                if 'final' in response or 'partial' in response:
-                    self.last_answer = response
-            except (json.JSONDecodeError, IndexError):
-                pass
-    
-    def _on_error(self, ws, error):
-        """Handle websocket error events"""
-        self.connected.clear()
+                poll_response = self.session.get(self.auth_url, headers=self.headers, timeout=3)
+                
+                if poll_response.status_code == 400:
+                    # Session expired, try to return what we have
+                    if full_output:
+                        yield {"text": "", "final": True, "full_output": full_output}
+                        return
+                    else:
+                        raise exceptions.FailedToGenerateResponseError("Session expired")
+                
+                if poll_response.status_code != 200:
+                    time.sleep(0.5)
+                    continue
+                
+                response_text = poll_response.text
+                
+                # Handle heartbeat
+                if response_text == '2':
+                    try:
+                        self.session.post(self.auth_url, data='3', headers=self.headers, timeout=3)
+                    except:
+                        pass
+                    continue
+                
+                # Handle data messages containing output
+                if '42[' in response_text and 'output' in response_text:
+                    try:
+                        # Find the JSON part more reliably
+                        start = response_text.find('42[')
+                        if start != -1:
+                            # Find the end of this JSON message
+                            bracket_count = 0
+                            json_start = start + 2
+                            json_end = json_start
+                            
+                            for j, char in enumerate(response_text[json_start:]):
+                                if char == '[':
+                                    bracket_count += 1
+                                elif char == ']':
+                                    bracket_count -= 1
+                                    if bracket_count == 0:
+                                        json_end = json_start + j + 1
+                                        break
+                            
+                            json_str = response_text[json_start:json_end]
+                            parsed_data = json.loads(json_str)
+                            
+                            if len(parsed_data) > 1 and isinstance(parsed_data[1], dict):
+                                data = parsed_data[1]
+                                
+                                # Handle error responses
+                                if data.get("status") == "failed":
+                                    error_message = data.get("text", "Unknown API error")
+                                    raise exceptions.FailedToGenerateResponseError(f"API Error: {error_message}")
+                                
+                                # Handle normal responses
+                                if "output" in data:
+                                    current_output = data["output"]
+                                    if len(current_output) > last_message:
+                                        delta = current_output[last_message:]
+                                        last_message = len(current_output)
+                                        full_output = current_output
+                                        yield {"text": delta, "final": data.get("final", False), "full_output": full_output}
+                                    
+                                    if data.get("final", False):
+                                        return
+                                        
+                    except (json.JSONDecodeError, IndexError, KeyError) as e:
+                        # Continue on parsing errors
+                        pass
+                
+            except Exception as e:
+                # Handle timeout and other errors more gracefully
+                if "timeout" in str(e).lower():
+                    continue
+                time.sleep(0.5)
+                continue
+            
+            time.sleep(0.5)
     
     def ask(
         self,
@@ -270,67 +306,47 @@ class PerplexityLabs(Provider):
             else:
                 raise Exception(f"Optimizer is not one of {self.__available_optimizers}")
         
-        self.last_answer = None
+        # Send the query using polling approach
+        message_data = {
+            "version": "2.18",
+            "source": "default",
+            "model": use_model,
+            "messages": [{"role": "user", "content": conversation_prompt}],
+        }
         
-        # Send the query through websocket
-        payload = json.dumps([
-            'perplexity_labs',
-            {
-                'messages': [{'role': 'user', 'content': conversation_prompt}],
-                'model': use_model,
-                'source': 'default',
-                'version': '2.18',
-            }
-        ])
-        self.ws.send('42' + payload)
+        # Send query
+        if not self._send_query_polling(message_data):
+            raise exceptions.FailedToGenerateResponseError("Failed to send query")
         
         def for_stream():
-            """Handle streaming responses"""
-            last_seen = None
-            start_time = time.time()
-            streaming_text = ""
-            
-            while True:
-                # Check for timeout
-                if time.time() - start_time > self.timeout:
-                    raise exceptions.FailedToGenerateResponseError("Response stream timed out")
+            """Handle streaming responses using polling"""
+            full_text = ""
+            for response_chunk in self._poll_for_response(self.timeout):
+                if response_chunk["text"]:
+                    full_text += response_chunk["text"]
+                    yield dict(text=response_chunk["text"]) if raw else dict(text=response_chunk["text"])
                 
-                # If we have a new response different from what we've seen
-                if self.last_answer != last_seen:
-                    last_seen = self.last_answer
-                    if last_seen is not None:
-                        if 'output' in last_seen:
-                            current_output = last_seen['output']
-                            # For delta output in streaming
-                            delta = current_output[len(streaming_text):]
-                            streaming_text = current_output
-                            resp = dict(text=delta)
-                            yield resp if raw else resp
-                
-                # If we have the final response, add to history and return
-                if self.last_answer and self.last_answer.get('final', False):
-                    answer = self.last_answer
-                    self.conversation.update_chat_history(prompt, streaming_text)
+                if response_chunk["final"]:
+                    self.conversation.update_chat_history(prompt, full_text)
                     return
-                
-                time.sleep(0.01)
         
         def for_non_stream():
-            """Handle non-streaming responses"""
-            start_time = time.time()
+            """Handle non-streaming responses using polling"""
+            full_text = ""
+            for response_chunk in self._poll_for_response(self.timeout):
+                if response_chunk["text"]:
+                    full_text += response_chunk["text"]
+                
+                if response_chunk["final"]:
+                    self.conversation.update_chat_history(prompt, full_text)
+                    return dict(text=full_text) if raw else dict(text=full_text)
             
-            while True:
-                # Check for successful response
-                if self.last_answer and self.last_answer.get('final', False):
-                    answer = self.last_answer
-                    self.conversation.update_chat_history(prompt, answer['output'])
-                    return answer if raw else dict(text=answer['output'])
-                
-                # Check for timeout
-                if time.time() - start_time > self.timeout:
-                    raise exceptions.FailedToGenerateResponseError("Response timed out")
-                
-                time.sleep(0.01)
+            # If we get here, no final response was received
+            if full_text:
+                self.conversation.update_chat_history(prompt, full_text)
+                return dict(text=full_text) if raw else dict(text=full_text)
+            else:
+                raise exceptions.FailedToGenerateResponseError("No response received")
         
         return for_stream() if stream else for_non_stream()
 
@@ -396,7 +412,7 @@ if __name__ == "__main__":
     
     for model in PerplexityLabs.AVAILABLE_MODELS:
         try:
-            test_ai = PerplexityLabs(model=model, timeout=60)
+            test_ai = PerplexityLabs(model=model, timeout=30, connection_timeout=5.0)
             response = test_ai.chat("Say 'Hello' in one word", stream=True)
             response_text = ""
             for chunk in response:
@@ -412,4 +428,4 @@ if __name__ == "__main__":
                 display_text = "Empty or invalid response"
             print(f"\r{model:<50} {status:<10} {display_text}")
         except Exception as e:
-            print(f"\r{model:<50} {'✗':<10} {str(e)}")
+            print(f"\r{model:<50} {'✗':<10} {str(e)[:80]}")

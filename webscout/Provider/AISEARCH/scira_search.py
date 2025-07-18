@@ -67,6 +67,8 @@ class Scira(AISearch):
         "scira-opus": "claude-4-opus-20250514",
         "scira-opus-pro": "claude-4-opus-20250514",
         "scira-llama-4": "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "scira-kimi-k2": "kimi-k2-instruct",
+        "kimi-k2-instruct": "scira-kimi-k2",
     }
     def __init__(
         self,

@@ -347,6 +347,8 @@ class SciraChat(OpenAICompatibleProvider):
         "claude-4-opus-20250514": "scira-opus",
         "claude-4-opus-20250514-pro": "scira-opus-pro",
         "meta-llama/llama-4-maverick-17b-128e-instruct": "scira-llama-4",
+        "kimi-k2-instruct": "scira-kimi-k2",
+        "scira-kimi-k2": "kimi-k2-instruct",
     }
     # Reverse mapping: Scira format to actual model names
     SCIRA_TO_MODEL = {v: k for k, v in MODEL_MAPPING.items()}
@@ -360,6 +362,8 @@ class SciraChat(OpenAICompatibleProvider):
     SCIRA_TO_MODEL["scira-qwen-30b"] = "qwen3-30b-a3b"
     SCIRA_TO_MODEL["scira-deepseek-v3"] = "deepseek-v3-0324"
     SCIRA_TO_MODEL["scira-grok-4"] = "grok-4"
+    SCIRA_TO_MODEL["scira-kimi-k2"] = "kimi-k2-instruct"
+    SCIRA_TO_MODEL["kimi-k2-instruct"] = "scira-kimi-k2"
     MODEL_MAPPING["claude-4-opus-20250514-pro"] = "scira-opus-pro"
     # Available models list (actual model names + scira aliases)
     AVAILABLE_MODELS = list(MODEL_MAPPING.keys()) + list(SCIRA_TO_MODEL.keys())

@@ -1066,6 +1066,7 @@ class Completions(BaseCompletions):
                 )
 
                 # Enhanced rate limit detection
+                print(f"E2B res: {response.status_code} - {response.text}")
                 if self._client.is_rate_limited(response.text, response.status_code):
                     self._client.handle_rate_limit_retry(attempt, retries)
                     continue
@@ -1376,11 +1377,11 @@ class E2B(OpenAICompatibleProvider):
         """Handle rate limit retry with exponential backoff and session rotation."""
         self._rate_limit_failures += 1
         
-        if self._rate_limit_failures >= self._max_rate_limit_failures:
-            # Force session rotation after multiple failures
-            self.rotate_session_data(force_rotation=True)
-            self._rate_limit_failures = 0
-            print(f"{RED}Multiple rate limit failures detected. Rotating session data...{RESET}")
+        # if self._rate_limit_failures >= self._max_rate_limit_failures:
+        # Force session rotation after multiple failures
+        self.rotate_session_data(force_rotation=True)
+        self._rate_limit_failures = 0
+        print(f"{RED}Rotating session data...{RESET}")
         
         # Calculate wait time with jitter
         base_wait = min(2 ** attempt, 60)  # Cap at 60 seconds

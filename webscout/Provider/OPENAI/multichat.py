@@ -134,7 +134,7 @@ class Completions(BaseCompletions):
             created_time = int(time.time())
 
             # Make the API request
-            response_text = self._client._make_api_request(user_message, timeout=timeout, proxies=proxies)
+            response_text = self._client._make_api_request(user_message)
 
             # If streaming is requested, simulate streaming with the full response
             if stream:

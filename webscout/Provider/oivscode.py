@@ -69,13 +69,13 @@ class oivscode(Provider):
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.api_endpoints = [
-            "https://oi-vscode-server.onrender.com/v1/chat/completions",
-            "https://oi-vscode-server-2.onrender.com/v1/chat/completions",
+            # "https://oi-vscode-server.onrender.com/v1/chat/completions",
+            # "https://oi-vscode-server-2.onrender.com/v1/chat/completions",
             "https://oi-vscode-server-5.onrender.com/v1/chat/completions",
             "https://oi-vscode-server-0501.onrender.com/v1/chat/completions"
         ]
         self.api_endpoint = random.choice(self.api_endpoints)
-        self.timeout = timeout
+        self.timeout = 10
         self.last_response = {}
         self.model = model
         self.system_prompt = system_prompt

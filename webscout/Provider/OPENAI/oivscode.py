@@ -241,12 +241,13 @@ class oivscode(OpenAICompatibleProvider):
     ]
 
     def __init__(self, timeout: Optional[int] = None):
-        self.timeout = 2
+        self.timeout = 3
+        print("oivscode init...")
         self.api_endpoints = [
             # "https://oi-vscode-server.onrender.com/v1/chat/completions",
             # "https://oi-vscode-server-2.onrender.com/v1/chat/completions",
-            "https://oi-vscode-server-5.onrender.com/v1/chat/completions",
-            # "https://oi-vscode-server-0501.onrender.com/v1/chat/completions"
+            # "https://oi-vscode-server-5.onrender.com/v1/chat/completions",
+            "https://oi-vscode-server-0501.onrender.com/v1/chat/completions"
         ]
         self.api_endpoint = random.choice(self.api_endpoints)
         self.base_url = self.api_endpoint

@@ -71,7 +71,7 @@ class oivscode(Provider):
         self.api_endpoints = [
             # "https://oi-vscode-server.onrender.com/v1/chat/completions",
             # "https://oi-vscode-server-2.onrender.com/v1/chat/completions",
-            "https://oi-vscode-server-5.onrender.com/v1/chat/completions",
+            # "https://oi-vscode-server-5.onrender.com/v1/chat/completions",
             "https://oi-vscode-server-0501.onrender.com/v1/chat/completions"
         ]
         self.api_endpoint = random.choice(self.api_endpoints)

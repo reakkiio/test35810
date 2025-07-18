@@ -47,6 +47,7 @@ class Completions(BaseCompletions):
         # Extract system message using get_system_prompt utility
         # system_prompt = get_system_prompt(messages) or self._client.system_prompt
         system_prompt = "You're a helpful assistant."
+        max_tokens = 2048
 
         # Format the conversation using format_prompt utility
         # Use add_special_tokens=True to format as "User: ... Assistant: ..."

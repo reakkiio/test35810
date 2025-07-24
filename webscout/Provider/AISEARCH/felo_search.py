@@ -69,7 +69,7 @@ class Felo(AISearch):
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
             "content-type": "application/json",
-            "cookie": "_clck=1gifk45%7C2%7Cfoa%7C0%7C1686; _clsk=1g5lv07%7C1723558310439%7C1%7C1%7Cu.clarity.ms%2Fcollect; _ga=GA1.1.877307181.1723558313; _ga_8SZPRV97HV=GS1.1.1723558313.1.1.1723558341.0.0.0; _ga_Q9Q1E734CC=GS1.1.1723558313.1.1.1723558341.0.0.0",
+            # "cookie": "_clck=1gifk45%7C2%7Cfoa%7C0%7C1686; _clsk=1g5lv07%7C1723558310439%7C1%7C1%7Cu.clarity.ms%2Fcollect; _ga=GA1.1.877307181.1723558313; _ga_8SZPRV97HV=GS1.1.1723558313.1.1.1723558341.0.0.0; _ga_Q9Q1E734CC=GS1.1.1723558313.1.1.1723558341.0.0.0",
             "dnt": "1",
             "origin": "https://felo.ai",
             "referer": "https://felo.ai/",
@@ -141,10 +141,14 @@ class Felo(AISearch):
             "lang": "",
             "agent_lang": "en",
             "search_options": {
-                "langcode": "en-US"
+                "langcode": "en-US",
+                "search_image": True,
+                "search_video": True,
             },
             "search_video": True,
-            "contexts_from": "google"
+            "model": "",
+            "contexts_from": "google",
+            "auto_routing": True,
         }
 
         def for_stream():

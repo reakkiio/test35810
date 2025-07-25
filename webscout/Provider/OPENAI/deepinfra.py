@@ -199,6 +199,8 @@ class DeepInfra(OpenAICompatibleProvider):
         "moonshotai/Kimi-K2-Instruct",
         "anthropic/claude-4-sonnet",
         "deepseek-ai/DeepSeek-R1-0528-Turbo",
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "Qwen/Qwen3-235B-A22B-Instruct-2507",
         "Qwen/Qwen3-235B-A22B",
         "Qwen/Qwen3-30B-A3B",
         "Qwen/Qwen3-32B",

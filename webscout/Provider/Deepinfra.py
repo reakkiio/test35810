@@ -76,6 +76,7 @@ class DeepInfra(Provider):
         "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
         "microsoft/WizardLM-2-8x22B",
         "mistralai/Devstral-Small-2505",
+        "mistralai/Devstral-Small-2507",
         "mistralai/Mistral-7B-Instruct-v0.3",
         "mistralai/Mistral-Nemo-Instruct-2407",
         "mistralai/Mistral-Small-24B-Instruct-2501",

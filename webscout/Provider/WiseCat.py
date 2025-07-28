@@ -131,6 +131,10 @@ class WiseCat(Provider):
                     extract_regexes=[
                         r'0:"(.*?)"'  # Extract content from 0:"..." format
                     ],
+                    skip_regexes=[
+                        r'\(\d+\.?\d*s\)',  # Skip timing information like (0.3s), (1s), (0.5s)
+                        r'\(\d+\.?\d*ms\)', # Skip millisecond timing like (300ms)
+                    ],
                     raw=raw
                 )
                 for content_chunk in processed_stream:

@@ -98,6 +98,7 @@ api = [
     "motor",  # MongoDB async driver for enhanced authentication
     "jinja2",  # Template engine for custom Swagger UI
     "supabase",  # Supabase client for database operations
+    "websockets>=11.0",  # Ensure websockets.asyncio module is available for Supabase realtime
 ]
 
 [tool.setuptools]

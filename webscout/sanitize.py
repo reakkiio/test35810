@@ -294,6 +294,7 @@ def _sanitize_stream_sync(
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
     skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
     extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    raw: bool = False,
 ) -> Generator[Any, None, None]:
     """
     Processes a stream of data (strings or bytes) in real-time, applying various transformations and filtering.
@@ -321,6 +322,7 @@ def _sanitize_stream_sync(
             parsing fails. If the callback returns a value, it is yielded instead of the raw line.
         skip_regexes: List of regex patterns (strings or compiled) for skipping lines that match.
         extract_regexes: List of regex patterns (strings or compiled) for extracting content using capturing groups.
+        raw: If True, yields the raw response as returned by the API, chunk by chunk (no processing).
 
     Yields:
         Any: Processed data, which can be a string, a dictionary (if `to_json` is True), or the result of `content_extractor`.
@@ -329,6 +331,24 @@ def _sanitize_stream_sync(
         TypeError: If the input `data` is not a string or an iterable.
         ValueError: If any regex pattern is invalid.
     """
+    # --- RAW MODE: yield each chunk exactly as returned by the API ---
+    if raw:
+        if isinstance(data, str):
+            yield data
+            return
+        elif hasattr(data, '__iter__'):
+            for chunk in data:
+                if isinstance(chunk, (bytes, bytearray)):
+                    yield chunk.decode(encoding, encoding_errors)
+                elif chunk is not None:
+                    yield chunk
+            return
+        else:
+            if data is not None:
+                yield data
+            return
+    # --- END RAW MODE ---
+    
     effective_skip_markers = skip_markers or []
     # Compile regex patterns
     compiled_skip_regexes = _compile_regexes(skip_regexes)
@@ -489,13 +509,14 @@ async def _sanitize_stream_async(
     error_handler: Optional[Callable[[Exception, str], Optional[Any]]] = None,
     skip_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
     extract_regexes: Optional[List[Union[str, Pattern[str]]]] = None,
+    raw: bool = False,
 ) -> AsyncGenerator[Any, None]:
     """
     Asynchronously processes a stream of data (strings or bytes), applying transformations and filtering.
 
     This function is the asynchronous counterpart to `_sanitize_stream_sync`. It handles
     streaming data, allowing for operations such as prefix removal, JSON parsing,
-    skipping lines based on markers, regex-based filtering, and extracting specific content. 
+    skipping lines based on markers, regex-based filtering, and extracting specific content.
     It also supports custom error handling for JSON parsing failures.
 
     Args:
@@ -515,7 +536,33 @@ async def _sanitize_stream_async(
         error_handler: Callback invoked with ``(Exception, str)`` when JSON parsing fails. If the callback returns a value, it is yielded in place of the raw line.
         skip_regexes: List of regex patterns (strings or compiled) for skipping lines that match.
         extract_regexes: List of regex patterns (strings or compiled) for extracting content using capturing groups.
+        raw: If True, yields the raw response as returned by the API, chunk by chunk (no processing).
     """
+    # --- RAW MODE: yield each chunk exactly as returned by the API ---
+    if raw:
+        if isinstance(data, str):
+            yield data
+            return
+        elif hasattr(data, "__aiter__"):
+            async for chunk in data:
+                if isinstance(chunk, (bytes, bytearray)):
+                    yield chunk.decode(encoding, encoding_errors)
+                elif chunk is not None:
+                    yield chunk
+            return
+        elif hasattr(data, "__iter__"):
+            for chunk in data:
+                if isinstance(chunk, (bytes, bytearray)):
+                    yield chunk.decode(encoding, encoding_errors)
+                elif chunk is not None:
+                    yield chunk
+            return
+        else:
+            if data is not None:
+                yield data
+            return
+    # --- END RAW MODE ---
+    
     if isinstance(data, str):
         for item in _sanitize_stream_sync(
             data,
@@ -534,6 +581,7 @@ async def _sanitize_stream_async(
             error_handler=error_handler,
             skip_regexes=skip_regexes,
             extract_regexes=extract_regexes,
+            raw=raw,
         ):
             yield item
         return
@@ -557,6 +605,7 @@ async def _sanitize_stream_async(
             error_handler=error_handler,
             skip_regexes=skip_regexes,
             extract_regexes=extract_regexes,
+            raw=raw,
         ):
             yield item
         return
@@ -818,7 +867,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
 
     # Handle string directly
@@ -827,7 +876,7 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
 
     # Handle dict, list, int, float, bool (non-iterable, non-string/bytes)
@@ -841,7 +890,7 @@ def sanitize_stream(
                 str(data), intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-                skip_regexes, extract_regexes,
+                skip_regexes, extract_regexes, raw,
             )
         else:  # "json"
             try:
@@ -852,7 +901,7 @@ def sanitize_stream(
                 json_str, intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-                skip_regexes, extract_regexes,
+                skip_regexes, extract_regexes, raw,
             )
 
     # Handle file-like objects (optional, treat as string if .read exists)
@@ -865,7 +914,7 @@ def sanitize_stream(
                 file_content, intro_value, to_json, skip_markers, strip_chars,
                 start_marker, end_marker, content_extractor, yield_raw_on_error,
                 encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-                skip_regexes, extract_regexes,
+                skip_regexes, extract_regexes, raw,
             )
         except Exception:
             pass  # fallback to next
@@ -877,7 +926,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
     elif isinstance(content_attr, bytes):
         try:
@@ -897,7 +946,7 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
     # Handle sync iterables (but not strings/bytes)
     if hasattr(data, "__iter__"):
@@ -905,14 +954,14 @@ def sanitize_stream(
             data, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
     # Fallback: treat as string
     return _sanitize_stream_sync(
         str(data), intro_value, to_json, skip_markers, strip_chars,
         start_marker, end_marker, content_extractor, yield_raw_on_error,
         encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-        skip_regexes, extract_regexes,
+        skip_regexes, extract_regexes, raw,
     )
 
 # --- Decorator version of sanitize_stream ---

@@ -208,17 +208,18 @@ class TogetherImage(TTICompatibleProvider):
     
     # Image models from Together.xyz API (filtered for image type only)
     AVAILABLE_MODELS = [
-        "black-forest-labs/FLUX.1-schnell-Free",
-        "black-forest-labs/FLUX.1.1-pro",
         "black-forest-labs/FLUX.1-pro",
+        "black-forest-labs/FLUX.1.1-pro",
         "black-forest-labs/FLUX.1-redux",
-        "black-forest-labs/FLUX.1-depth",
-        "black-forest-labs/FLUX.1-canny",
-        "black-forest-labs/FLUX.1-kontext-max",
         "black-forest-labs/FLUX.1-dev-lora",
         "black-forest-labs/FLUX.1-schnell",
+        "black-forest-labs/FLUX.1-depth",
+        "black-forest-labs/FLUX.1-kontext-dev",
         "black-forest-labs/FLUX.1-dev",
-        "black-forest-labs/FLUX.1-kontext-pro",
+        "black-forest-labs/FLUX.1-canny",
+        "black-forest-labs/FLUX.1-kontext-max",
+        "black-forest-labs/FLUX.1-schnell-Free",
+        "black-forest-labs/FLUX.1-kontext-pro"
     ]
 
     def __init__(self):

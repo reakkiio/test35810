@@ -49,11 +49,11 @@ def fetch_together_models():
                 print(f"Model: {model_id}")
                 print(f"  Type: {model_type}")
                 print(f"  Context Length: {context_length}")
-                if model.get("config"):
-                    config = model["config"]
-                    if config.get("stop"):
-                        print(f"  Stop Tokens: {config['stop']}")
-                print("-" * 40)
+                # if model.get("config"):
+                #     config = model["config"]
+                #     if config.get("stop"):
+                #         print(f"  Stop Tokens: {config['stop']}")
+                # print("-" * 40)
         
         print(f"\nSUMMARY:")
         print(f"Chat Models: {len(chat_models)}")
@@ -88,8 +88,3 @@ if __name__ == "__main__":
     
     if result:
         print(f"\n📊 Successfully fetched {len(result['all_models'])} models from Together.xyz")
-        
-        # Save to file
-        with open("together_models.json", "w") as f:
-            json.dump(result, f, indent=2)
-        print("✅ Results saved to together_models.json")

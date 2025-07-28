@@ -37,8 +37,9 @@ class Toolbaz(Provider):
         "Qwen2.5-72B",
         "grok-2-1212",
         "grok-3-beta",
-        "toolbaz_v3.5_pro",
         "toolbaz_v3",
+        "toolbaz_v3.5_pro",
+        "toolbaz_v4",
         "mixtral_8x22b",
         "L3-70B-Euryale-v2.1",
         "midnight-rose",
@@ -112,12 +113,6 @@ class Toolbaz(Provider):
         )
         self.conversation.history_offset = history_offset
 
-    @staticmethod
-    def _toolbaz_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Removes [model:...] tags from a string chunk."""
-        if isinstance(chunk, str):
-            return re.sub(r"\[model:.*?\]", "", chunk)
-        return None
 
     def random_string(self, length):
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -217,14 +212,14 @@ class Toolbaz(Provider):
 
                 streaming_text = ""
 
-                # Use sanitize_stream with the custom extractor
+                # Use sanitize_stream with skip_regexes to remove [model:...] tags
                 # It will decode bytes and yield processed string chunks
                 processed_stream = sanitize_stream(
                     data=resp.iter_content(chunk_size=None), # Pass byte iterator
                     intro_value=None, # No simple prefix
                     to_json=False,    # Content is text
-                    content_extractor=self._toolbaz_extractor, # Use the tag remover
-                    yield_raw_on_error=True, # Yield even if extractor somehow fails (though unlikely for regex)
+                    skip_regexes=[r"\[model:.*?\]"], # Skip [model:...] tags
+                    yield_raw_on_error=True, # Yield even if regex processing fails
                     raw=raw
                 )
 

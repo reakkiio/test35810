@@ -5,6 +5,9 @@ import time
 import uuid
 import re
 import urllib.parse
+import os
+import pickle
+import tempfile
 from typing import List, Dict, Optional, Union, Generator, Any
 
 from webscout.Extra.tempmail import get_random_email
@@ -208,6 +211,96 @@ class TwoAI(OpenAICompatibleProvider):
     """OpenAI-compatible client for the TwoAI API."""
 
     AVAILABLE_MODELS = ["sutra-v2", "sutra-r0"]
+    
+    # Class-level cache for API keys
+    _api_key_cache = None
+    _cache_file = os.path.join(tempfile.gettempdir(), "webscout_twoai_openai_cache.pkl")
+
+    @classmethod
+    def _load_cached_api_key(cls) -> Optional[str]:
+        """Load cached API key from file."""
+        try:
+            if os.path.exists(cls._cache_file):
+                with open(cls._cache_file, 'rb') as f:
+                    cache_data = pickle.load(f)
+                    # Check if cache is not too old (24 hours)
+                    if time.time() - cache_data.get('timestamp', 0) < 86400:
+                        return cache_data.get('api_key')
+        except Exception:
+            # If cache is corrupted or unreadable, ignore and regenerate
+            pass
+        return None
+
+    @classmethod
+    def _save_cached_api_key(cls, api_key: str):
+        """Save API key to cache file."""
+        try:
+            cache_data = {
+                'api_key': api_key,
+                'timestamp': time.time()
+            }
+            with open(cls._cache_file, 'wb') as f:
+                pickle.dump(cache_data, f)
+        except Exception:
+            # If caching fails, continue without caching
+            pass
+
+    @classmethod
+    def _validate_api_key(cls, api_key: str) -> bool:
+        """Validate if an API key is still working."""
+        try:
+            session = Session()
+            headers = {
+                'User-Agent': LitAgent().random(),
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {api_key}',
+            }
+            
+            # Test with a simple request
+            test_payload = {
+                "messages": [{"role": "user", "content": "test"}],
+                "model": "sutra-v2",
+                "max_tokens": 1,
+                "stream": False
+            }
+            
+            response = session.post(
+                "https://api.two.ai/v2/chat/completions",
+                headers=headers,
+                json=test_payload,
+                timeout=10,
+                impersonate="chrome120"
+            )
+            
+            # If we get a 200 or 400 (bad request but auth worked), key is valid
+            # If we get 401/403, key is invalid
+            return response.status_code not in [401, 403]
+        except Exception:
+            # If validation fails, assume key is invalid
+            return False
+
+    @classmethod
+    def get_cached_api_key(cls) -> str:
+        """Get a cached API key or generate a new one if needed."""
+        # First check class-level cache
+        if cls._api_key_cache:
+            if cls._validate_api_key(cls._api_key_cache):
+                return cls._api_key_cache
+            else:
+                cls._api_key_cache = None
+
+        # Then check file cache
+        cached_key = cls._load_cached_api_key()
+        if cached_key and cls._validate_api_key(cached_key):
+            cls._api_key_cache = cached_key
+            return cached_key
+
+        # Generate new key if no valid cached key
+        new_key = cls.generate_api_key()
+        cls._api_key_cache = new_key
+        cls._save_cached_api_key(new_key)
+        return new_key
 
     @staticmethod
     def generate_api_key() -> str:
@@ -302,7 +395,7 @@ class TwoAI(OpenAICompatibleProvider):
         return api_key
 
     def __init__(self, browser: str = "chrome"):
-        api_key = self.generate_api_key()
+        api_key = self.get_cached_api_key()
         self.timeout = 30
         self.base_url = "https://api.two.ai/v2/chat/completions"
         self.api_key = api_key

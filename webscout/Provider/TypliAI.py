@@ -33,7 +33,7 @@ class TypliAI(Provider):
         >>> print(response)
         'I don't have access to real-time weather information...'
     """
-    AVAILABLE_MODELS = ["free-no-sign-up-chatgpt"]
+    AVAILABLE_MODELS = ["gpt-4o-mini"]
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class TypliAI(Provider):
         history_offset: int = 10250,
         act: str = None,
         system_prompt: str = "You are a helpful assistant.",
-        model: str = "free-no-sign-up-chatgpt"
+        model: str = "gpt-4o-mini"
     ):
         """
         Initializes the TypliAI API with given parameters.
@@ -119,16 +119,6 @@ class TypliAI(Provider):
         self.conversation.history_offset = history_offset
 
 
-    @staticmethod
-    def _typli_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from the Typli.ai stream format '0:"..."'."""
-        if isinstance(chunk, str):
-            match = re.search(r'0:"(.*?)"', chunk)
-            if match:
-                # Decode potential unicode escapes like \u00e9
-                content = match.group(1).encode().decode('unicode_escape')
-                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
-        return None
 
     def ask(
         self,
@@ -182,7 +172,7 @@ class TypliAI(Provider):
                     ]
                 }
             ],
-            "slug": self.model
+            "slug": "free-no-sign-up-chatgpt"
         }
 
         def for_stream():
@@ -202,13 +192,21 @@ class TypliAI(Provider):
                     raise exceptions.FailedToGenerateResponseError(error_msg)
 
                 streaming_response = ""
-                # Use sanitize_stream with the custom extractor
+                # Use sanitize_stream with extract_regexes
                 processed_stream = sanitize_stream(
                     data=response.iter_content(chunk_size=None), # Pass byte iterator
                     intro_value=None, # No simple prefix like 'data:'
                     to_json=False,    # Content is extracted as string, not JSON object per line
-                    content_extractor=self._typli_extractor, # Use the specific extractor
-                    skip_markers=["f:{", "e:{", "d:{", "8:[", "2:["] # Skip metadata lines based on observed format
+                    extract_regexes=[r'0:"(.*?)"'], # Extract content from '0:"..."' format
+                    skip_regexes=[
+                        r'^f:\{.*\}$',  # Skip metadata lines starting with f:{
+                        r'^e:\{.*\}$',  # Skip metadata lines starting with e:{
+                        r'^d:\{.*\}$',  # Skip metadata lines starting with d:{
+                        r'^8:\[.*\]$',  # Skip metadata lines starting with 8:[
+                        r'^2:\[.*\]$',  # Skip metadata lines starting with 2:[
+                        r'^\s*$'        # Skip empty lines
+                    ],
+                    raw=raw  # Pass the raw parameter to sanitize_stream
                 )
 
                 for content_chunk in processed_stream:
@@ -244,6 +242,7 @@ class TypliAI(Provider):
         self,
         prompt: str,
         stream: bool = False,
+        raw: bool = False,
         optimizer: str = None,
         conversationally: bool = False,
     ) -> Union[str, Generator[str, None, None]]:
@@ -253,6 +252,7 @@ class TypliAI(Provider):
         Args:
             prompt (str): The prompt to send to the API.
             stream (bool): Whether to stream the response.
+            raw (bool): Whether to return the raw response.
             optimizer (str): Optimizer to use for the prompt.
             conversationally (bool): Whether to generate the prompt conversationally.
 
@@ -262,19 +262,25 @@ class TypliAI(Provider):
 
         def for_stream():
             for response in self.ask(
-                prompt, True, optimizer=optimizer, conversationally=conversationally
+                prompt, True, raw=raw, optimizer=optimizer, conversationally=conversationally
             ):
-                yield self.get_message(response)
+                if raw:
+                    yield response
+                else:
+                    yield self.get_message(response)
 
         def for_non_stream():
-            return self.get_message(
-                self.ask(
-                    prompt,
-                    False,
-                    optimizer=optimizer,
-                    conversationally=conversationally,
-                )
+            result = self.ask(
+                prompt,
+                False,
+                raw=raw,
+                optimizer=optimizer,
+                conversationally=conversationally,
             )
+            if raw:
+                return result
+            else:
+                return self.get_message(result)
 
         return for_stream() if stream else for_non_stream()
 
@@ -290,7 +296,7 @@ class TypliAI(Provider):
         """
         assert isinstance(response, dict), "Response should be of dict data-type only"
         # Ensure text exists before processing
-        return response.get("text", "")
+        return response.get("text", "").replace('\\n', '\n').replace('\\n\\n', '\n\n')
 
 
 
@@ -298,7 +304,7 @@ if __name__ == "__main__":
     from rich import print
     try:
         ai = TypliAI(timeout=60)
-        response = ai.chat("Write a short poem about AI", stream=True)
+        response = ai.chat("Write a short poem about AI", stream=True, raw=False)
         for chunk in response:
             print(chunk, end="", flush=True)
     except Exception as e:

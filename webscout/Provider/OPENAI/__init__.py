@@ -6,7 +6,6 @@ from .x0gpt import *
 from .wisecat import *
 from .venice import *
 from .exaai import *
-from .typegpt import *
 from .scirachat import *
 from .llmchatco import *
 from .yep import * # Add YEPCHAT
@@ -17,7 +16,6 @@ from .netwrck import *
 from .standardinput import *
 from .writecream import *
 from .toolbaz import *
-from .uncovrAI import *
 from .opkfc import *
 from .chatgpt import *
 from .textpollinations import *

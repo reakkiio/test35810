@@ -34,7 +34,6 @@ from .llmchatco import LLMChatCo  # Add new LLMChat.co provider
 from .talkai import *
 from .llama3mitril import *
 from .Marcus import *
-from .typegpt import *
 from .multichat import *
 from .Jadve import *
 from .chatglm import *
@@ -54,7 +53,6 @@ from .Venice import *
 from .GithubChat import *
 from .copilot import *
 from .sonus import *
-from .uncovr import *
 from .LambdaChat import *
 from .ChatGPTClone import *
 from .VercelAI import *
@@ -158,7 +156,6 @@ __all__ = [
     'Talkai',
     'Llama3Mitril',
     'Marcus',
-    'TypeGPT',
     'Netwrck',
     'MultiChatAI',
     'JadveOpenAI',
@@ -166,7 +163,6 @@ __all__ = [
     'NousHermes',
     'FreeAIChat',
     'GithubChat',
-    'UncovrAI',
     'VercelAI',
     'ExaChat',
     'AskSteve',

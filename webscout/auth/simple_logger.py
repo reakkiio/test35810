@@ -37,62 +37,24 @@ class SimpleRequestLogger:
         self.initialize_supabase()
     
     def initialize_supabase(self):
-        """Initialize Supabase client - REQUIRED for logging."""
+        """Initialize Supabase client if credentials are available."""
         if not SUPABASE_AVAILABLE:
-            logger.error("❌ Supabase package not installed! Install with: pip install supabase")
-            logger.error("Request logging is DISABLED without Supabase.")
+            logger.warning("Supabase package not installed. Request logging disabled.")
             return
             
-        supabase_url = self._get_supabase_url()
-        supabase_key = self._get_supabase_key()
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_ANON_KEY")
         
         if supabase_url and supabase_key:
             try:
                 self.supabase_client = create_client(supabase_url, supabase_key)
-                logger.info("✅ Supabase client initialized for request logging")
-                logger.info("🎯 All API requests will be logged to Supabase")
+                logger.info("Supabase client initialized for request logging")
                 
             except Exception as e:
-                logger.error(f"❌ Failed to initialize Supabase client: {e}")
-                logger.error("Request logging is DISABLED due to Supabase connection failure.")
+                logger.error(f"Failed to initialize Supabase client: {e}")
                 self.supabase_client = None
         else:
-            logger.error("❌ Supabase credentials not found!")
-            logger.error("Request logging is DISABLED. Set SUPABASE_URL and SUPABASE_ANON_KEY.")
-    
-    def _get_supabase_url(self) -> Optional[str]:
-        """Get Supabase URL from environment variables or GitHub secrets."""
-        # Try environment variable first
-        url = os.getenv("SUPABASE_URL")
-        if url:
-            logger.info("📍 Using SUPABASE_URL from environment")
-            return url
-        
-        # Try to get from GitHub secrets (if running in GitHub Actions)
-        github_url = os.getenv("GITHUB_SUPABASE_URL")  # GitHub Actions secret
-        if github_url:
-            logger.info("📍 Using SUPABASE_URL from GitHub secrets")
-            return github_url
-        
-        logger.error("⚠️  SUPABASE_URL not found in environment or GitHub secrets")
-        return None
-    
-    def _get_supabase_key(self) -> Optional[str]:
-        """Get Supabase key from environment variables or GitHub secrets."""
-        # Try environment variable first
-        key = os.getenv("SUPABASE_ANON_KEY")
-        if key:
-            logger.info("🔑 Using SUPABASE_ANON_KEY from environment")
-            return key
-        
-        # Try to get from GitHub secrets (if running in GitHub Actions)
-        github_key = os.getenv("GITHUB_SUPABASE_ANON_KEY")  # GitHub Actions secret
-        if github_key:
-            logger.info("🔑 Using SUPABASE_ANON_KEY from GitHub secrets")
-            return github_key
-        
-        logger.error("⚠️  SUPABASE_ANON_KEY not found in environment or GitHub secrets")
-        return None
+            logger.info("Supabase credentials not found. Request logging disabled.")
     
     async def log_request(
         self,

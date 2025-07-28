@@ -32,43 +32,41 @@ def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_
     """Initialize the authentication system."""
     global db_manager, api_key_manager, rate_limiter, auth_middleware
 
-    if not auth_required:
-        logger.info("Auth system is disabled (no-auth mode): skipping DB and API key manager initialization.")
-        db_manager = None
-        api_key_manager = None
-        rate_limiter = None
-        auth_middleware = None
-        return
-
     try:
-        # Initialize database manager
+        # Initialize database manager (always needed for request logging)
         mongo_url = os.getenv("MONGODB_URL")
         data_dir = os.getenv("WEBSCOUT_DATA_DIR", "data")
 
         db_manager = DatabaseManager(mongo_url, data_dir)
 
-        # Initialize API key manager
-        api_key_manager = APIKeyManager(db_manager)
+        if not auth_required:
+            logger.info("Auth system is disabled (no-auth mode): initializing only database for request logging.")
+            api_key_manager = None
+            rate_limiter = None
+            auth_middleware = None
+        else:
+            # Initialize API key manager
+            api_key_manager = APIKeyManager(db_manager)
 
-        # Initialize rate limiter
-        rate_limiter = RateLimiter(db_manager)
+            # Initialize rate limiter
+            rate_limiter = RateLimiter(db_manager)
 
-        # Initialize auth middleware with configuration
-        auth_middleware = AuthMiddleware(
-            api_key_manager,
-            rate_limiter,
-            auth_required=auth_required,
-            rate_limit_enabled=rate_limit_enabled
-        )
+            # Initialize auth middleware with configuration
+            auth_middleware = AuthMiddleware(
+                api_key_manager,
+                rate_limiter,
+                auth_required=auth_required,
+                rate_limit_enabled=rate_limit_enabled
+            )
 
-        # Add auth middleware to app
-        app.middleware("http")(auth_middleware)
+            # Add auth middleware to app
+            app.middleware("http")(auth_middleware)
 
         # Add startup event to initialize database
         async def startup_event():
             if db_manager:
                 await db_manager.initialize()
-                logger.info("Authentication system initialized successfully")
+                logger.info("Database system initialized successfully")
                 logger.info(f"Auth required: {auth_required}, Rate limiting: {rate_limit_enabled}")
 
         # Store startup function for later use
@@ -84,17 +82,4 @@ def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_
 
 def get_auth_components():
     """Get the initialized authentication components."""
-    if db_manager is None:
-        return {
-            "db_manager": None,
-            "api_key_manager": None,
-            "rate_limiter": None,
-            "auth_middleware": None
-        }
-
-    return {
-        "db_manager": db_manager,
-        "api_key_manager": api_key_manager,
-        "rate_limiter": rate_limiter,
-        "auth_middleware": auth_middleware
-    }
+    return api_key_manager, db_manager, rate_limiter

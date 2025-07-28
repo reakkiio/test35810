@@ -15,7 +15,13 @@ try:
 except ImportError:
     HAS_MOTOR = False
 
-from .models import User, APIKey, RateLimitEntry
+try:
+    from supabase import create_client, Client #type: ignore
+    HAS_SUPABASE = True
+except ImportError:
+    HAS_SUPABASE = False
+
+from .models import User, APIKey, RateLimitEntry, RequestLog
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +36,12 @@ class JSONDatabase:
         self.users_file = self.data_dir / "users.json"
         self.api_keys_file = self.data_dir / "api_keys.json"
         self.rate_limits_file = self.data_dir / "rate_limits.json"
+        self.request_logs_file = self.data_dir / "request_logs.json"
         
         self._lock = threading.RLock()
         
         # Initialize files if they don't exist
-        for file_path in [self.users_file, self.api_keys_file, self.rate_limits_file]:
+        for file_path in [self.users_file, self.api_keys_file, self.rate_limits_file, self.request_logs_file]:
             if not file_path.exists():
                 self._write_json(file_path, [])
     
@@ -171,6 +178,22 @@ class JSONDatabase:
         # Only for JSONDatabase
         entries = self._read_json(self.rate_limits_file)
         return [RateLimitEntry.from_dict(e) for e in entries]
+    
+    async def create_request_log(self, request_log: RequestLog) -> RequestLog:
+        """Create a new request log entry."""
+        request_logs = self._read_json(self.request_logs_file)
+        request_logs.append(request_log.to_dict())
+        self._write_json(self.request_logs_file, request_logs)
+        return request_log
+    
+    async def get_request_logs(self, limit: int = 100, offset: int = 0) -> List[RequestLog]:
+        """Get request logs with pagination."""
+        request_logs = self._read_json(self.request_logs_file)
+        # Sort by created_at descending (newest first)
+        request_logs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        # Apply pagination
+        paginated_logs = request_logs[offset:offset + limit]
+        return [RequestLog.from_dict(log_data) for log_data in paginated_logs]
 
 
 class MongoDatabase:
@@ -316,41 +339,342 @@ class MongoDatabase:
         async for entry_data in cursor:
             entries.append(RateLimitEntry.from_dict(entry_data))
         return entries
+    
+    async def create_request_log(self, request_log: RequestLog) -> RequestLog:
+        """Create a new request log entry."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        await self.db.request_logs.insert_one(request_log.to_dict())
+        return request_log
+    
+    async def get_request_logs(self, limit: int = 100, offset: int = 0) -> List[RequestLog]:
+        """Get request logs with pagination."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        cursor = self.db.request_logs.find({}).sort("created_at", -1).skip(offset).limit(limit)
+        logs = []
+        async for log_data in cursor:
+            logs.append(RequestLog.from_dict(log_data))
+        return logs
+
+
+class SupabaseDatabase:
+    """Supabase database implementation."""
+    
+    def __init__(self, supabase_url: str, supabase_key: str):
+        self.supabase_url = supabase_url
+        self.supabase_key = supabase_key
+        self.client: Optional[Client] = None
+        self._connected = False
+    
+    async def connect(self) -> bool:
+        """Connect to Supabase."""
+        if not HAS_SUPABASE:
+            logger.warning("supabase package not available, cannot connect to Supabase")
+            return False
+
+        try:
+            self.client = create_client(self.supabase_url, self.supabase_key)
+            # Test connection by trying to access a table
+            self.client.table('users').select('id').limit(1).execute()
+            self._connected = True
+            logger.info("Connected to Supabase successfully")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to connect to Supabase: {e}")
+            self._connected = False
+            return False
+    
+    async def create_user(self, user: User) -> User:
+        """Create a new user."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('users').insert(user.to_dict()).execute()
+            if result.data:
+                return user
+            else:
+                raise ValueError("Failed to create user")
+        except Exception as e:
+            if "duplicate key" in str(e).lower() or "already exists" in str(e).lower():
+                raise ValueError(f"User with username '{user.username}' already exists")
+            raise e
+    
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """Get user by ID."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('users').select('*').eq('id', user_id).execute()
+            if result.data:
+                return User.from_dict(result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user by ID: {e}")
+            return None
+    
+    async def get_user_by_username(self, username: str) -> Optional[User]:
+        """Get user by username."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+
+        try:
+            result = self.client.table('users').select('*').eq('username', username).execute()
+            if result.data:
+                return User.from_dict(result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user by username: {e}")
+            return None
+
+    async def get_user_by_telegram_id(self, telegram_id: str) -> Optional[User]:
+        """Get user by Telegram ID."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+
+        try:
+            result = self.client.table('users').select('*').eq('telegram_id', int(telegram_id)).execute()
+            if result.data:
+                return User.from_dict(result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user by telegram_id: {e}")
+            return None
+    
+    async def create_api_key(self, api_key: APIKey) -> APIKey:
+        """Create a new API key."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('api_keys').insert(api_key.to_dict()).execute()
+            if result.data:
+                return api_key
+            else:
+                raise ValueError("Failed to create API key")
+        except Exception as e:
+            if "duplicate key" in str(e).lower() or "already exists" in str(e).lower():
+                raise ValueError("API key already exists")
+            raise e
+    
+    async def get_api_key(self, key: str) -> Optional[APIKey]:
+        """Get API key by key value."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('api_keys').select('*').eq('key', key).execute()
+            if result.data:
+                return APIKey.from_dict(result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting API key: {e}")
+            return None
+    
+    async def update_api_key(self, api_key: APIKey) -> APIKey:
+        """Update an existing API key."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('api_keys').update(api_key.to_dict()).eq('id', api_key.id).execute()
+            if result.data:
+                return api_key
+            else:
+                raise ValueError(f"API key with ID '{api_key.id}' not found")
+        except Exception as e:
+            logger.error(f"Error updating API key: {e}")
+            raise e
+    
+    async def get_api_keys_by_user(self, user_id: str) -> List[APIKey]:
+        """Get all API keys for a user."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('api_keys').select('*').eq('user_id', user_id).execute()
+            return [APIKey.from_dict(key_data) for key_data in result.data]
+        except Exception as e:
+            logger.error(f"Error getting API keys by user: {e}")
+            return []
+    
+    async def get_rate_limit_entry(self, api_key_id: str) -> Optional[RateLimitEntry]:
+        """Get rate limit entry for API key."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('rate_limits').select('*').eq('api_key_id', api_key_id).execute()
+            if result.data:
+                return RateLimitEntry.from_dict(result.data[0])
+            return None
+        except Exception as e:
+            logger.error(f"Error getting rate limit entry: {e}")
+            return None
+    
+    async def update_rate_limit_entry(self, entry: RateLimitEntry) -> RateLimitEntry:
+        """Update rate limit entry."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            # Try to update first
+            result = self.client.table('rate_limits').update(entry.to_dict()).eq('api_key_id', entry.api_key_id).execute()
+            if not result.data:
+                # If no rows were updated, insert new entry
+                result = self.client.table('rate_limits').insert(entry.to_dict()).execute()
+            return entry
+        except Exception as e:
+            logger.error(f"Error updating rate limit entry: {e}")
+            raise e
+    
+    async def get_all_rate_limit_entries(self) -> list:
+        """Return all rate limit entries (for maintenance/cleanup) from Supabase."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('rate_limits').select('*').execute()
+            return [RateLimitEntry.from_dict(entry_data) for entry_data in result.data]
+        except Exception as e:
+            logger.error(f"Error getting all rate limit entries: {e}")
+            return []
+    
+    async def create_request_log(self, request_log: RequestLog) -> RequestLog:
+        """Create a new request log entry."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('request_logs').insert(request_log.to_dict()).execute()
+            if result.data:
+                return request_log
+            else:
+                raise ValueError("Failed to create request log")
+        except Exception as e:
+            logger.error(f"Error creating request log: {e}")
+            raise e
+    
+    async def get_request_logs(self, limit: int = 100, offset: int = 0) -> List[RequestLog]:
+        """Get request logs with pagination."""
+        if not self._connected:
+            raise RuntimeError("Database not connected")
+        
+        try:
+            result = self.client.table('request_logs').select('*').order('created_at', desc=True).range(offset, offset + limit - 1).execute()
+            return [RequestLog.from_dict(log_data) for log_data in result.data]
+        except Exception as e:
+            logger.error(f"Error getting request logs: {e}")
+            return []
 
 
 class DatabaseManager:
-    """Database manager that handles MongoDB with JSON fallback."""
+    """Database manager that ALWAYS uses Supabase - no fallbacks allowed."""
     
     def __init__(self, mongo_connection_string: Optional[str] = None, data_dir: str = "data"):
-        self.mongo_connection_string = mongo_connection_string or os.getenv("MONGODB_URL")
-        self.data_dir = data_dir
+        # Keep parameters for compatibility but ignore them
+        self.supabase_url = self._get_supabase_url()
+        self.supabase_key = self._get_supabase_key()
+        self.supabase_db = None
         
-        self.mongo_db = None
-        self.json_db = JSONDatabase(data_dir)
-        self.use_mongo = False
+        logger.info("🔗 Database manager initialized - SUPABASE ONLY MODE")
+        logger.info("📋 MongoDB and JSON fallbacks are DISABLED")
+    
+    def _get_supabase_url(self) -> Optional[str]:
+        """Get Supabase URL from environment variables or GitHub secrets."""
+        # Try environment variable first
+        url = os.getenv("SUPABASE_URL")
+        if url:
+            logger.info("📍 Using SUPABASE_URL from environment")
+            return url
         
-        logger.info(f"Database manager initialized with data_dir: {data_dir}")
+        # Try to get from GitHub secrets (if running in GitHub Actions)
+        github_url = os.getenv("GITHUB_SUPABASE_URL")  # GitHub Actions secret
+        if github_url:
+            logger.info("📍 Using SUPABASE_URL from GitHub secrets")
+            return github_url
+        
+        logger.error("❌ SUPABASE_URL not found in environment or GitHub secrets")
+        return None
+    
+    def _get_supabase_key(self) -> Optional[str]:
+        """Get Supabase key from environment variables or GitHub secrets."""
+        # Try environment variable first
+        key = os.getenv("SUPABASE_ANON_KEY")
+        if key:
+            logger.info("🔑 Using SUPABASE_ANON_KEY from environment")
+            return key
+        
+        # Try to get from GitHub secrets (if running in GitHub Actions)
+        github_key = os.getenv("GITHUB_SUPABASE_ANON_KEY")  # GitHub Actions secret
+        if github_key:
+            logger.info("🔑 Using SUPABASE_ANON_KEY from GitHub secrets")
+            return github_key
+        
+        logger.error("❌ SUPABASE_ANON_KEY not found in environment or GitHub secrets")
+        return None
     
     async def initialize(self) -> None:
-        """Initialize database connection."""
-        if self.mongo_connection_string:
-            try:
-                self.mongo_db = MongoDatabase(self.mongo_connection_string)
-                self.use_mongo = await self.mongo_db.connect()
-                if self.use_mongo:
-                    logger.info("Using MongoDB as primary database")
-                else:
-                    logger.info("MongoDB connection failed, falling back to JSON database")
-            except Exception as e:
-                logger.warning(f"MongoDB initialization failed: {e}, using JSON database")
-                self.use_mongo = False
-        else:
-            logger.info("No MongoDB connection string provided, using JSON database")
+        """Initialize Supabase database connection (REQUIRED - no fallbacks)."""
+        if not self.supabase_url or not self.supabase_key:
+            error_msg = """
+❌ CRITICAL ERROR: Supabase credentials are REQUIRED!
+
+This system has been configured to ALWAYS use Supabase database.
+No fallbacks to MongoDB or JSON files are available.
+
+Required environment variables:
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+
+Or GitHub secrets (for GitHub Actions):
+- GITHUB_SUPABASE_URL
+- GITHUB_SUPABASE_ANON_KEY
+
+Please set these credentials and restart the application.
+            """
+            logger.error(error_msg)
+            raise RuntimeError("Supabase credentials are required. No fallback databases available.")
+        
+        logger.info("🔗 Connecting to Supabase (REQUIRED)...")
+        try:
+            self.supabase_db = SupabaseDatabase(self.supabase_url, self.supabase_key)
+            connected = await self.supabase_db.connect()
+            
+            if connected:
+                logger.info("✅ Successfully connected to Supabase database")
+                logger.info("🎯 All data will be stored in Supabase")
+            else:
+                error_msg = """
+❌ CRITICAL ERROR: Failed to connect to Supabase!
+
+Connection failed but credentials were provided.
+This could be due to:
+- Network connectivity issues
+- Invalid credentials
+- Supabase service unavailable
+- Firewall blocking connection
+
+Please check your Supabase credentials and connection.
+No fallback databases are available.
+                """
+                logger.error(error_msg)
+                raise RuntimeError("Failed to connect to Supabase. No fallback databases available.")
+                
+        except Exception as e:
+            logger.error(f"❌ Supabase connection error: {e}")
+            raise RuntimeError(f"Failed to initialize Supabase: {e}. No fallback databases available.")
     
     @property
-    def db(self) -> Union[MongoDatabase, JSONDatabase]:
-        """Get the active database instance."""
-        return self.mongo_db if self.use_mongo else self.json_db
+    def db(self) -> SupabaseDatabase:
+        """Get the Supabase database instance (ONLY option)."""
+        if not self.supabase_db:
+            raise RuntimeError("Supabase database not initialized. Call initialize() first.")
+        return self.supabase_db
     
     async def create_user(self, user: User) -> User:
         """Create a new user."""
@@ -392,9 +716,25 @@ class DatabaseManager:
         """Update rate limit entry."""
         return await self.db.update_rate_limit_entry(entry)
     
+    async def create_request_log(self, request_log: RequestLog) -> RequestLog:
+        """Create a new request log entry."""
+        return await self.db.create_request_log(request_log)
+    
+    async def get_request_logs(self, limit: int = 100, offset: int = 0) -> List[RequestLog]:
+        """Get request logs with pagination."""
+        return await self.db.get_request_logs(limit, offset)
+    
     def get_status(self) -> Dict[str, str]:
-        """Get database status."""
+        """Get Supabase database status (ONLY option)."""
+        if not self.supabase_db:
+            return {
+                "type": "Supabase",
+                "status": "not_initialized",
+                "message": "Supabase database not initialized"
+            }
+        
         return {
-            "type": "MongoDB" if self.use_mongo else "JSON",
-            "status": "connected" if (self.use_mongo and self.mongo_db._connected) or (not self.use_mongo) else "disconnected"
+            "type": "Supabase",
+            "status": "connected" if self.supabase_db._connected else "disconnected",
+            "message": "Supabase-only mode active"
         }

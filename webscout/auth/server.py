@@ -40,8 +40,15 @@ logger = Logger(
     fmt=LogFormat.DEFAULT
 )
 
-# Global configuration instance
-config = ServerConfig()
+# Global configuration instance - lazy initialization
+config = None
+
+def get_config() -> ServerConfig:
+    """Get or create the global configuration instance."""
+    global config
+    if config is None:
+        config = ServerConfig()
+    return config
 
 
 def create_app():

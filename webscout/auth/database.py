@@ -573,32 +573,35 @@ class SupabaseDatabase:
 
 
 class DatabaseManager:
-    """Database manager that ALWAYS uses Supabase - no fallbacks allowed."""
+    """Database manager with flexible backend support."""
     
     def __init__(self, mongo_connection_string: Optional[str] = None, data_dir: str = "data"):
-        # Keep parameters for compatibility but ignore them
+        self.mongo_connection_string = mongo_connection_string
+        self.data_dir = data_dir
         self.supabase_url = self._get_supabase_url()
         self.supabase_key = self._get_supabase_key()
-        self.supabase_db = None
         
-        logger.info("🔗 Database manager initialized - SUPABASE ONLY MODE")
-        logger.info("📋 MongoDB and JSON fallbacks are DISABLED")
+        # Database instances
+        self.supabase_db = None
+        self.mongo_db = None
+        self.json_db = None
+        self.active_db = None
+        
+        logger.info("🔗 Database manager initialized with flexible backend support")
     
     def _get_supabase_url(self) -> Optional[str]:
         """Get Supabase URL from environment variables or GitHub secrets."""
         # Try environment variable first
         url = os.getenv("SUPABASE_URL")
         if url:
-            logger.info("📍 Using SUPABASE_URL from environment")
             return url
         
         # Try to get from GitHub secrets (if running in GitHub Actions)
         github_url = os.getenv("GITHUB_SUPABASE_URL")  # GitHub Actions secret
         if github_url:
-            logger.info("📍 Using SUPABASE_URL from GitHub secrets")
             return github_url
         
-        logger.error("❌ SUPABASE_URL not found in environment or GitHub secrets")
+        # Don't log error during initialization - only when actually needed
         return None
     
     def _get_supabase_key(self) -> Optional[str]:
@@ -606,75 +609,68 @@ class DatabaseManager:
         # Try environment variable first
         key = os.getenv("SUPABASE_ANON_KEY")
         if key:
-            logger.info("🔑 Using SUPABASE_ANON_KEY from environment")
             return key
         
         # Try to get from GitHub secrets (if running in GitHub Actions)
         github_key = os.getenv("GITHUB_SUPABASE_ANON_KEY")  # GitHub Actions secret
         if github_key:
-            logger.info("🔑 Using SUPABASE_ANON_KEY from GitHub secrets")
             return github_key
         
-        logger.error("❌ SUPABASE_ANON_KEY not found in environment or GitHub secrets")
+        # Don't log error during initialization - only when actually needed
         return None
     
     async def initialize(self) -> None:
-        """Initialize Supabase database connection (REQUIRED - no fallbacks)."""
-        if not self.supabase_url or not self.supabase_key:
-            error_msg = """
-❌ CRITICAL ERROR: Supabase credentials are REQUIRED!
-
-This system has been configured to ALWAYS use Supabase database.
-No fallbacks to MongoDB or JSON files are available.
-
-Required environment variables:
-- SUPABASE_URL
-- SUPABASE_ANON_KEY
-
-Or GitHub secrets (for GitHub Actions):
-- GITHUB_SUPABASE_URL
-- GITHUB_SUPABASE_ANON_KEY
-
-Please set these credentials and restart the application.
-            """
-            logger.error(error_msg)
-            raise RuntimeError("Supabase credentials are required. No fallback databases available.")
-        
-        logger.info("🔗 Connecting to Supabase (REQUIRED)...")
-        try:
-            self.supabase_db = SupabaseDatabase(self.supabase_url, self.supabase_key)
-            connected = await self.supabase_db.connect()
-            
-            if connected:
-                logger.info("✅ Successfully connected to Supabase database")
-                logger.info("🎯 All data will be stored in Supabase")
-            else:
-                error_msg = """
-❌ CRITICAL ERROR: Failed to connect to Supabase!
-
-Connection failed but credentials were provided.
-This could be due to:
-- Network connectivity issues
-- Invalid credentials
-- Supabase service unavailable
-- Firewall blocking connection
-
-Please check your Supabase credentials and connection.
-No fallback databases are available.
-                """
-                logger.error(error_msg)
-                raise RuntimeError("Failed to connect to Supabase. No fallback databases available.")
+        """Initialize database connection with fallback support."""
+        # Try Supabase first if credentials are available
+        if self.supabase_url and self.supabase_key:
+            logger.info("🔗 Attempting to connect to Supabase...")
+            try:
+                self.supabase_db = SupabaseDatabase(self.supabase_url, self.supabase_key)
+                connected = await self.supabase_db.connect()
                 
+                if connected:
+                    self.active_db = self.supabase_db
+                    logger.info("✅ Successfully connected to Supabase database")
+                    return
+                else:
+                    logger.warning("⚠️ Failed to connect to Supabase, trying fallbacks...")
+            except Exception as e:
+                logger.warning(f"⚠️ Supabase connection error: {e}, trying fallbacks...")
+        else:
+            logger.info("ℹ️ Supabase credentials not found, using fallback databases")
+        
+        # Try MongoDB if connection string is provided
+        if self.mongo_connection_string:
+            logger.info("🔗 Attempting to connect to MongoDB...")
+            try:
+                self.mongo_db = MongoDatabase(self.mongo_connection_string)
+                connected = await self.mongo_db.connect()
+                
+                if connected:
+                    self.active_db = self.mongo_db
+                    logger.info("✅ Successfully connected to MongoDB database")
+                    return
+                else:
+                    logger.warning("⚠️ Failed to connect to MongoDB, falling back to JSON...")
+            except Exception as e:
+                logger.warning(f"⚠️ MongoDB connection error: {e}, falling back to JSON...")
+        
+        # Fall back to JSON database
+        logger.info("📁 Using JSON file database as fallback")
+        try:
+            self.json_db = JSONDatabase(self.data_dir)
+            self.active_db = self.json_db
+            logger.info("✅ Successfully initialized JSON database")
         except Exception as e:
-            logger.error(f"❌ Supabase connection error: {e}")
-            raise RuntimeError(f"Failed to initialize Supabase: {e}. No fallback databases available.")
+            logger.error(f"❌ Failed to initialize JSON database: {e}")
+            raise RuntimeError(f"Failed to initialize any database backend: {e}")
     
     @property
-    def db(self) -> SupabaseDatabase:
-        """Get the Supabase database instance (ONLY option)."""
-        if not self.supabase_db:
-            raise RuntimeError("Supabase database not initialized. Call initialize() first.")
-        return self.supabase_db
+    def db(self):
+        """Get the active database instance."""
+        if not self.active_db:
+            raise RuntimeError("Database not initialized. Call initialize() first.")
+        return self.active_db
     
     async def create_user(self, user: User) -> User:
         """Create a new user."""
@@ -725,16 +721,35 @@ No fallback databases are available.
         return await self.db.get_request_logs(limit, offset)
     
     def get_status(self) -> Dict[str, str]:
-        """Get Supabase database status (ONLY option)."""
-        if not self.supabase_db:
+        """Get database status."""
+        if not self.active_db:
             return {
-                "type": "Supabase",
+                "type": "None",
                 "status": "not_initialized",
-                "message": "Supabase database not initialized"
+                "message": "Database not initialized"
             }
         
-        return {
-            "type": "Supabase",
-            "status": "connected" if self.supabase_db._connected else "disconnected",
-            "message": "Supabase-only mode active"
-        }
+        if isinstance(self.active_db, SupabaseDatabase):
+            return {
+                "type": "Supabase",
+                "status": "connected" if self.active_db._connected else "disconnected",
+                "message": "Using Supabase database"
+            }
+        elif isinstance(self.active_db, MongoDatabase):
+            return {
+                "type": "MongoDB",
+                "status": "connected" if self.active_db._connected else "disconnected",
+                "message": "Using MongoDB database"
+            }
+        elif isinstance(self.active_db, JSONDatabase):
+            return {
+                "type": "JSON",
+                "status": "connected",
+                "message": "Using JSON file database"
+            }
+        else:
+            return {
+                "type": "Unknown",
+                "status": "unknown",
+                "message": "Unknown database type"
+            }

@@ -20,6 +20,42 @@ logger = Logger(
 )
 
 
+def _get_supabase_url() -> Optional[str]:
+    """Get Supabase URL from environment variables or GitHub secrets."""
+    # Try environment variable first
+    url = os.getenv("SUPABASE_URL")
+    if url:
+        logger.info("📍 Using SUPABASE_URL from environment")
+        return url
+    
+    # Try to get from GitHub secrets (if running in GitHub Actions)
+    github_url = os.getenv("GITHUB_SUPABASE_URL")  # GitHub Actions secret
+    if github_url:
+        logger.info("📍 Using SUPABASE_URL from GitHub secrets")
+        return github_url
+    
+    # Don't log error during import - only when actually needed
+    return None
+
+
+def _get_supabase_anon_key() -> Optional[str]:
+    """Get Supabase anon key from environment variables or GitHub secrets."""
+    # Try environment variable first
+    key = os.getenv("SUPABASE_ANON_KEY")
+    if key:
+        logger.info("🔑 Using SUPABASE_ANON_KEY from environment")
+        return key
+    
+    # Try to get from GitHub secrets (if running in GitHub Actions)
+    github_key = os.getenv("GITHUB_SUPABASE_ANON_KEY")  # GitHub Actions secret
+    if github_key:
+        logger.info("🔑 Using SUPABASE_ANON_KEY from GitHub secrets")
+        return github_key
+    
+    # Don't log error during import - only when actually needed
+    return None
+
+
 class ServerConfig:
     """Centralized configuration management for the API server."""
 
@@ -39,10 +75,28 @@ class ServerConfig:
         self.default_rate_limit: int = 60  # Default rate limit for no-auth mode
         self.request_logging_enabled: bool = os.getenv("WEBSCOUT_REQUEST_LOGGING", "true").lower() == "true"  # Enable request logging by default
         
-        # Database configuration
-        self.supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
-        self.supabase_anon_key: Optional[str] = os.getenv("SUPABASE_ANON_KEY")
+        # Database configuration - lazy initialization
+        self._supabase_url: Optional[str] = None
+        self._supabase_anon_key: Optional[str] = None
+        self._supabase_url_checked: bool = False
+        self._supabase_anon_key_checked: bool = False
         self.mongodb_url: Optional[str] = os.getenv("MONGODB_URL")
+
+    @property
+    def supabase_url(self) -> Optional[str]:
+        """Get Supabase URL with lazy initialization."""
+        if not self._supabase_url_checked:
+            self._supabase_url = _get_supabase_url()
+            self._supabase_url_checked = True
+        return self._supabase_url
+
+    @property
+    def supabase_anon_key(self) -> Optional[str]:
+        """Get Supabase anon key with lazy initialization."""
+        if not self._supabase_anon_key_checked:
+            self._supabase_anon_key = _get_supabase_anon_key()
+            self._supabase_anon_key_checked = True
+        return self._supabase_anon_key
 
     def update(self, **kwargs) -> None:
         """Update configuration with provided values."""
@@ -74,10 +128,37 @@ class AppConfig:
     default_rate_limit: int = 60  # Default rate limit for no-auth mode
     request_logging_enabled: bool = os.getenv("WEBSCOUT_REQUEST_LOGGING", "true").lower() == "true"  # Enable request logging by default
     
-    # Database configuration
-    supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
-    supabase_anon_key: Optional[str] = os.getenv("SUPABASE_ANON_KEY")
+    # Database configuration - lazy initialization
+    _supabase_url: Optional[str] = None
+    _supabase_anon_key: Optional[str] = None
+    _supabase_url_checked: bool = False
+    _supabase_anon_key_checked: bool = False
     mongodb_url: Optional[str] = os.getenv("MONGODB_URL")
+
+    @classmethod
+    def get_supabase_url(cls) -> Optional[str]:
+        """Get Supabase URL with lazy initialization."""
+        if not cls._supabase_url_checked:
+            cls._supabase_url = _get_supabase_url()
+            cls._supabase_url_checked = True
+        return cls._supabase_url
+
+    @classmethod
+    def get_supabase_anon_key(cls) -> Optional[str]:
+        """Get Supabase anon key with lazy initialization."""
+        if not cls._supabase_anon_key_checked:
+            cls._supabase_anon_key = _get_supabase_anon_key()
+            cls._supabase_anon_key_checked = True
+        return cls._supabase_anon_key
+
+    # For backward compatibility, provide properties that call the methods
+    @property
+    def supabase_url(self) -> Optional[str]:
+        return self.__class__.get_supabase_url()
+
+    @property
+    def supabase_anon_key(self) -> Optional[str]:
+        return self.__class__.get_supabase_anon_key()
 
     @classmethod
     def set_config(cls, **data):
@@ -85,5 +166,10 @@ class AppConfig:
         for key, value in data.items():
             setattr(cls, key, value)
         # Sync with new config system
-        from .server import config
-        config.update(**data)
+        try:
+            from .server import get_config
+            config = get_config()
+            config.update(**data)
+        except ImportError:
+            # Handle case where server module is not available
+            pass

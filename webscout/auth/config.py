@@ -63,28 +63,24 @@ def _get_github_secret(secret_name: str) -> Optional[str]:
     return None
 
 
-def _get_supabase_url() -> str:
+def _get_supabase_url() -> Optional[str]:
     """Get Supabase URL from GitHub secrets or environment."""
     url = _get_github_secret("SUPABASE_URL")
     if not url:
-        raise ValueError(
-            "❌ SUPABASE_URL is required but not found!\n"
-            "Please set SUPABASE_URL in your GitHub repository secrets or environment variables.\n"
-            "This is REQUIRED for Supabase-only mode."
-        )
+        logger.warning("⚠️  SUPABASE_URL not found in environment or GitHub secrets")
+        logger.info("🔄 Supabase database features will be disabled")
+        return None
     logger.info("✅ Supabase URL configured from GitHub secrets")
     return url
 
 
-def _get_supabase_key() -> str:
+def _get_supabase_key() -> Optional[str]:
     """Get Supabase anonymous key from GitHub secrets or environment."""
     key = _get_github_secret("SUPABASE_ANON_KEY")
     if not key:
-        raise ValueError(
-            "❌ SUPABASE_ANON_KEY is required but not found!\n"
-            "Please set SUPABASE_ANON_KEY in your GitHub repository secrets or environment variables.\n"
-            "This is REQUIRED for Supabase-only mode."
-        )
+        logger.warning("⚠️  SUPABASE_ANON_KEY not found in environment or GitHub secrets")
+        logger.info("🔄 Supabase database features will be disabled")
+        return None
     logger.info("✅ Supabase anonymous key configured from GitHub secrets")
     return key
 
@@ -113,25 +109,34 @@ class ServerConfig:
         self.default_rate_limit: int = 60  # Default rate limit
         self.request_logging_enabled: bool = True  # ALWAYS enable request logging to Supabase
         
-        # SUPABASE-ONLY DATABASE CONFIGURATION
-        # Get Supabase credentials from GitHub secrets (REQUIRED)
-        try:
-            self.supabase_url: str = _get_supabase_url()
-            self.supabase_anon_key: str = _get_supabase_key()
-            logger.info("🎯 Supabase-only mode: Database configured successfully")
-        except ValueError as e:
-            logger.error(f"❌ Supabase configuration failed: {e}")
-            raise
+        # SUPABASE DATABASE CONFIGURATION (OPTIONAL)
+        # Get Supabase credentials from GitHub secrets or environment
+        self.supabase_url: Optional[str] = _get_supabase_url()
+        self.supabase_anon_key: Optional[str] = _get_supabase_key()
         
-        # REMOVE MONGODB FALLBACK - Supabase only!
-        self.mongodb_url: Optional[str] = None  # DISABLED - Supabase only
+        if self.supabase_url and self.supabase_anon_key:
+            logger.info("🎯 Supabase database: Configured successfully")
+            self.database_mode = "supabase"
+        else:
+            logger.info("🔄 Supabase database: Not configured, using fallback mode")
+            self.database_mode = "fallback"
         
-        logger.info("🚀 ServerConfig initialized in SUPABASE-ONLY mode")
+        # MongoDB fallback option
+        self.mongodb_url: Optional[str] = os.getenv("MONGODB_URL")
+        
+        logger.info("🚀 ServerConfig initialized")
         logger.info("✅ Authentication: ENABLED")
         logger.info("✅ Rate Limiting: ENABLED")
-        logger.info("✅ Request Logging: ENABLED (Supabase)")
-        logger.info("❌ MongoDB Fallback: DISABLED")
-        logger.info("❌ JSON File Fallback: DISABLED")
+        logger.info(f"✅ Request Logging: ENABLED ({self.database_mode})")
+        if self.database_mode == "supabase":
+            logger.info("✅ Supabase Database: ENABLED")
+            logger.info("❌ MongoDB Fallback: DISABLED")
+        else:
+            logger.info("⚠️  Supabase Database: DISABLED")
+            if self.mongodb_url:
+                logger.info("✅ MongoDB Fallback: ENABLED")
+            else:
+                logger.info("✅ JSON File Fallback: ENABLED")
 
     def update(self, **kwargs) -> None:
         """Update configuration with provided values."""
@@ -162,24 +167,19 @@ class AppConfig:
     default_tti_provider = "PollinationsAI"  # Add default TTI provider
     base_url: Optional[str] = None
     
-    # FORCE SUPABASE-ONLY CONFIGURATION
-    auth_required: bool = os.getenv("WEBSCOUT_AUTH_REQUIRED", "true").lower() == "true"  # FORCE auth enabled
-    rate_limit_enabled: bool = os.getenv("WEBSCOUT_RATE_LIMIT_ENABLED", "true").lower() == "true"  # FORCE rate limiting
+    # CONFIGURATION OPTIONS
+    auth_required: bool = os.getenv("WEBSCOUT_AUTH_REQUIRED", "true").lower() == "true"
+    rate_limit_enabled: bool = os.getenv("WEBSCOUT_RATE_LIMIT_ENABLED", "true").lower() == "true"
     default_rate_limit: int = 60  # Default rate limit
-    request_logging_enabled: bool = True  # ALWAYS enable request logging to Supabase
+    request_logging_enabled: bool = True  # Enable request logging
     
-    # SUPABASE-ONLY DATABASE CONFIGURATION
-    # Get Supabase credentials from GitHub secrets (REQUIRED)
-    try:
-        supabase_url: str = _get_supabase_url()
-        supabase_anon_key: str = _get_supabase_key()
-    except ValueError:
-        # Fallback for class-level initialization
-        supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
-        supabase_anon_key: Optional[str] = os.getenv("SUPABASE_ANON_KEY")
+    # DATABASE CONFIGURATION (OPTIONAL)
+    # Get Supabase credentials from GitHub secrets or environment
+    supabase_url: Optional[str] = _get_supabase_url()
+    supabase_anon_key: Optional[str] = _get_supabase_key()
     
-    # REMOVE MONGODB FALLBACK - Supabase only!
-    mongodb_url: Optional[str] = None  # DISABLED - Supabase only
+    # MongoDB fallback option
+    mongodb_url: Optional[str] = os.getenv("MONGODB_URL")
 
     @classmethod
     def set_config(cls, **data):

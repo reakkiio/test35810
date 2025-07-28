@@ -112,20 +112,27 @@ def _process_chunk(
 
     # Apply regex-based extraction first (if provided)
     if extract_regexes:
+        extracted_content = None
         for regex in extract_regexes:
             match = regex.search(sanitized_chunk)
             if match:
                 # If there are capturing groups, return the first group or all groups as a tuple
                 if match.groups():
                     if len(match.groups()) == 1:
-                        sanitized_chunk = match.group(1)
+                        extracted_content = match.group(1)
                     else:
                         # Multiple groups - return as tuple converted to string for JSON compatibility
-                        sanitized_chunk = str(match.groups())
+                        extracted_content = str(match.groups())
                 else:
                     # No capturing groups, return the full match
-                    sanitized_chunk = match.group(0)
+                    extracted_content = match.group(0)
                 break  # Use first matching extraction regex
+        
+        # If extract_regexes are provided but no match found, skip this chunk entirely
+        if extracted_content is None:
+            return None
+        
+        sanitized_chunk = extracted_content
 
     # Apply regex-based skipping (after extraction)
     if skip_regexes:

@@ -76,16 +76,6 @@ class WiseCat(Provider):
         )
         self.conversation.history_offset = history_offset
 
-    @staticmethod
-    def _wisecat_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from the WiseCat stream format '0:"..."'."""
-        if isinstance(chunk, str):
-            match = re.search(r'0:"(.*?)"', chunk)
-            if match:
-                # Decode potential unicode escapes like \u00e9
-                content = match.group(1).encode().decode('unicode_escape')
-                return content.replace('\\\\', '\\').replace('\\"', '"') # Handle escaped backslashes and quotes
-        return None
 
     def ask(
         self,
@@ -138,19 +128,23 @@ class WiseCat(Provider):
                     data=response.iter_content(chunk_size=None),
                     intro_value=None,
                     to_json=False,
-                    content_extractor=self._wisecat_extractor,
+                    extract_regexes=[
+                        r'0:"(.*?)"'  # Extract content from 0:"..." format
+                    ],
                     raw=raw
                 )
                 for content_chunk in processed_stream:
-                    # Always yield as string, even in raw mode
-                    if isinstance(content_chunk, bytes):
-                        content_chunk = content_chunk.decode('utf-8', errors='ignore')
-                    if raw:
-                        yield content_chunk
-                    else:
-                        if content_chunk and isinstance(content_chunk, str):
-                            streaming_text += content_chunk
-                            yield dict(text=content_chunk)
+                    if content_chunk and isinstance(content_chunk, str):
+                        # Content is already extracted by sanitize_stream
+                        # Handle unicode escaping and quote unescaping
+                        extracted_content = content_chunk.encode().decode('unicode_escape')
+                        extracted_content = extracted_content.replace('\\\\', '\\').replace('\\"', '"')
+                        
+                        if raw:
+                            yield extracted_content
+                        else:
+                            streaming_text += extracted_content
+                            yield dict(text=extracted_content)
                 self.last_response.update(dict(text=streaming_text))
                 self.conversation.update_chat_history(
                     prompt, self.get_message(self.last_response)

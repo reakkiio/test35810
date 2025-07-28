@@ -68,7 +68,6 @@ from .scira_chat import *
 from .StandardInput import *
 from .toolbaz import Toolbaz
 from .scnet import SCNet
-from .WritingMate import WritingMate
 from .MCPCore import MCPCore
 from .TypliAI import TypliAI
 from .ChatSandbox import ChatSandbox
@@ -116,7 +115,6 @@ __all__ = [
     'AllenAI',
     'PerplexityLabs',
     'AkashGPT',
-    'WritingMate',
     'WiseCat',
     'IBMGranite',
     'QwenLM',

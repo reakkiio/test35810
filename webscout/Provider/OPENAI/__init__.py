@@ -44,6 +44,7 @@ from .friendli import *
 from .monochat import *
 from .MiniMax import *  # Add MiniMaxAI provider
 from .qodo import *  # Add QodoAI provider
+from .kimi import *  # Add Kimi provider
 # Export auto-proxy functionality
 from .autoproxy import (
     get_auto_proxy,

@@ -84,9 +84,11 @@ from .TogetherAI import TogetherAI
 from .MiniMax import MiniMax
 from .Qodo import *
 from .monochat import MonoChat
+from .Kimi import Kimi
 __all__ = [
     'SCNet',
     'MonoChat',
+    'Kimi',
     'MiniMax',
     'QodoAI',
     'GeminiProxy',

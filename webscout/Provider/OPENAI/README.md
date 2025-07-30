@@ -73,7 +73,7 @@ Currently, the following providers are implemented with OpenAI-compatible interf
 - Friendli
 - MiniMax
 - QodoAI
-
+- Kimi
 ## 💻 Usage Examples
 
 Here are examples of how to use the OpenAI-compatible providers in your code.

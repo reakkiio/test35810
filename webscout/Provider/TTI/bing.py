@@ -20,7 +20,7 @@ class Images(BaseImages):
     def create(
         self,
         *,
-        model: str = "bing",
+        model: str = "dalle",
         prompt: str,
         n: int = 1,
         size: str = "1024x1024",
@@ -42,10 +42,21 @@ class Images(BaseImages):
         headers = self._client.headers
         images = []
         urls = []
+        
+        # Map model names to Bing model codes
+        model_mapping = {
+            "dalle": "0",
+            "gpt4o": "1",
+        }
+        
+        # Get the appropriate model code
+        model_code = model_mapping.get(model.lower(), "4")
+        
         for _ in range(n):
             data = {
                 "q": prompt,
                 "rt": "4",
+                "mdl": model_code,
                 "FORM": "GENCRE"
             }
             response = session.post(
@@ -221,8 +232,9 @@ class BingImageAI(TTICompatibleProvider):
 
 if __name__ == "__main__":
     from rich import print
-    client = BingImageAI(cookie="1pkdvumH1SEjFkDjFymRYKouIRoXZlh_p5RTfAttx4DaaNOSDyz8qFP2M7LbZ93fbl4f6Xm8fTGwXHNDB648Gom5jfnTU_Iz-VH47l0HTYJDS1sItbBBS-sqSISFgXR62SoqnW5eX5MFht-j2uB1gZ4uDnpR_60fLRTCdW1SIRegDvnBm1TGhRiZsi6wUPyzwFg7-PsXAs3Fq9iV9m-0FEw")
+    client = BingImageAI(cookie="1QyBY4Z1eHBW6fbI25kdM5TrlRGWzn5PFySapCOfvvz04zaounFG660EipVJSOXXvcdeXXLwsWHdDI8bNymucF_QnMHSlY1mc0pPI7e9Ar6o-_7e9Ik5QOe1nkJIe5vz22pibioTqx0IfVKwmVbX22A3bFD7ODaSZalKFr-AuxgAaRVod-giTTry6Ei7RVgisF7BHlkMPPwtCeO234ujgug")
     response = client.images.create(
+        model="gpt4o",
         prompt="A cat riding a bicycle",
         response_format="url",
         n=4,

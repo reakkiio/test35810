@@ -202,24 +202,25 @@ class Images(BaseImages):
 class TogetherImage(TTICompatibleProvider):
     """
     Together.xyz Text-to-Image provider
-    Updated: 2025-06-02 10:42:41 UTC by OEvortex
+    Updated: 2025-08-01 10:42:41 UTC by OEvortex
     Supports FLUX and other image generation models
     """
     
     # Image models from Together.xyz API (filtered for image type only)
     AVAILABLE_MODELS = [
-        "black-forest-labs/FLUX.1-pro",
-        "black-forest-labs/FLUX.1.1-pro",
-        "black-forest-labs/FLUX.1-redux",
-        "black-forest-labs/FLUX.1-dev-lora",
-        "black-forest-labs/FLUX.1-schnell",
-        "black-forest-labs/FLUX.1-depth",
-        "black-forest-labs/FLUX.1-kontext-dev",
-        "black-forest-labs/FLUX.1-dev",
         "black-forest-labs/FLUX.1-canny",
+        "black-forest-labs/FLUX.1-depth",
+        "black-forest-labs/FLUX.1-dev",
+        "black-forest-labs/FLUX.1-dev-lora",
+        "black-forest-labs/FLUX.1-kontext-dev",
         "black-forest-labs/FLUX.1-kontext-max",
+        "black-forest-labs/FLUX.1-kontext-pro",
+        "black-forest-labs/FLUX.1-krea-dev",
+        "black-forest-labs/FLUX.1-pro",
+        "black-forest-labs/FLUX.1-redux",
+        "black-forest-labs/FLUX.1-schnell",
         "black-forest-labs/FLUX.1-schnell-Free",
-        "black-forest-labs/FLUX.1-kontext-pro"
+        "black-forest-labs/FLUX.1.1-pro"
     ]
 
     def __init__(self):

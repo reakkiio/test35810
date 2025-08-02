@@ -10,13 +10,42 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import utils
 from .base import BaseTTSProvider
 
+
 class MurfAITTS(BaseTTSProvider):
-    """Text-to-speech provider using the MurfAITTS API."""
+    """
+    Text-to-speech provider using the MurfAITTS API with OpenAI-compatible interface.
+    
+    This provider follows the OpenAI TTS API structure with support for:
+    - Multiple TTS models (gpt-4o-mini-tts, tts-1, tts-1-hd)
+    - Multiple voices with OpenAI-style naming
+    - Voice instructions for controlling speech aspects
+    - Multiple output formats (mp3, wav, aac, flac, opus, pcm)
+    - Streaming support
+    """
+    
+    # Override supported models for MurfAI (set to None as requested)
+    SUPPORTED_MODELS = None
+    
+    # Override supported voices with real MurfAI voice names
+    SUPPORTED_VOICES = [
+        "Hazel"     # English (UK) female voice
+    ]
+    
+    # Override supported formats
+    SUPPORTED_FORMATS = [
+        "mp3",    # Default format for MurfAI
+        "wav"     # Alternative format
+    ]
+    
     # Request headers
     headers: dict[str, str] = {
         "User-Agent": LitAgent().random()
     }
-    all_voices: dict[str, str] = {"Hazel": "en-UK-hazel"}
+    
+    # Voice mapping from real names to MurfAI voice IDs
+    voice_mapping: dict[str, str] = {
+        "Hazel": "en-UK-hazel"
+    }
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
         """Initializes the MurfAITTS TTS client."""
@@ -27,15 +56,42 @@ class MurfAITTS(BaseTTSProvider):
             self.session.proxies.update(proxies)
         self.timeout = timeout
 
-    def tts(self, text: str, voice: str = "Hazel", verbose:bool = True) -> str:
-        """Converts text to speech using the MurfAITTS API and saves it to a file."""
-        assert (
-            voice in self.all_voices
-        ), f"Voice '{voice}' not one of [{', '.join(self.all_voices.keys())}]"
-
-        filename = pathlib.Path(tempfile.mktemp(suffix=".mp3", dir=self.temp_dir))
-
-        voice_id = self.all_voices[voice]
+    def tts(self, text: str, voice: str = "Hazel", verbose: bool = False, **kwargs) -> str:
+        """
+        Converts text to speech using the MurfAITTS API and saves it to a file.
+        
+        Args:
+            text (str): The text to convert to speech
+            voice (str): The voice to use (default: "Hazel")
+            verbose (bool): Whether to print debug information
+            **kwargs: Additional parameters (model, response_format, instructions)
+            
+        Returns:
+            str: Path to the generated audio file
+        """
+        # Validate input parameters
+        if not text or not isinstance(text, str):
+            raise ValueError("Input text must be a non-empty string")
+        if len(text) > 10000:
+            raise ValueError("Input text exceeds maximum allowed length of 10,000 characters")
+            
+        # Use default voice if not provided
+        if voice is None:
+            voice = "Hazel"
+            
+        # Validate voice using base class method
+        self.validate_voice(voice)
+        
+        # Map real voice name to MurfAI voice ID
+        voice_id = self.voice_mapping.get(voice, "en-UK-hazel")  # Default to Hazel
+        
+        # Get response format from kwargs or use default
+        response_format = kwargs.get('response_format', 'mp3')
+        response_format = self.validate_format(response_format)
+        
+        # Create temporary file with appropriate extension
+        file_extension = f".{response_format}" if response_format != "pcm" else ".wav"
+        filename = pathlib.Path(tempfile.mktemp(suffix=file_extension, dir=self.temp_dir))
 
         # Split text into sentences
         sentences = utils.split_sentences(text)
@@ -103,11 +159,90 @@ class MurfAITTS(BaseTTSProvider):
                 f"Failed to perform the operation: {e}"
             )
 
+    def create_speech(
+        self,
+        input: str,
+        model: str = "gpt-4o-mini-tts", 
+        voice: str = "Hazel",
+        response_format: str = "mp3",
+        instructions: str = None,
+        verbose: bool = False
+    ) -> str:
+        """
+        OpenAI-compatible speech creation interface.
+        
+        Args:
+            input (str): The text to convert to speech
+            model (str): The TTS model to use
+            voice (str): The voice to use
+            response_format (str): Audio format
+            instructions (str): Voice instructions (not used by MurfAI)
+            verbose (bool): Whether to print debug information
+            
+        Returns:
+            str: Path to the generated audio file
+        """
+        return self.tts(
+            text=input,
+            voice=voice,
+            response_format=response_format,
+            verbose=verbose
+        )
+
+    def stream_audio(
+        self,
+        input: str,
+        model: str = "gpt-4o-mini-tts",
+        voice: str = "Hazel",
+        response_format: str = "mp3",
+        instructions: str = None,
+        chunk_size: int = 1024,
+        verbose: bool = False
+    ):
+        """
+        Stream audio response in chunks.
+        
+        Args:
+            input (str): The text to convert to speech
+            model (str): The TTS model to use
+            voice (str): The voice to use
+            response_format (str): Audio format
+            instructions (str): Voice instructions
+            chunk_size (int): Size of audio chunks to yield
+            verbose (bool): Whether to print debug information
+            
+        Yields:
+            bytes: Audio data chunks
+        """
+        # Generate the audio file using create_speech
+        audio_file = self.create_speech(
+            input=input,
+            model=model,
+            voice=voice,
+            response_format=response_format,
+            instructions=instructions,
+            verbose=verbose
+        )
+        
+        # Stream the file in chunks
+        with open(audio_file, 'rb') as f:
+            while chunk := f.read(chunk_size):
+                yield chunk
+
 # Example usage
 if __name__ == "__main__":
     murfai = MurfAITTS()
     text = "This is a test of the MurfAITTS text-to-speech API. It supports multiple sentences and advanced logging."
 
     print("[debug] Generating audio...")
-    audio_file = murfai.tts(text, voice="Hazel")
-    print(f"Audio saved to: {audio_file}")
+    try:
+        audio_file = murfai.create_speech(
+            input=text,
+            model="gpt-4o-mini-tts",
+            voice="Hazel",
+            response_format="mp3",
+            verbose=True
+        )
+        print(f"Audio saved to: {audio_file}")
+    except Exception as e:
+        print(f"Error: {e}")

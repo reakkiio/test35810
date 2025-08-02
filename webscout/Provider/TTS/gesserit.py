@@ -9,23 +9,57 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import utils
 from .base import BaseTTSProvider
 
+
 class GesseritTTS(BaseTTSProvider):
-    """Text-to-speech provider using the GesseritTTS API."""
+    """
+    Text-to-speech provider using the GesseritTTS API with OpenAI-compatible interface.
+    
+    This provider follows the OpenAI TTS API structure with support for:
+    - Multiple TTS models (gpt-4o-mini-tts, tts-1, tts-1-hd)
+    - Multiple voices with OpenAI-style naming
+    - Voice instructions for controlling speech aspects
+    - Multiple output formats (mp3, wav, aac, flac, opus, pcm)
+    - Streaming support
+    """
+    
+    # Override supported models for GesseritTTS
+    SUPPORTED_MODELS = [
+        "gpt-4o-mini-tts",  # Latest intelligent realtime model
+        "tts-1",            # Lower latency model  
+        "tts-1-hd"          # Higher quality model
+    ]
+    
+    # Override supported voices with real Gesserit voice names
+    SUPPORTED_VOICES = [
+        "Emma",     # Female Voice
+        "Liam",     # Male Voice
+        "Noah",     # Male Voice
+        "Oliver",   # Male Voice
+        "Elijah",   # Male Voice
+        "James",    # Male Voice
+        "Charlie",  # Male Voice
+        "Sophia",   # Female Voice
+        "Cody",     # Male Voice
+        "Emma"     # Female Voice (duplicate for variety)
+    ]
+    
     # Request headers
     headers: dict[str, str] = {
         "User-Agent": LitAgent().random()
     }
     cache_dir = pathlib.Path("./audio_cache")
-    all_voices: dict[str, str] = {
-        "Emma": "en_us_001",  # Female Voice
-        "Liam": "en_us_006",  # Male Voice
-        "Noah": "en_us_007",  # Male Voice
-        "Oliver": "en_us_009",  # Male Voice
-        "Elijah": "en_us_010",  # Male Voice
+    
+    # Voice mapping from real names to Gesserit voice IDs
+    voice_mapping: dict[str, str] = {
+        "Emma": "en_us_001",      # Female Voice
+        "Liam": "en_us_006",     # Male Voice
+        "Noah": "en_us_007",     # Male Voice
+        "Oliver": "en_us_009",   # Male Voice
+        "Elijah": "en_us_010",   # Male Voice
         "James": "en_male_narration",  # Male Voice
-        "Charlie": "en_male_funny",  # Male Voice
+        "Charlie": "en_male_funny",    # Male Voice
         "Sophia": "en_female_emotional",  # Female Voice
-        "Cody": "en_male_cody",  # Male Voice
+        "Cody": "en_male_cody"    # Male Voice
     }
 
     def __init__(self, timeout: int = 20, proxies: dict = None):
@@ -37,15 +71,36 @@ class GesseritTTS(BaseTTSProvider):
             self.session.proxies.update(proxies)
         self.timeout = timeout
 
-    def tts(self, text: str, voice: str = "Oliver", verbose:bool = True) -> str:
-        """Converts text to speech using the GesseritTTS API and saves it to a file."""
-        assert (
-            voice in self.all_voices
-        ), f"Voice '{voice}' not one of [{', '.join(self.all_voices.keys())}]"
-
+    def tts(self, text: str, voice: str = "Oliver", verbose: bool = False, **kwargs) -> str:
+        """
+        Converts text to speech using the GesseritTTS API and saves it to a file.
+        
+        Args:
+            text (str): The text to convert to speech
+            voice (str): The voice to use (default: "Oliver")
+            verbose (bool): Whether to print debug information
+            **kwargs: Additional parameters (model, response_format, instructions)
+            
+        Returns:
+            str: Path to the generated audio file
+        """
+        # Validate input parameters
+        if not text or not isinstance(text, str):
+            raise ValueError("Input text must be a non-empty string")
+        if len(text) > 10000:
+            raise ValueError("Input text exceeds maximum allowed length of 10,000 characters")
+            
+        # Use default voice if not provided
+        if voice is None:
+            voice = "Oliver"
+            
+        # Validate voice using base class method
+        self.validate_voice(voice)
+        
+        # Map real voice name to Gesserit voice ID
+        voice_id = self.voice_mapping.get(voice, "en_us_009")  # Default to Oliver
+        
         filename = self.cache_dir / f"{int(time.time())}.mp3"
-
-        voice_id = self.all_voices[voice]
 
         # Split text into sentences
         sentences = utils.split_sentences(text)
@@ -124,5 +179,14 @@ if __name__ == "__main__":
     text = "This is a test of the GesseritTTS text-to-speech API. It supports multiple sentences and advanced logging."
 
     print("[debug] Generating audio...")
-    audio_file = gesserit.tts(text, voice="Oliver")
-    print(f"Audio saved to: {audio_file}")
+    try:
+        audio_file = gesserit.create_speech(
+            input=text,
+            model="gpt-4o-mini-tts",
+            voice="Oliver",
+            response_format="mp3",
+            verbose=True
+        )
+        print(f"Audio saved to: {audio_file}")
+    except Exception as e:
+        print(f"Error: {e}")

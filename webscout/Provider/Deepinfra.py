@@ -21,6 +21,10 @@ class DeepInfra(Provider):
         "moonshotai/Kimi-K2-Instruct",
         "anthropic/claude-4-sonnet",
         "deepseek-ai/DeepSeek-R1-0528-Turbo",
+        "Qwen/Qwen3-235B-A22B-Thinking-2507",
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo",
+        "Qwen/Qwen3-235B-A22B-Instruct-2507",
         "Qwen/Qwen3-235B-A22B",
         "Qwen/Qwen3-30B-A3B",
         "Qwen/Qwen3-32B",
@@ -72,12 +76,15 @@ class DeepInfra(Provider):
         "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
         "microsoft/WizardLM-2-8x22B",
         "mistralai/Devstral-Small-2505",
+        "mistralai/Devstral-Small-2507",
         "mistralai/Mistral-7B-Instruct-v0.3",
         "mistralai/Mistral-Nemo-Instruct-2407",
         "mistralai/Mistral-Small-24B-Instruct-2501",
         "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
         "mistralai/Mixtral-8x7B-Instruct-v0.1",
         "nvidia/Llama-3.1-Nemotron-70B-Instruct",
+        "zai-org/GLM-4.5-Air",
+        "zai-org/GLM-4.5",
     ]
 
     @staticmethod

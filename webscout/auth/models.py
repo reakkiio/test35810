@@ -128,3 +128,58 @@ class RateLimitEntry:
             api_key_id=data.get("api_key_id", ""),
             requests=[datetime.fromisoformat(req) for req in data.get("requests", [])]
         )
+
+
+@dataclass
+class RequestLog:
+    """Request log entry for API usage tracking."""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    request_id: str = ""
+    ip_address: str = ""
+    model_used: str = ""
+    question: str = ""
+    answer: str = ""
+    user_id: Optional[str] = None
+    api_key_id: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    response_time_ms: Optional[int] = None
+    status_code: int = 200
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert request log to dictionary for storage."""
+        return {
+            "id": self.id,
+            "request_id": self.request_id,
+            "ip_address": self.ip_address,
+            "model_used": self.model_used,
+            "question": self.question,
+            "answer": self.answer,
+            "user_id": self.user_id,
+            "api_key_id": self.api_key_id,
+            "created_at": self.created_at.isoformat(),
+            "response_time_ms": self.response_time_ms,
+            "status_code": self.status_code,
+            "error_message": self.error_message,
+            "metadata": self.metadata
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RequestLog":
+        """Create request log from dictionary."""
+        return cls(
+            id=data.get("id", str(uuid.uuid4())),
+            request_id=data.get("request_id", ""),
+            ip_address=data.get("ip_address", ""),
+            model_used=data.get("model_used", ""),
+            question=data.get("question", ""),
+            answer=data.get("answer", ""),
+            user_id=data.get("user_id"),
+            api_key_id=data.get("api_key_id"),
+            created_at=datetime.fromisoformat(data.get("created_at", datetime.now(timezone.utc).isoformat())),
+            response_time_ms=data.get("response_time_ms"),
+            status_code=data.get("status_code", 200),
+            error_message=data.get("error_message"),
+            metadata=data.get("metadata", {})
+        )

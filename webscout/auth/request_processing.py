@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY, HTTP_500_INTERNAL_SERVER_ERROR
 from fastapi.responses import StreamingResponse
 
@@ -15,6 +16,10 @@ import sys
 
 from .request_models import Message, ChatCompletionRequest
 from .exceptions import APIError, clean_text
+from .models import RequestLog
+from .auth_system import get_auth_components
+from .simple_logger import log_api_request, get_client_ip, generate_request_id
+from .config import AppConfig
 
 # Setup logger
 logger = Logger(
@@ -23,6 +28,57 @@ logger = Logger(
     handlers=[ConsoleHandler(stream=sys.stdout)],
     fmt=LogFormat.DEFAULT
 )
+
+
+async def log_request(request_id: str, ip_address: str, model_used: str, question: str,
+                     answer: str, response_time_ms: int, status_code: int = 200,
+                     error_message: str = None, provider: str = None, request_obj=None):
+    """Log API request to database."""
+    try:
+        # Use simple logger for no-auth mode if request logging is enabled
+        if AppConfig.request_logging_enabled:
+            user_agent = None
+            if request_obj:
+                user_agent = request_obj.headers.get("user-agent")
+            
+            await log_api_request(
+                request_id=request_id,
+                ip_address=ip_address,
+                model=model_used,
+                question=question,
+                answer=answer,
+                provider=provider,
+                processing_time_ms=response_time_ms,
+                error=error_message,
+                user_agent=user_agent
+            )
+        
+        # Also use the existing auth system logging if available
+        auth_manager, db_manager, _ = get_auth_components()
+        
+        if db_manager:
+            request_log = RequestLog(
+                id=None,  # Will be auto-generated
+                request_id=request_id,
+                ip_address=ip_address,
+                model_used=model_used,
+                question=question,
+                answer=answer,
+                user_id=None,  # No auth mode
+                api_key_id=None,  # No auth mode
+                created_at=datetime.now(timezone.utc),
+                response_time_ms=response_time_ms,
+                status_code=status_code,
+                error_message=error_message,
+                metadata={}
+            )
+            
+            await db_manager.create_request_log(request_log)
+            logger.debug(f"Logged request {request_id} to auth database")
+        
+    except Exception as e:
+        logger.error(f"Failed to log request {request_id}: {e}")
+        # Don't raise exception to avoid breaking the main request flow
 
 
 def process_messages(messages: List[Message]) -> List[Dict[str, Any]]:
@@ -81,9 +137,14 @@ def prepare_provider_params(chat_request: ChatCompletionRequest, model_name: str
     return params
 
 
-async def handle_streaming_response(provider: Any, params: Dict[str, Any], request_id: str) -> StreamingResponse:
+async def handle_streaming_response(provider: Any, params: Dict[str, Any], request_id: str,
+                                  ip_address: str, question: str, model_name: str, start_time: float, 
+                                  provider_name: str = None, request_obj=None) -> StreamingResponse:
     """Handle streaming chat completion response."""
+    collected_content = []
+    
     async def streaming():
+        nonlocal collected_content
         try:
             logger.debug(f"Starting streaming response for request {request_id}")
             completion_stream = provider.chat.completions.create(**params)
@@ -108,10 +169,16 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                                 if isinstance(choice, dict):
                                     # Handle delta for streaming
                                     if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
-                                        choice['delta']['content'] = clean_text(choice['delta']['content'])
+                                        content = choice['delta']['content']
+                                        if content:
+                                            collected_content.append(content)
+                                        choice['delta']['content'] = clean_text(content)
                                     # Handle message for non-streaming
                                     elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
-                                        choice['message']['content'] = clean_text(choice['message']['content'])
+                                        content = choice['message']['content']
+                                        if content:
+                                            collected_content.append(content)
+                                        choice['message']['content'] = clean_text(content)
                         
                         yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
                 except TypeError as te:
@@ -129,9 +196,15 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                         for choice in response_data.get('choices', []):
                             if isinstance(choice, dict):
                                 if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
-                                    choice['delta']['content'] = clean_text(choice['delta']['content'])
+                                    content = choice['delta']['content']
+                                    if content:
+                                        collected_content.append(content)
+                                    choice['delta']['content'] = clean_text(content)
                                 elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
-                                    choice['message']['content'] = clean_text(choice['message']['content'])
+                                    content = choice['message']['content']
+                                    if content:
+                                        collected_content.append(content)
+                                    choice['message']['content'] = clean_text(content)
                     
                     yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
             else:  # Non-generator response
@@ -147,9 +220,15 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                     for choice in response_data.get('choices', []):
                         if isinstance(choice, dict):
                             if 'delta' in choice and isinstance(choice['delta'], dict) and 'content' in choice['delta']:
-                                choice['delta']['content'] = clean_text(choice['delta']['content'])
+                                content = choice['delta']['content']
+                                if content:
+                                    collected_content.append(content)
+                                choice['delta']['content'] = clean_text(content)
                             elif 'message' in choice and isinstance(choice['message'], dict) and 'content' in choice['message']:
-                                choice['message']['content'] = clean_text(choice['message']['content'])
+                                content = choice['message']['content']
+                                if content:
+                                    collected_content.append(content)
+                                choice['message']['content'] = clean_text(content)
                 
                 yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
 
@@ -164,13 +243,47 @@ async def handle_streaming_response(provider: Any, params: Dict[str, Any], reque
                 }
             }
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+            
+            # Log error request
+            response_time_ms = int((time.time() - start_time) * 1000)
+            await log_request(
+                request_id=request_id,
+                ip_address=ip_address,
+                model_used=model_name,
+                question=question,
+                answer="",
+                response_time_ms=response_time_ms,
+                status_code=500,
+                error_message=error_message,
+                provider=provider_name,
+                request_obj=request_obj
+            )
         finally:
             yield "data: [DONE]\n\n"
+            
+            # Log successful streaming request
+            if collected_content:
+                answer = "".join(collected_content)
+                response_time_ms = int((time.time() - start_time) * 1000)
+                await log_request(
+                    request_id=request_id,
+                    ip_address=ip_address,
+                    model_used=model_name,
+                    question=question,
+                    answer=answer,
+                    response_time_ms=response_time_ms,
+                    status_code=200,
+                    provider=provider_name,
+                    request_obj=request_obj
+                )
+    
     return StreamingResponse(streaming(), media_type="text/event-stream")
 
 
 async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
-                                      request_id: str, start_time: float) -> Dict[str, Any]:
+                                      request_id: str, start_time: float, ip_address: str,
+                                      question: str, model_name: str, provider_name: str = None, 
+                                      request_obj=None) -> Dict[str, Any]:
     """Handle non-streaming chat completion response."""
     try:
         logger.debug(f"Starting non-streaming response for request {request_id}")
@@ -178,7 +291,7 @@ async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
 
         if completion is None:
             # Return a valid OpenAI-compatible error response
-            return ChatCompletion(
+            error_response = ChatCompletion(
                 id=request_id,
                 created=int(time.time()),
                 model=params.get("model", "unknown"),
@@ -189,6 +302,23 @@ async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
                 )],
                 usage=CompletionUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
             ).model_dump(exclude_none=True)
+            
+            # Log error request
+            response_time_ms = int((time.time() - start_time) * 1000)
+            await log_request(
+                request_id=request_id,
+                ip_address=ip_address,
+                model_used=model_name,
+                question=question,
+                answer="No response generated.",
+                response_time_ms=response_time_ms,
+                status_code=500,
+                error_message="No response generated from provider",
+                provider=provider_name,
+                request_obj=request_obj
+            )
+            
+            return error_response
 
         # Standardize response format
         if hasattr(completion, "model_dump"):  # Pydantic v2
@@ -204,21 +334,55 @@ async def handle_non_streaming_response(provider: Any, params: Dict[str, Any],
                 "provider_error"
             )
         
-        # Clean text content in the response to remove control characters
+        # Extract answer from response and clean text content
+        answer = ""
         if isinstance(response_data, dict) and 'choices' in response_data:
             for choice in response_data.get('choices', []):
                 if isinstance(choice, dict) and 'message' in choice:
                     if isinstance(choice['message'], dict) and 'content' in choice['message']:
-                        choice['message']['content'] = clean_text(choice['message']['content'])
+                        content = choice['message']['content']
+                        if content:
+                            answer = content
+                        choice['message']['content'] = clean_text(content)
 
         elapsed = time.time() - start_time
+        response_time_ms = int(elapsed * 1000)
         logger.info(f"Completed non-streaming request {request_id} in {elapsed:.2f}s")
+
+        # Log successful request
+        await log_request(
+            request_id=request_id,
+            ip_address=ip_address,
+            model_used=model_name,
+            question=question,
+            answer=answer,
+            response_time_ms=response_time_ms,
+            status_code=200,
+            provider=provider_name,
+            request_obj=request_obj
+        )
 
         return response_data
 
     except Exception as e:
         logger.error(f"Error in non-streaming response for request {request_id}: {e}")
         error_message = clean_text(str(e))
+        
+        # Log error request
+        response_time_ms = int((time.time() - start_time) * 1000)
+        await log_request(
+            request_id=request_id,
+            ip_address=ip_address,
+            model_used=model_name,
+            question=question,
+            answer="",
+            response_time_ms=response_time_ms,
+            status_code=500,
+            error_message=error_message,
+            provider=provider_name,
+            request_obj=request_obj
+        )
+        
         raise APIError(
             f"Provider error: {error_message}",
             HTTP_500_INTERNAL_SERVER_ERROR,

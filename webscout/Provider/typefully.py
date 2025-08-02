@@ -71,16 +71,6 @@ class TypefullyAI(Provider):
         )
         self.conversation.history_offset = history_offset
 
-    @staticmethod
-    def _typefully_extractor(chunk: Union[str, Dict[str, Any]]) -> Optional[str]:
-        if isinstance(chunk, str):
-            if isinstance(chunk, bytes):
-                chunk = chunk.decode('utf-8', errors='replace')
-            match = re.search(r'0:"(.*?)"', chunk)
-            if match:
-                content = match.group(1).encode().decode('unicode_escape')
-                return content.replace('\\', '\\').replace('\\"', '"')
-        return None
 
     def ask(
         self,
@@ -125,7 +115,7 @@ class TypefullyAI(Provider):
                     data=response.iter_content(chunk_size=None),
                     intro_value=None,
                     to_json=False,
-                    content_extractor=self._typefully_extractor,
+                    extract_regexes=[r'0:"(.*?)"'],
                     raw=raw
                 )
                 for content_chunk in processed_stream:

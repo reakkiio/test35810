@@ -53,7 +53,12 @@ class Stellar(AISearch):
 
     @staticmethod
     def _stellar_extractor(chunk: Union[str, bytes, Dict[str, Any]]) -> Optional[str]:
-        """Extracts content from the Stellar stream format with hex keys and diff arrays. Handles both str and bytes input."""
+        """
+        Extracts content from the Stellar stream format with focused pattern matching.
+        
+        Prioritizes the primary diff pattern to avoid duplication and focuses on
+        incremental content building from stellar.chatastra.ai streaming response.
+        """
         if isinstance(chunk, bytes):
             try:
                 chunk = chunk.decode('utf-8', errors='replace')
@@ -61,14 +66,54 @@ class Stellar(AISearch):
                 return None
         if not isinstance(chunk, str):
             return None
-        # Match patterns like 6e:{"diff":[0," empathy"],"next":"$@6f"}
-        pattern = r'[0-9a-f]+:\{"diff":\[0,"([^"\\]*)"\]'
-        matches = re.findall(pattern, chunk)
-        if matches:
-            extracted_text = ''.join(matches)
-            # Fix escaped newlines
-            extracted_text = extracted_text.replace('\\n', '\n').replace('\\n\\n', '\n\n')
+        
+        # Primary pattern: Hex key diff format (most reliable for streaming)
+        # Matches: 16:{"diff":[0,"AI"],"next":"$@18"}
+        primary_pattern = r'[0-9a-f]+:\{"diff":\[0,"([^"]*?)"\]'
+        primary_matches = re.findall(primary_pattern, chunk)
+        
+        if primary_matches:
+            # Join the matches and clean up
+            extracted_text = ''.join(primary_matches)
+            
+            # Handle escape sequences properly
+            extracted_text = extracted_text.replace('\\n', '\n')
+            extracted_text = extracted_text.replace('\\r', '\r')
+            extracted_text = extracted_text.replace('\\"', '"')
+            extracted_text = extracted_text.replace('\\t', '\t')
+            extracted_text = extracted_text.replace('\\/', '/')
+            extracted_text = extracted_text.replace('\\\\', '\\')
+            
+            # Clean up markdown formatting
+            extracted_text = extracted_text.replace('\\*', '*')
+            extracted_text = extracted_text.replace('\\#', '#')
+            extracted_text = extracted_text.replace('\\[', '[')
+            extracted_text = extracted_text.replace('\\]', ']')
+            extracted_text = extracted_text.replace('\\(', '(')
+            extracted_text = extracted_text.replace('\\)', ')')
+            
             return extracted_text if extracted_text.strip() else None
+        
+        # # Fallback: Look for Ta24 content blocks (complete responses)
+        # if ':Ta24,' in chunk:
+        #     ta24_pattern = r':Ta24,([^}]*?)(?:\d+:|$)'
+        #     ta24_matches = re.findall(ta24_pattern, chunk)
+        #     if ta24_matches:
+        #         extracted_text = ''.join(ta24_matches)
+        #         # Basic cleanup
+        #         extracted_text = extracted_text.replace('\\n', '\n')
+        #         extracted_text = extracted_text.replace('\\"', '"')
+        #         return extracted_text.strip() if extracted_text.strip() else None
+        
+        # # Secondary fallback: Direct diff patterns without hex prefix
+        # fallback_pattern = r'\{"diff":\[0,"([^"]*?)"\]'
+        # fallback_matches = re.findall(fallback_pattern, chunk)
+        # if fallback_matches:
+        #     extracted_text = ''.join(fallback_matches)
+        #     extracted_text = extracted_text.replace('\\n', '\n')
+        #     extracted_text = extracted_text.replace('\\"', '"')
+        #     return extracted_text if extracted_text.strip() else None
+        
         return None
 
     def search(self, prompt: str, stream: bool = False, raw: bool = False) -> Union[SearchResponse, Generator[Union[Dict[str, str], SearchResponse, str], None, None]]:

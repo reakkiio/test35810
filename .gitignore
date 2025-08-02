@@ -21,3 +21,4 @@ venv/
 uv.lock
 gpu.py
 .zencoder
+blackbox_private_key.pem

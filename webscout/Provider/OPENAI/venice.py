@@ -316,6 +316,7 @@ class Venice(OpenAICompatibleProvider):
     AVAILABLE_MODELS = [
         "mistral-31-24b",
         "llama-3.2-3b-akash",
+        "dolphin-3.0-mistral-24b-1dot1",
         "qwen2dot5-coder-32b",
         "deepseek-coder-v2-lite",
     ]

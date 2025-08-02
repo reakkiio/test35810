@@ -41,6 +41,7 @@ from .request_processing import (
     handle_streaming_response, handle_non_streaming_response
 )
 from .auth_system import get_auth_components
+from .simple_logger import request_logger
 from webscout.DWEBS import GoogleSearch
 from webscout.yep_search import YepSearch
 from webscout.webscout_search import WEBS
@@ -165,6 +166,7 @@ class Api:
         self._register_chat_routes()
         self._register_auth_routes()
         self._register_websearch_routes()
+        self._register_monitoring_routes()
 
     def _register_model_routes(self):
         """Register model listing routes."""        
@@ -241,6 +243,7 @@ class Api:
             }
         )
         async def chat_completions(
+            request: Request,
             chat_request: ChatCompletionRequest = Body(...)
         ):
             """Handle chat completion requests with comprehensive error handling."""
@@ -271,11 +274,39 @@ class Api:
                 # Prepare parameters for provider
                 params = prepare_provider_params(chat_request, model_name, processed_messages)
 
+                # Extract client IP address
+                client_ip = request.client.host if request.client else "unknown"
+                if "x-forwarded-for" in request.headers:
+                    client_ip = request.headers["x-forwarded-for"].split(",")[0].strip()
+                elif "x-real-ip" in request.headers:
+                    client_ip = request.headers["x-real-ip"]
+
+                # Extract question from messages (last user message)
+                question = ""
+                for msg in reversed(processed_messages):
+                    if msg.get("role") == "user":
+                        content = msg.get("content", "")
+                        if isinstance(content, str):
+                            question = content
+                        elif isinstance(content, list) and content:
+                            # Handle content with multiple parts (text, images, etc.)
+                            for part in content:
+                                if isinstance(part, dict) and part.get("type") == "text":
+                                    question = part.get("text", "")
+                                    break
+                        break
+
                 # Handle streaming vs non-streaming
                 if chat_request.stream:
-                    return await handle_streaming_response(provider, params, request_id)
+                    return await handle_streaming_response(
+                        provider, params, request_id, client_ip, question, model_name, start_time,
+                        provider_class.__name__, request
+                    )
                 else:
-                    return await handle_non_streaming_response(provider, params, request_id, start_time)
+                    return await handle_non_streaming_response(
+                        provider, params, request_id, start_time, client_ip, question, model_name,
+                        provider_class.__name__, request
+                    )
 
             except APIError:
                 # Re-raise API errors as-is
@@ -564,4 +595,70 @@ class Api:
                 return {
                     "error": f"Search request failed: {msg}",
                     "footer": github_footer
+                }
+
+    def _register_monitoring_routes(self):
+        """Register monitoring and analytics routes for no-auth mode."""
+
+        @self.app.get(
+            "/monitor/requests",
+            tags=["Monitoring"],
+            description="Get recent API requests (no-auth mode only)"
+        )
+        async def get_recent_requests(limit: int = Query(10, description="Number of recent requests to fetch")):
+            """Get recent API requests for monitoring."""
+            if AppConfig.auth_required:
+                return {"error": "Monitoring is only available in no-auth mode"}
+            
+            try:
+                return await request_logger.get_recent_requests(limit)
+            except Exception as e:
+                return {"error": f"Failed to fetch requests: {str(e)}"}
+
+        @self.app.get(
+            "/monitor/stats",
+            tags=["Monitoring"], 
+            description="Get API usage statistics (no-auth mode only)"
+        )
+        async def get_api_stats():
+            """Get API usage statistics."""
+            if AppConfig.auth_required:
+                return {"error": "Monitoring is only available in no-auth mode"}
+            
+            try:
+                return await request_logger.get_stats()
+            except Exception as e:
+                return {"error": f"Failed to fetch stats: {str(e)}"}
+
+        @self.app.get(
+            "/monitor/health",
+            tags=["Monitoring"],
+            description="Health check with database status"
+        )
+        async def enhanced_health_check():
+            """Enhanced health check including database connectivity."""
+            try:
+                # Check database connectivity
+                db_status = "disconnected"
+                if request_logger.supabase_client:
+                    try:
+                        # Try a simple query to check connectivity
+                        result = request_logger.supabase_client.table("api_requests").select("id").limit(1).execute()
+                        db_status = "connected"
+                    except Exception as e:
+                        db_status = f"error: {str(e)[:100]}"
+                
+                return {
+                    "status": "healthy",
+                    "database": db_status,
+                    "auth_required": AppConfig.auth_required,
+                    "rate_limit_enabled": AppConfig.rate_limit_enabled,
+                    "request_logging_enabled": AppConfig.request_logging_enabled,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            except Exception as e:
+                return {
+                    "status": "unhealthy",
+                    "error": str(e),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }

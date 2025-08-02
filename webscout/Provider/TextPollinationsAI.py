@@ -17,6 +17,7 @@ class TextPollinationsAI(Provider):
     AVAILABLE_MODELS = [
         "deepseek",
         "deepseek-reasoning",
+        "gemma-roblox",
         "grok",
         "llama-fast-roblox",
         "llama-roblox",

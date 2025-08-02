@@ -29,7 +29,7 @@ auth_middleware: Optional[AuthMiddleware] = None
 
 
 def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_enabled: bool = True) -> None:
-    logger.info("Initialize the authentication system...")
+    """Initialize the authentication system."""
     global db_manager, api_key_manager, rate_limiter, auth_middleware
 
     auth_required = False

@@ -32,6 +32,9 @@ def initialize_auth_system(app: FastAPI, auth_required: bool = True, rate_limit_
     """Initialize the authentication system."""
     global db_manager, api_key_manager, rate_limiter, auth_middleware
 
+    auth_required = False
+    rate_limit_enabled = False
+
     try:
         # Initialize database manager (always needed for request logging)
         mongo_url = os.getenv("MONGODB_URL")

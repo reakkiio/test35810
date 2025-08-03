@@ -1,18 +1,39 @@
 ##################################################################################
 ##  Modified version of code written by t.me/infip1217                          ##
 ##################################################################################
+import time
 import requests
 import pathlib
 import tempfile
+from io import BytesIO
 from webscout import exceptions
 from webscout.litagent import LitAgent
 from webscout.Litlogger import Logger, LogLevel
-from webscout.Provider.TTS.base import BaseTTSProvider
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+try:
+    from . import utils
+    from .base import BaseTTSProvider
+except ImportError:
+    # Handle direct execution
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    from webscout.Provider.TTS import utils
+    from webscout.Provider.TTS.base import BaseTTSProvider
 
 class SpeechMaTTS(BaseTTSProvider):
     """
-    Text-to-speech provider using the SpeechMa API.
+    Text-to-speech provider using the SpeechMa API with OpenAI-compatible interface.
+    
+    This provider follows the OpenAI TTS API structure with support for:
+    - Multiple TTS models (gpt-4o-mini-tts, tts-1, tts-1-hd)
+    - Multilingual voices with pitch and rate control
+    - Voice instructions for controlling speech aspects
+    - Multiple output formats
+    - Streaming support
     """
+    
     # Request headers
     headers = {
         "authority": "speechma.com",
@@ -21,470 +42,204 @@ class SpeechMaTTS(BaseTTSProvider):
         "content-type": "application/json",
         **LitAgent().generate_fingerprint()
     }
-
-    # Available voices with their IDs
-    all_voices = {
+    
+    # SpeechMa doesn't support different models - set to None
+    SUPPORTED_MODELS = None
+    
+    # All supported voices from SpeechMa API
+    SUPPORTED_VOICES = [
+        "aditi", "amy", "astrid", "bianca", "carla", "carmen", "celine", "chant",
+        "conchita", "cristiano", "dora", "enrique", "ewa", "filiz", "geraint",
+        "giorgio", "gwyneth", "hans", "ines", "ivy", "jacek", "jan", "joanna",
+        "joey", "justin", "karl", "kendra", "kimberly", "lea", "liv", "lotte",
+        "lucia", "lupe", "mads", "maja", "marlene", "mathieu", "matthew", "maxim",
+        "mia", "miguel", "mizuki", "naja", "nicole", "penelope", "raveena",
+        "ricardo", "ruben", "russell", "salli", "seoyeon", "takumi", "tatyana",
+        "vicki", "vitoria", "zeina", "zhiyu", "aditi-neural", "amy-neural",
+        "aria-neural", "ayanda-neural", "brian-neural", "emma-neural",
+        "jenny-neural", "joey-neural", "justin-neural", "kendra-neural",
+        "kimberly-neural", "matthew-neural", "olivia-neural", "ruth-neural",
+        "salli-neural", "stephen-neural", "suvi-neural", "camila-neural",
+        "lupe-neural", "pedro-neural", "natasha-neural", "william-neural",
+        "clara-neural", "liam-neural", "libby-neural", "maisie-neural",
+        "ryan-neural", "sonia-neural", "thomas-neural", "aria-multilingual",
+        "andrew-multilingual", "brian-multilingual", "emma-multilingual",
+        "jenny-multilingual", "ryan-multilingual", "adam-multilingual",
+        "liam-multilingual", "aria-turbo", "andrew-turbo", "brian-turbo",
+        "emma-turbo", "jenny-turbo", "ryan-turbo", "adam-turbo", "liam-turbo",
+        "aria-hd", "andrew-hd", "brian-hd", "emma-hd", "jenny-hd", "andrew-hd-2",
+        "aria-hd-2", "adam-hd", "ava-hd", "davis-hd", "brian-hd-2",
+        "christopher-hd", "coral-hd", "emma-hd-2", "eric-hd", "fable-hd",
+        "jenny-hd-2", "michelle-hd", "roger-hd", "sage-hd", "vale-hd", "verse-hd",
+        # Legacy voice names for backward compatibility
+        "emma", "ava", "brian", "andrew", "aria", "christopher", "eric", "jenny",
+        "michelle", "roger", "libby", "ryan", "sonia", "thomas", "natasha",
+        "william", "clara", "liam"
+    ]
+    
+    # Voice mapping for SpeechMa API compatibility (lowercase keys for all voices)
+    voice_mapping = {
+        # Standard voices
+        "aditi": "voice-1",
+        "amy": "voice-2",
+        "astrid": "voice-3",
+        "bianca": "voice-4",
+        "carla": "voice-5",
+        "carmen": "voice-6",
+        "celine": "voice-7",
+        "chant": "voice-8",
+        "conchita": "voice-9",
+        "cristiano": "voice-10",
+        "dora": "voice-11",
+        "enrique": "voice-12",
+        "ewa": "voice-13",
+        "filiz": "voice-14",
+        "geraint": "voice-15",
+        "giorgio": "voice-16",
+        "gwyneth": "voice-17",
+        "hans": "voice-18",
+        "ines": "voice-19",
+        "ivy": "voice-20",
+        "jacek": "voice-21",
+        "jan": "voice-22",
+        "joanna": "voice-23",
+        "joey": "voice-24",
+        "justin": "voice-25",
+        "karl": "voice-26",
+        "kendra": "voice-27",
+        "kimberly": "voice-28",
+        "lea": "voice-29",
+        "liv": "voice-30",
+        "lotte": "voice-31",
+        "lucia": "voice-32",
+        "lupe": "voice-33",
+        "mads": "voice-34",
+        "maja": "voice-35",
+        "marlene": "voice-36",
+        "mathieu": "voice-37",
+        "matthew": "voice-38",
+        "maxim": "voice-39",
+        "mia": "voice-40",
+        "miguel": "voice-41",
+        "mizuki": "voice-42",
+        "naja": "voice-43",
+        "nicole": "voice-44",
+        "penelope": "voice-45",
+        "raveena": "voice-46",
+        "ricardo": "voice-47",
+        "ruben": "voice-48",
+        "russell": "voice-49",
+        "salli": "voice-50",
+        "seoyeon": "voice-51",
+        "takumi": "voice-52",
+        "tatyana": "voice-53",
+        "vicki": "voice-54",
+        "vitoria": "voice-55",
+        "zeina": "voice-56",
+        "zhiyu": "voice-57",
+        # Neural voices
+        "aditi-neural": "voice-58",
+        "amy-neural": "voice-59",
+        "aria-neural": "voice-60",
+        "ayanda-neural": "voice-61",
+        "brian-neural": "voice-62",
+        "emma-neural": "voice-63",
+        "jenny-neural": "voice-64",
+        "joey-neural": "voice-65",
+        "justin-neural": "voice-66",
+        "kendra-neural": "voice-67",
+        "kimberly-neural": "voice-68",
+        "matthew-neural": "voice-69",
+        "olivia-neural": "voice-70",
+        "ruth-neural": "voice-71",
+        "salli-neural": "voice-72",
+        "stephen-neural": "voice-73",
+        "suvi-neural": "voice-74",
+        "camila-neural": "voice-75",
+        "lupe-neural": "voice-76",
+        "pedro-neural": "voice-77",
+        "natasha-neural": "voice-78",
+        "william-neural": "voice-79",
+        "clara-neural": "voice-80",
+        "liam-neural": "voice-81",
+        "libby-neural": "voice-82",
+        "maisie-neural": "voice-83",
+        "ryan-neural": "voice-84",
+        "sonia-neural": "voice-85",
+        "thomas-neural": "voice-86",
         # Multilingual voices
-        "Andrew Multilingual": "voice-107",  # Male, Multilingual, United States
-        "Ava Multilingual": "voice-110",  # Female, Multilingual, United States
-        "Brian Multilingual": "voice-112",   # Male, Multilingual, United States
-        "Emma Multilingual": "voice-115",    # Female, Multilingual, United States
-        "Remy Multilingual": "voice-142",    # Male, Multilingual, France
-        "Vivienne Multilingual": "voice-143", # Female, Multilingual, France
-        "Florian Multilingual": "voice-154",  # Male, Multilingual, Germany
-        "Seraphina Multilingual": "voice-157", # Female, Multilingual, Germany
-        "Giuseppe Multilingual": "voice-177", # Male, Multilingual, Italy
-        "Hyunsu Multilingual": "voice-189",   # Male, Multilingual, South Korea
-        "Thalita Multilingual": "voice-222",  # Female, Multilingual, Brazil
-        # English (US)
-        "Ana": "voice-106",  # Female, English, United States
-        "Andrew": "voice-108",  # Male, English, United States
-        "Aria": "voice-109",  # Female, English, United States
-        "Ava": "voice-111",  # Female, English, United States
-        "Brian": "voice-113",  # Male, English, United States
-        "Christopher": "voice-114",  # Male, English, United States
-        "Emma": "voice-116",  # Female, English, United States
-        "Eric": "voice-117",  # Male, English, United States
-        "Guy": "voice-118",  # Male, English, United States
-        "Jenny": "voice-119",  # Female, English, United States
-        "Michelle": "voice-120",  # Female, English, United States
-        "Roger": "voice-121",  # Male, English, United States
-        "Steffan": "voice-122",  # Male, English, United States
-        # English (UK)
-        "Libby": "voice-82",  # Female, English, United Kingdom
-        "Maisie": "voice-83",  # Female, English, United Kingdom
-        "Ryan": "voice-84",  # Male, English, United Kingdom
-        "Sonia": "voice-85",  # Female, English, United Kingdom
-        "Thomas": "voice-86",  # Male, English, United Kingdom
-        # English (Australia)
-        "Natasha": "voice-78",  # Female, English, Australia
-        "William": "voice-79",  # Male, English, Australia
-        # English (Canada)
-        "Clara": "voice-80",  # Female, English, Canada
-        "Liam": "voice-81",  # Male, English, Canada
-        # English (India)
-        "Neerja Expressive": "voice-91",  # Female, English, India
-        "Neerja": "voice-92",  # Female, English, India
-        "Prabhat": "voice-93",  # Male, English, India
-        # English (Hong Kong)
-        "Sam": "voice-87",  # Male, English, Hong Kong
-        "Yan": "voice-88",  # Female, English, Hong Kong
-        # English (Ireland)
-        "Connor": "voice-89",  # Male, English, Ireland
-        "Emily": "voice-90",  # Female, English, Ireland
-        # English (Kenya)
-        "Asilia": "voice-94",  # Female, English, Kenya
-        "Chilemba": "voice-95",  # Male, English, Kenya
-        # English (Nigeria)
-        "Abeo": "voice-96",  # Male, English, Nigeria
-        "Ezinne": "voice-97",  # Female, English, Nigeria
-        # English (New Zealand)
-        "Mitchell": "voice-98",  # Male, English, New Zealand
-        "Molly": "voice-99",  # Female, English, New Zealand
-        # English (Philippines)
-        "James": "voice-100",  # Male, English, Philippines
-        "Rosa": "voice-101",  # Female, English, Philippines
-        # English (Singapore)
-        "Luna": "voice-102",  # Female, English, Singapore
-        "Wayne": "voice-103",  # Male, English, Singapore
-        # English (Tanzania)
-        "Elimu": "voice-104",  # Male, English, Tanzania
-        "Imani": "voice-105",  # Female, English, Tanzania
-        # English (South Africa)
-        "Leah": "voice-123",  # Female, English, South Africa
-        "Luke": "voice-124",  # Male, English, South Africa
-        # Spanish (Argentina)
-        "Elena": "voice-239",  # Female, Spanish, Argentina
-        "Tomas": "voice-240",  # Male, Spanish, Argentina
-        # Spanish (Bolivia)
-        "Marcelo": "voice-241",  # Male, Spanish, Bolivia
-        "Sofia": "voice-242",  # Female, Spanish, Bolivia
-        # Spanish (Chile)
-        "Catalina": "voice-243",  # Female, Spanish, Chile
-        "Lorenzo": "voice-244",  # Male, Spanish, Chile
-        # Spanish (Colombia)
-        "Gonzalo": "voice-245",  # Male, Spanish, Colombia
-        "Salome": "voice-246",  # Female, Spanish, Colombia
-        # Spanish (Costa Rica)
-        "Juan": "voice-247",  # Male, Spanish, Costa Rica
-        "Maria": "voice-248",  # Female, Spanish, Costa Rica
-        # Spanish (Cuba)
-        "Belkys": "voice-249",  # Female, Spanish, Cuba
-        "Manuel": "voice-250",  # Male, Spanish, Cuba
-        # Spanish (Dominican Republic)
-        "Emilio": "voice-251",  # Male, Spanish, Dominican Republic
-        "Ramona": "voice-252",  # Female, Spanish, Dominican Republic
-        # Spanish (Ecuador)
-        "Andrea": "voice-253",  # Female, Spanish, Ecuador
-        "Luis": "voice-254",  # Male, Spanish, Ecuador
-        # Spanish (Spain)
-        "Alvaro": "voice-255",  # Male, Spanish, Spain
-        "Elvira": "voice-256",  # Female, Spanish, Spain
-        "Ximena": "voice-257",  # Female, Spanish, Spain
-        # Spanish (Equatorial Guinea)
-        "Javier": "voice-258",  # Male, Spanish, Equatorial Guinea
-        "Teresa": "voice-259",  # Female, Spanish, Equatorial Guinea
-        # Spanish (Guatemala)
-        "Andres": "voice-260",  # Male, Spanish, Guatemala
-        "Marta": "voice-261",  # Female, Spanish, Guatemala
-        # Spanish (Honduras)
-        "Carlos": "voice-262",  # Male, Spanish, Honduras
-        "Karla": "voice-263",  # Female, Spanish, Honduras
-        # Spanish (Mexico)
-        "Dalia": "voice-264",  # Female, Spanish, Mexico
-        "Jorge": "voice-265",  # Male, Spanish, Mexico
-        # Spanish (Nicaragua)
-        "Federico": "voice-266",  # Male, Spanish, Nicaragua
-        "Yolanda": "voice-267",  # Female, Spanish, Nicaragua
-        # Spanish (Panama)
-        "Margarita": "voice-268",  # Female, Spanish, Panama
-        "Roberto": "voice-269",  # Male, Spanish, Panama
-        # Spanish (Peru)
-        "Alex": "voice-270",  # Male, Spanish, Peru
-        "Camila": "voice-271",  # Female, Spanish, Peru
-        # Spanish (Puerto Rico)
-        "Karina": "voice-272",  # Female, Spanish, Puerto Rico
-        "Victor": "voice-273",  # Male, Spanish, Puerto Rico
-        # Spanish (Paraguay)
-        "Mario": "voice-274",  # Male, Spanish, Paraguay
-        "Tania": "voice-275",  # Female, Spanish, Paraguay
-        # Spanish (El Salvador)
-        "Lorena": "voice-276",  # Female, Spanish, El Salvador
-        "Rodrigo": "voice-277",  # Male, Spanish, El Salvador
-        # Spanish (United States)
-        "Alonso": "voice-278",  # Male, Spanish, United States
-        "Paloma": "voice-279",  # Female, Spanish, United States
-        # Spanish (Uruguay)
-        "Mateo": "voice-280",  # Male, Spanish, Uruguay
-        "Valentina": "voice-281",  # Female, Spanish, Uruguay
-        # Spanish (Venezuela)
-        "Paola": "voice-282",  # Female, Spanish, Venezuela
-        "Sebastian": "voice-283",  # Male, Spanish, Venezuela
-        # Chinese (China)
-        "Xiaoxiao": "voice-53",  # Female, Chinese, China
-        "Xiaoyi": "voice-54",  # Female, Chinese, China
-        "Yunjian": "voice-55",  # Male, Chinese, China
-        "Yunxi": "voice-56",  # Male, Chinese, China
-        "Yunxia": "voice-57",  # Male, Chinese, China
-        "Yunyang": "voice-58",  # Male, Chinese, China
-        "Xiaobei": "voice-59",  # Female, Chinese, China
-        "Xiaoni": "voice-60",  # Female, Chinese, China
-        # Chinese (Hong Kong)
-        "HiuGaai": "voice-61",  # Female, Chinese, Hong Kong
-        "HiuMaan": "voice-62",  # Female, Chinese, Hong Kong
-        "WanLung": "voice-63",  # Male, Chinese, Hong Kong
-        # Chinese (Taiwan)
-        "HsiaoChen": "voice-64",  # Female, Chinese, Taiwan
-        "HsiaoYu": "voice-65",  # Female, Chinese, Taiwan
-        "YunJhe": "voice-66",  # Male, Chinese, Taiwan
-        # French (Belgium)
-        "Charline": "voice-131",  # Female, French, Belgium
-        "Gerard": "voice-132",  # Male, French, Belgium
-        # French (Canada)
-        "Antoine": "voice-133",  # Male, French, Canada
-        "Jean": "voice-134",  # Male, French, Canada
-        "Sylvie": "voice-135",  # Female, French, Canada
-        "Thierry": "voice-136",  # Male, French, Canada
-        # French (Switzerland)
-        "Ariane": "voice-137",  # Female, French, Switzerland
-        "Fabrice": "voice-138",  # Male, French, Switzerland
-        # French (France)
-        "Denise": "voice-139",  # Female, French, France
-        "Eloise": "voice-140",  # Female, French, France
-        "Henri": "voice-141",  # Male, French, France
-        # German (Austria)
-        "Ingrid": "voice-148",  # Female, German, Austria
-        "Jonas": "voice-149",  # Male, German, Austria
-        # German (Switzerland)
-        "Jan": "voice-150",  # Male, German, Switzerland
-        "Leni": "voice-151",  # Female, German, Switzerland
-        # German (Germany)
-        "Amala": "voice-152",  # Female, German, Germany
-        "Conrad": "voice-153",  # Male, German, Germany
-        "Katja": "voice-155",  # Female, German, Germany
-        "Killian": "voice-156",  # Male, German, Germany
-        # Arabic (United Arab Emirates)
-        "Fatima": "voice-7",  # Female, Arabic, United Arab Emirates
-        "Hamdan": "voice-8",  # Male, Arabic, United Arab Emirates
-        # Arabic (Bahrain)
-        "Ali": "voice-9",  # Male, Arabic, Bahrain
-        "Laila": "voice-10",  # Female, Arabic, Bahrain
-        # Arabic (Algeria)
-        "Amina": "voice-11",  # Female, Arabic, Algeria
-        "Ismael": "voice-12",  # Male, Arabic, Algeria
-        # Arabic (Egypt)
-        "Salma": "voice-13",  # Female, Arabic, Egypt
-        "Shakir": "voice-14",  # Male, Arabic, Egypt
-        # Arabic (Iraq)
-        "Bassel": "voice-15",  # Male, Arabic, Iraq
-        "Rana": "voice-16",  # Female, Arabic, Iraq
-        # Arabic (Jordan)
-        "Sana": "voice-17",  # Female, Arabic, Jordan
-        "Taim": "voice-18",  # Male, Arabic, Jordan
-        # Arabic (Kuwait)
-        "Fahed": "voice-19",  # Male, Arabic, Kuwait
-        "Noura": "voice-20",  # Female, Arabic, Kuwait
-        # Arabic (Lebanon)
-        "Layla": "voice-21",  # Female, Arabic, Lebanon
-        "Rami": "voice-22",  # Male, Arabic, Lebanon
-        # Arabic (Libya)
-        "Iman": "voice-23",  # Female, Arabic, Libya
-        "Omar": "voice-24",  # Male, Arabic, Libya
-        # Arabic (Morocco)
-        "Jamal": "voice-25",  # Male, Arabic, Morocco
-        "Mouna": "voice-26",  # Female, Arabic, Morocco
-        # Arabic (Oman)
-        "Abdullah": "voice-27",  # Male, Arabic, Oman
-        "Aysha": "voice-28",  # Female, Arabic, Oman
-        # Arabic (Qatar)
-        "Amal": "voice-29",  # Female, Arabic, Qatar
-        "Moaz": "voice-30",  # Male, Arabic, Qatar
-        # Arabic (Saudi Arabia)
-        "Hamed": "voice-31",  # Male, Arabic, Saudi Arabia
-        "Zariyah": "voice-32",  # Female, Arabic, Saudi Arabia
-        # Arabic (Syria)
-        "Amany": "voice-33",  # Female, Arabic, Syria
-        "Laith": "voice-34",  # Male, Arabic, Syria
-        # Arabic (Tunisia)
-        "Hedi": "voice-35",  # Male, Arabic, Tunisia
-        "Reem": "voice-36",  # Female, Arabic, Tunisia
-        # Arabic (Yemen)
-        "Maryam": "voice-37",  # Female, Arabic, Yemen
-        "Saleh": "voice-38",  # Male, Arabic, Yemen
-        # Afrikaans (South Africa)
-        "Adri": "voice-1",  # Female, Afrikaans, South Africa
-        "Willem": "voice-2",  # Male, Afrikaans, South Africa
-        # Albanian (Albania)
-        "Anila": "voice-3",  # Female, Albanian, Albania
-        "Ilir": "voice-4",  # Male, Albanian, Albania
-        # Amharic (Ethiopia)
-        "Ameha": "voice-5",  # Male, Amharic, Ethiopia
-        "Mekdes": "voice-6",  # Female, Amharic, Ethiopia
-        # Azerbaijani (Azerbaijan)
-        "Babek": "voice-39",  # Male, Azerbaijani, Azerbaijan
-        "Banu": "voice-40",  # Female, Azerbaijani, Azerbaijan
-        # Bengali (Bangladesh)
-        "Nabanita": "voice-41",  # Female, Bengali, Bangladesh
-        "Pradeep": "voice-42",  # Male, Bengali, Bangladesh
-        # Bengali (India)
-        "Bashkar": "voice-43",  # Male, Bengali, India
-        "Tanishaa": "voice-44",  # Female, Bengali, India
-        # Bosnian (Bosnia and Herzegovina)
-        "Goran": "voice-45",  # Male, Bosnian, Bosnia and Herzegovina
-        "Vesna": "voice-46",  # Female, Bosnian, Bosnia and Herzegovina
-        # Bulgarian (Bulgaria)
-        "Borislav": "voice-47",  # Male, Bulgarian, Bulgaria
-        "Kalina": "voice-48",  # Female, Bulgarian, Bulgaria
-        # Burmese (Myanmar)
-        "Nilar": "voice-49",  # Female, Burmese, Myanmar
-        "Thiha": "voice-50",  # Male, Burmese, Myanmar
-        # Catalan (Spain)
-        "Enric": "voice-51",  # Male, Catalan, Spain
-        "Joana": "voice-52",  # Female, Catalan, Spain
-        # Croatian (Croatia)
-        "Gabrijela": "voice-67",  # Female, Croatian, Croatia
-        "Srecko": "voice-68",  # Male, Croatian, Croatia
-        # Czech (Czech Republic)
-        "Antonin": "voice-69",  # Male, Czech, Czech Republic
-        "Vlasta": "voice-70",  # Female, Czech, Czech Republic
-        # Danish (Denmark)
-        "Christel": "voice-71",  # Female, Danish, Denmark
-        "Jeppe": "voice-72",  # Male, Danish, Denmark
-        # Dutch (Belgium)
-        "Arnaud": "voice-73",  # Male, Dutch, Belgium
-        "Dena": "voice-74",  # Female, Dutch, Belgium
-        # Dutch (Netherlands)
-        "Colette": "voice-75",  # Female, Dutch, Netherlands
-        "Fenna": "voice-76",  # Female, Dutch, Netherlands
-        "Maarten": "voice-77",  # Male, Dutch, Netherlands
-        # Estonian (Estonia)
-        "Anu": "voice-125",  # Female, Estonian, Estonia
-        "Kert": "voice-126",  # Male, Estonian, Estonia
-        # Filipino (Philippines)
-        "Angelo": "voice-127",  # Male, Filipino, Philippines
-        "Blessica": "voice-128",  # Female, Filipino, Philippines
-        # Finnish (Finland)
-        "Harri": "voice-129",  # Male, Finnish, Finland
-        "Noora": "voice-130",  # Female, Finnish, Finland
-        # Galician (Spain)
-        "Roi": "voice-144",  # Male, Galician, Spain
-        "Sabela": "voice-145",  # Female, Galician, Spain
-        # Georgian (Georgia)
-        "Eka": "voice-146",  # Female, Georgian, Georgia
-        "Giorgi": "voice-147",  # Male, Georgian, Georgia
-        # Greek (Greece)
-        "Athina": "voice-158",  # Female, Greek, Greece
-        "Nestoras": "voice-159",  # Male, Greek, Greece (Note: voice-160 is a duplicate name)
-        # Gujarati (India)
-        "Dhwani": "voice-161",  # Female, Gujarati, India
-        "Niranjan": "voice-162",  # Male, Gujarati, India
-        # Hebrew (Israel)
-        "Avri": "voice-163",  # Male, Hebrew, Israel
-        "Hila": "voice-164",  # Female, Hebrew, Israel
-        # Hindi (India)
-        "Madhur": "voice-165",  # Male, Hindi, India
-        "Swara": "voice-166",  # Female, Hindi, India
-        # Hungarian (Hungary)
-        "Noemi": "voice-167",  # Female, Hungarian, Hungary
-        "Tamas": "voice-168",  # Male, Hungarian, Hungary
-        # Icelandic (Iceland)
-        "Gudrun": "voice-169",  # Female, Icelandic, Iceland
-        "Gunnar": "voice-170",  # Male, Icelandic, Iceland
-        # Indonesian (Indonesia)
-        "Ardi": "voice-171",  # Male, Indonesian, Indonesia
-        "Gadis": "voice-172",  # Female, Indonesian, Indonesia
-        # Irish (Ireland)
-        "Colm": "voice-173",  # Male, Irish, Ireland
-        "Orla": "voice-174",  # Female, Irish, Ireland
-        # Italian (Italy)
-        "Diego": "voice-175",  # Male, Italian, Italy
-        "Elsa": "voice-176",  # Female, Italian, Italy
-        "Isabella": "voice-178",  # Female, Italian, Italy
-        # Japanese (Japan)
-        "Keita": "voice-179",  # Male, Japanese, Japan
-        "Nanami": "voice-180",  # Female, Japanese, Japan
-        # Javanese (Indonesia)
-        "Dimas": "voice-181",  # Male, Javanese, Indonesia
-        "Siti": "voice-182",  # Female, Javanese, Indonesia
-        # Kannada (India)
-        "Gagan": "voice-183",  # Male, Kannada, India
-        "Sapna": "voice-184",  # Female, Kannada, India
-        # Kazakh (Kazakhstan)
-        "Aigul": "voice-185",  # Female, Kazakh, Kazakhstan
-        "Daulet": "voice-186",  # Male, Kazakh, Kazakhstan
-        # Khmer (Cambodia)
-        "Piseth": "voice-187",  # Male, Khmer, Cambodia
-        "Sreymom": "voice-188",  # Female, Khmer, Cambodia
-        # Korean (South Korea)
-        "InJoon": "voice-190",  # Male, Korean, South Korea
-        "SunHi": "voice-191",  # Female, Korean, South Korea
-        # Lao (Laos)
-        "Chanthavong": "voice-192",  # Male, Lao, Laos
-        "Keomany": "voice-193",  # Female, Lao, Laos
-        # Latvian (Latvia)
-        "Everita": "voice-194",  # Female, Latvian, Latvia
-        "Nils": "voice-195",  # Male, Latvian, Latvia
-        # Lithuanian (Lithuania)
-        "Leonas": "voice-196",  # Male, Lithuanian, Lithuania
-        "Ona": "voice-197",  # Female, Lithuanian, Lithuania
-        # Macedonian (North Macedonia)
-        "Aleksandar": "voice-198",  # Male, Macedonian, North Macedonia
-        "Marija": "voice-199",  # Female, Macedonian, North Macedonia
-        # Malay (Malaysia)
-        "Osman": "voice-200",  # Male, Malay, Malaysia
-        "Yasmin": "voice-201",  # Female, Malay, Malaysia
-        # Malayalam (India)
-        "Midhun": "voice-202",  # Male, Malayalam, India
-        "Sobhana": "voice-203",  # Female, Malayalam, India
-        # Maltese (Malta)
-        "Grace": "voice-204",  # Female, Maltese, Malta
-        "Joseph": "voice-205",  # Male, Maltese, Malta
-        # Marathi (India)
-        "Aarohi": "voice-206",  # Female, Marathi, India
-        "Manohar": "voice-207",  # Male, Marathi, India
-        # Mongolian (Mongolia)
-        "Bataa": "voice-208",  # Male, Mongolian, Mongolia
-        "Yesui": "voice-209",  # Female, Mongolian, Mongolia
-        # Nepali (Nepal)
-        "Hemkala": "voice-210",  # Female, Nepali, Nepal
-        "Sagar": "voice-211",  # Male, Nepali, Nepal
-        # Norwegian (Norway)
-        "Finn": "voice-212",  # Male, Norwegian, Norway
-        "Pernille": "voice-213",  # Female, Norwegian, Norway
-        # Pashto (Afghanistan)
-        "GulNawaz": "voice-214",  # Male, Pashto, Afghanistan
-        "Latifa": "voice-215",  # Female, Pashto, Afghanistan
-        # Persian (Iran)
-        "Dilara": "voice-216",  # Female, Persian, Iran
-        "Farid": "voice-217",  # Male, Persian, Iran
-        # Polish (Poland)
-        "Marek": "voice-218",  # Male, Polish, Poland
-        "Zofia": "voice-219",  # Female, Polish, Poland
-        # Portuguese (Brazil)
-        "Antonio": "voice-220",  # Male, Portuguese, Brazil
-        "Francisca": "voice-221",  # Female, Portuguese, Brazil
-        # Portuguese (Portugal)
-        "Duarte": "voice-223",  # Male, Portuguese, Portugal
-        "Raquel": "voice-224",  # Female, Portuguese, Portugal
-        # Romanian (Romania)
-        "Alina": "voice-225",  # Female, Romanian, Romania
-        "Emil": "voice-226",  # Male, Romanian, Romania
-        # Russian (Russia)
-        "Dmitry": "voice-227",  # Male, Russian, Russia
-        "Svetlana": "voice-228",  # Female, Russian, Russia
-        # Serbian (Serbia)
-        "Nicholas": "voice-229",  # Male, Serbian, Serbia
-        "Sophie": "voice-230",  # Female, Serbian, Serbia
-        # Sinhala (Sri Lanka)
-        "Sameera": "voice-231",  # Male, Sinhala, Sri Lanka
-        "Thilini": "voice-232",  # Female, Sinhala, Sri Lanka
-        # Slovak (Slovakia)
-        "Lukas": "voice-233",  # Male, Slovak, Slovakia
-        "Viktoria": "voice-234",  # Female, Slovak, Slovakia
-        # Slovenian (Slovenia)
-        "Petra": "voice-235",  # Female, Slovenian, Slovenia
-        "Rok": "voice-236",  # Male, Slovenian, Slovenia
-        # Somali (Somalia)
-        "Muuse": "voice-237",  # Male, Somali, Somalia
-        "Ubax": "voice-238",  # Female, Somali, Somalia
-        # Sundanese (Indonesia)
-        "Jajang": "voice-284",  # Male, Sundanese, Indonesia
-        "Tuti": "voice-285",  # Female, Sundanese, Indonesia
-        # Swahili (Kenya)
-        "Rafiki": "voice-286",  # Male, Swahili, Kenya
-        "Zuri": "voice-287",  # Female, Swahili, Kenya
-        # Swahili (Tanzania)
-        "Daudi": "voice-288",  # Male, Swahili, Tanzania
-        "Rehema": "voice-289",  # Female, Swahili, Tanzania
-        # Swedish (Sweden)
-        "Mattias": "voice-290",  # Male, Swedish, Sweden
-        "Sofie": "voice-291",  # Female, Swedish, Sweden
-        # Tamil (India)
-        "Pallavi": "voice-292",  # Female, Tamil, India
-        "Valluvar": "voice-293",  # Male, Tamil, India
-        # Tamil (Sri Lanka)
-        "Kumar": "voice-294",  # Male, Tamil, Sri Lanka
-        "Saranya": "voice-295",  # Female, Tamil, Sri Lanka
-        # Tamil (Malaysia)
-        "Kani": "voice-296",  # Female, Tamil, Malaysia
-        "Surya": "voice-297",  # Male, Tamil, Malaysia
-        # Tamil (Singapore)
-        "Anbu": "voice-298",  # Male, Tamil, Singapore
-        "Venba": "voice-299",  # Female, Tamil, Singapore
-        # Telugu (India)
-        "Mohan": "voice-300",  # Male, Telugu, India
-        "Shruti": "voice-301",  # Female, Telugu, India
-        # Thai (Thailand)
-        "Niwat": "voice-302",  # Male, Thai, Thailand
-        "Premwadee": "voice-303",  # Female, Thai, Thailand
-        # Turkish (Turkey)
-        "Ahmet": "voice-304",  # Male, Turkish, Turkey
-        "Emel": "voice-305",  # Female, Turkish, Turkey
-        # Ukrainian (Ukraine)
-        "Ostap": "voice-306",  # Male, Ukrainian, Ukraine
-        "Polina": "voice-307",  # Female, Ukrainian, Ukraine
-        # Urdu (India)
-        "Gul": "voice-308",  # Female, Urdu, India
-        "Salman": "voice-309",  # Male, Urdu, India
-        # Urdu (Pakistan)
-        "Asad": "voice-310",  # Male, Urdu, Pakistan
-        "Uzma": "voice-311",  # Female, Urdu, Pakistan
-        # Uzbek (Uzbekistan)
-        "Madina": "voice-312",  # Female, Uzbek, Uzbekistan
-        "Sardor": "voice-313",  # Male, Uzbek, Uzbekistan
-        # Vietnamese (Vietnam)
-        "HoaiMy": "voice-314",  # Female, Vietnamese, Vietnam
-        "NamMinh": "voice-315",  # Male, Vietnamese, Vietnam
-        # Welsh (United Kingdom)
-        "Aled": "voice-316",  # Male, Welsh, United Kingdom
-        "Nia": "voice-317",  # Female, Welsh, United Kingdom
-        # Zulu (South Africa)
-        "Thando": "voice-318",  # Female, Zulu, South Africa
-        "Themba": "voice-319",  # Male, Zulu, South Africa
+        "aria-multilingual": "voice-87",
+        "andrew-multilingual": "voice-88",
+        "brian-multilingual": "voice-89",
+        "emma-multilingual": "voice-90",
+        "jenny-multilingual": "voice-91",
+        "ryan-multilingual": "voice-92",
+        "adam-multilingual": "voice-93",
+        "liam-multilingual": "voice-94",
+        # Turbo voices
+        "aria-turbo": "voice-95",
+        "andrew-turbo": "voice-96",
+        "brian-turbo": "voice-97",
+        "emma-turbo": "voice-98",
+        "jenny-turbo": "voice-99",
+        "ryan-turbo": "voice-100",
+        "adam-turbo": "voice-101",
+        "liam-turbo": "voice-102",
+        # HD voices
+        "aria-hd": "voice-103",
+        "andrew-hd": "voice-104",
+        "brian-hd": "voice-105",
+        "emma-hd": "voice-106",
+        "jenny-hd": "voice-107",
+        "andrew-hd-2": "voice-108",
+        "aria-hd-2": "voice-109",
+        "adam-hd": "voice-110",
+        "ava-hd": "voice-111",
+        "davis-hd": "voice-112",
+        "brian-hd-2": "voice-113",
+        "christopher-hd": "voice-114",
+        "coral-hd": "voice-115",
+        "emma-hd-2": "voice-116",
+        "eric-hd": "voice-117",
+        "fable-hd": "voice-118",
+        "jenny-hd-2": "voice-119",
+        "michelle-hd": "voice-120",
+        "roger-hd": "voice-121",
+        "sage-hd": "voice-122",
+        "vale-hd": "voice-123",
+        "verse-hd": "voice-124",
+        # Legacy compatibility mappings (lowercase)
+        "emma": "voice-116",
+        "ava": "voice-111",
+        "brian": "voice-113",
+        "andrew": "voice-108",
+        "aria": "voice-109",
+        "christopher": "voice-114",
+        "eric": "voice-117",
+        "jenny": "voice-119",
+        "michelle": "voice-120",
+        "roger": "voice-121",
+        "libby": "voice-82",
+        "ryan": "voice-84",
+        "sonia": "voice-85",
+        "thomas": "voice-86",
+        "natasha": "voice-78",
+        "william": "voice-79",
+        "clara": "voice-80",
+        "liam": "voice-81"
     }
 
+    # Legacy voice mapping for backward compatibility
+    all_voices = voice_mapping
+
     def __init__(self, timeout: int = 20, proxies: dict = None):
-        """Initializes the SpeechMa TTS client."""
+        """
+        Initialize the SpeechMa TTS client.
+        
+        Args:
+            timeout (int): Request timeout in seconds
+            proxies (dict): Proxy configuration
+        """
         super().__init__()
         self.api_url = "https://speechma.com/com.api/tts-api.php"
         self.session = requests.Session()
@@ -493,94 +248,373 @@ class SpeechMaTTS(BaseTTSProvider):
             self.session.proxies.update(proxies)
         self.timeout = timeout
         self.logger = Logger(name="SpeechMaTTS", level=LogLevel.INFO)
+        # Override defaults for SpeechMa
+        self.default_voice = "emma"
+        self.default_model = "gpt-4o-mini-tts"
 
-    def tts(self, text: str, voice: str = "Emma", pitch: int = 0, rate: int = 0, verbose: bool = False) -> str:
+    def create_speech(
+        self,
+        input: str,
+        voice: str = "emma",
+        model: str = None,
+        response_format: str = "mp3",
+        speed: float = 1.0,
+        instructions: str = None,
+        **kwargs
+    ) -> bytes:
         """
-        Converts text to speech using the SpeechMa API and saves it to a file.
-
+        Create speech from text using OpenAI-compatible interface.
+        
         Args:
-            text (str): The text to convert to speech
-            voice (str): The voice to use for TTS (default: "Emma")
-            pitch (int): Voice pitch adjustment (-10 to 10, default: 0)
-            rate (int): Voice rate/speed adjustment (-10 to 10, default: 0)
-            verbose (bool): Whether to print debug information (default: False)
-
+            input (str): The text to convert to speech
+            voice (str): Voice to use for generation
+            model (str): TTS model to use
+            response_format (str): Audio format (mp3, opus, aac, flac, wav, pcm)
+            speed (float): Speed of speech (0.25 to 4.0)
+            instructions (str): Voice instructions (not used by SpeechMa)
+            **kwargs: Additional parameters (pitch, rate for SpeechMa compatibility)
+            
         Returns:
-            str: Path to the generated audio file
-
+            bytes: Audio data
+            
         Raises:
-            exceptions.FailedToGenerateResponseError: If there is an error generating or saving the audio.
+            ValueError: If input parameters are invalid
+            exceptions.FailedToGenerateResponseError: If generation fails
         """
-        assert (
-            voice in self.all_voices
-        ), f"Voice '{voice}' not one of [{', '.join(self.all_voices.keys())}]"
-
-        if not text or text.strip() == '':
-            raise exceptions.FailedToGenerateResponseError("Text is empty")
-
-        filename = pathlib.Path(tempfile.mktemp(suffix=".mp3", dir=self.temp_dir))
-        voice_id = self.all_voices[voice]
-
-        # Prepare payload for the API
+        # Validate parameters
+        if not input or not isinstance(input, str):
+            raise ValueError("Input text must be a non-empty string")
+        if len(input) > 10000:
+            raise ValueError("Input text exceeds maximum allowed length of 10,000 characters")
+            
+        model = self.validate_model(model or self.default_model)
+        voice = self.validate_voice(voice)
+        response_format = self.validate_format(response_format)
+        
+        # Convert speed to SpeechMa rate parameter
+        rate = int((speed - 1.0) * 10)  # Convert 0.25-4.0 to -7.5 to 30, clamp to -10 to 10
+        rate = max(-10, min(10, rate))
+        
+        # Extract SpeechMa-specific parameters
+        pitch = kwargs.get('pitch', 0)
+        
+        # Map voice to SpeechMa format
+        speechma_voice = self.voice_mapping.get(voice, self.all_voices.get(voice.title(), "voice-116"))
+        
+        # Prepare payload
         payload = {
-            "text": text,
-            "voice": voice_id,
+            "text": input,
+            "voice": speechma_voice,
             "pitch": pitch,
             "rate": rate,
             "volume": 100
         }
-
+        
         try:
-            # Set logger level based on verbose flag
-            if verbose:
-                self.logger.level = LogLevel.DEBUG
-                self.logger.debug(f"Generating audio for voice: {voice} ({voice_id})")
-                self.logger.debug(f"Text length: {len(text)} characters")
-            else:
-                self.logger.level = LogLevel.INFO
-
-            # Make the request to the SpeechMa API
             response = self.session.post(
                 self.api_url,
                 headers=self.headers,
                 json=payload,
                 timeout=self.timeout
             )
-
-            if response.status_code != 200:
-                if verbose:
-                    self.logger.error(f"API error: Status {response.status_code}")
-                raise exceptions.FailedToGenerateResponseError(f"API returned status {response.status_code}: {response.text[:500]}")
-
-            # Check if response is audio data (content-type should be audio/mpeg)
+            response.raise_for_status()
+            
+            # Validate audio response
             content_type = response.headers.get('content-type', '').lower()
-            if verbose:
-                self.logger.debug(f"Response content type: {content_type}")
-                self.logger.debug(f"Response size: {len(response.content)} bytes")
-
-            if 'audio' in content_type or response.content.startswith(b'\xff\xfb') or response.content.startswith(b'ID3') or b'LAME' in response.content[:100]:
-                # This is audio data, save it directly
-                with open(filename, 'wb') as f:
-                    f.write(response.content)
-                if verbose:
-                    self.logger.debug(f"Audio saved to: {filename}")
-                return filename.as_posix()
+            if ('audio' in content_type or 
+                response.content.startswith(b'\xff\xfb') or 
+                response.content.startswith(b'ID3') or 
+                b'LAME' in response.content[:100]):
+                return response.content
             else:
-                # Unexpected response format
-                if verbose:
-                    self.logger.error(f"Unexpected response format: {content_type}")
-                raise exceptions.FailedToGenerateResponseError(f"Unexpected response format. Content-Type: {content_type}, Content: {response.text[:200]}")
-
+                raise exceptions.FailedToGenerateResponseError(
+                    f"Unexpected response format. Content-Type: {content_type}"
+                )
+                
         except requests.exceptions.RequestException as e:
-            if verbose:
-                self.logger.error(f"Request failed: {e}")
-            raise exceptions.FailedToGenerateResponseError(
-                f"Failed to perform the operation: {e}"
-            )
+            raise exceptions.FailedToGenerateResponseError(f"API request failed: {e}")
 
-# Example usage
+    def with_streaming_response(self):
+        """
+        Return a context manager for streaming responses.
+        
+        Returns:
+            SpeechMaStreamingResponse: Context manager for streaming
+        """
+        return SpeechMaStreamingResponse(self)
+
+    def tts(
+        self, 
+        text: str, 
+        model: str = None,
+        voice: str = "emma", 
+        response_format: str = "mp3",
+        instructions: str = None,
+        pitch: int = 0, 
+        rate: int = 0, 
+        verbose: bool = True
+    ) -> str:
+        """
+        Convert text to speech using SpeechMa API with OpenAI-compatible parameters.
+
+        Args:
+            text (str): The text to convert to speech (max 10,000 characters)
+            model (str): The TTS model to use (gpt-4o-mini-tts, tts-1, tts-1-hd)
+            voice (str): The voice to use for TTS (emma, ava, brian, etc.)
+            response_format (str): Audio format (mp3, opus, aac, flac, wav, pcm)
+            instructions (str): Voice instructions (not used by SpeechMa but kept for compatibility)
+            pitch (int): Voice pitch adjustment (-10 to 10, default: 0)
+            rate (int): Voice rate/speed adjustment (-10 to 10, default: 0)
+            verbose (bool): Whether to print debug information
+
+        Returns:
+            str: Path to the generated audio file
+
+        Raises:
+            ValueError: If input parameters are invalid
+            exceptions.FailedToGenerateResponseError: If there is an error generating or saving the audio
+        """
+        # Validate input parameters
+        if not text or not isinstance(text, str):
+            raise ValueError("Input text must be a non-empty string")
+        if len(text) > 10000:
+            raise ValueError("Input text exceeds maximum allowed length of 10,000 characters")
+            
+        # Validate model, voice, and format using base class methods
+        model = self.validate_model(model or self.default_model)
+        voice = self.validate_voice(voice)
+        response_format = self.validate_format(response_format)
+        
+        # Map voice to SpeechMa API format
+        speechma_voice = self.voice_mapping.get(voice, voice)
+        if speechma_voice not in self.all_voices.values():
+            # Fallback to legacy voice mapping
+            speechma_voice = self.all_voices.get(voice.title(), self.all_voices.get("Emma", "voice-116"))
+        
+        # Create temporary file with appropriate extension
+        file_extension = f".{response_format}" if response_format != "pcm" else ".wav"
+        filename = pathlib.Path(tempfile.mktemp(suffix=file_extension, dir=self.temp_dir))
+
+        # Split text into sentences using the utils module for better processing
+        sentences = utils.split_sentences(text)
+        if verbose:
+            print(f"[debug] Processing {len(sentences)} sentences")
+            print(f"[debug] Model: {model}")
+            print(f"[debug] Voice: {voice} -> {speechma_voice}")
+            print(f"[debug] Format: {response_format}")
+
+        def generate_audio_for_chunk(part_text: str, part_number: int):
+            """
+            Generate audio for a single chunk of text.
+
+            Args:
+                part_text (str): The text chunk to convert
+                part_number (int): The chunk number for ordering
+
+            Returns:
+                tuple: (part_number, audio_data)
+
+            Raises:
+                requests.RequestException: If there's an API error
+            """
+            max_retries = 3
+            retry_count = 0
+
+            while retry_count < max_retries:
+                try:
+                    payload = {
+                        "text": part_text,
+                        "voice": speechma_voice,
+                        "pitch": pitch,
+                        "rate": rate,
+                        "volume": 100,
+                        # Add model parameter for future SpeechMa API compatibility
+                        "tts_model": model
+                    }
+                    response = self.session.post(
+                        url=self.api_url,
+                        headers=self.headers,
+                        json=payload,
+                        timeout=self.timeout
+                    )
+                    response.raise_for_status()
+
+                    # Check if response is audio data
+                    content_type = response.headers.get('content-type', '').lower()
+                    if ('audio' in content_type or 
+                        response.content.startswith(b'\xff\xfb') or 
+                        response.content.startswith(b'ID3') or 
+                        b'LAME' in response.content[:100]):
+                        if verbose:
+                            print(f"[debug] Chunk {part_number} processed successfully")
+                        return part_number, response.content
+                    else:
+                        raise exceptions.FailedToGenerateResponseError(
+                            f"Unexpected response format. Content-Type: {content_type}"
+                        )
+
+                except requests.exceptions.RequestException as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        raise exceptions.FailedToGenerateResponseError(
+                            f"Failed to generate audio for chunk {part_number} after {max_retries} retries: {e}"
+                        )
+                    if verbose:
+                        print(f"[debug] Retrying chunk {part_number} (attempt {retry_count + 1})")
+                    time.sleep(1)  # Brief delay before retry
+
+        # Process chunks concurrently for better performance
+        audio_chunks = []
+        if len(sentences) > 1:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_chunk = {
+                    executor.submit(generate_audio_for_chunk, sentence, i): i
+                    for i, sentence in enumerate(sentences)
+                }
+                
+                for future in as_completed(future_to_chunk):
+                    try:
+                        chunk_number, audio_data = future.result()
+                        audio_chunks.append((chunk_number, audio_data))
+                    except Exception as e:
+                        if verbose:
+                            print(f"[debug] Error processing chunk: {e}")
+                        raise
+        else:
+            # Single sentence, process directly
+            chunk_number, audio_data = generate_audio_for_chunk(sentences[0], 0)
+            audio_chunks.append((chunk_number, audio_data))
+
+        # Sort chunks by their original order and combine
+        audio_chunks.sort(key=lambda x: x[0])
+        combined_audio = b''.join([chunk[1] for chunk in audio_chunks])
+
+        # Save combined audio to file
+        try:
+            with open(filename, 'wb') as f:
+                f.write(combined_audio)
+            if verbose:
+                print(f"[debug] Audio saved to: {filename}")
+            return filename.as_posix()
+        except IOError as e:
+            raise exceptions.FailedToGenerateResponseError(f"Failed to save audio file: {e}")
+
+
+class SpeechMaStreamingResponse:
+    """Context manager for streaming SpeechMa TTS responses."""
+    
+    def __init__(self, client: SpeechMaTTS):
+        self.client = client
+        
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+        
+    def create_speech(
+        self,
+        input: str,
+        voice: str = "emma",
+        model: str = "gpt-4o-mini-tts",
+        response_format: str = "mp3",
+        speed: float = 1.0,
+        instructions: str = None,
+        **kwargs
+    ):
+        """
+        Create speech with streaming response simulation.
+        
+        Note: SpeechMa doesn't support true streaming, so this returns
+        the complete audio data wrapped in a BytesIO object.
+        
+        Args:
+            input (str): Text to convert to speech
+            voice (str): Voice to use
+            model (str): TTS model
+            response_format (str): Audio format
+            speed (float): Speech speed
+            instructions (str): Voice instructions
+            **kwargs: Additional parameters
+            
+        Returns:
+            BytesIO: Audio data stream
+        """
+        audio_data = self.client.create_speech(
+            input=input,
+            voice=voice,
+            model=model,
+            response_format=response_format,
+            speed=speed,
+            instructions=instructions,
+            **kwargs
+        )
+        return BytesIO(audio_data)
+
+
+# Example usage and testing
 if __name__ == "__main__":
+    # Initialize the SpeechMa TTS client
     speechma = SpeechMaTTS()
-    text = "This is a test of the SpeechMa text-to-speech API. It supports multiple sentences."
-    audio_file = speechma.tts(text, voice="Emma")
-    print(f"Audio saved to: {audio_file}")
+    
+    # Example 1: Basic usage with legacy method
+    print("=== Example 1: Basic TTS ===")
+    text = "Hello, this is a test of the SpeechMa text-to-speech API."
+    try:
+        audio_file = speechma.tts(text, voice="emma", verbose=True)
+        print(f"Audio saved to: {audio_file}")
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    # Example 2: OpenAI-compatible interface
+    print("\n=== Example 2: OpenAI-compatible interface ===")
+    try:
+        audio_data = speechma.create_speech(
+            input="This demonstrates the OpenAI-compatible interface.",
+            voice="brian",
+            model="tts-1-hd",
+            response_format="mp3",
+            speed=1.2
+        )
+        print(f"Generated {len(audio_data)} bytes of audio data")
+        
+        # Save to file
+        with open("openai_compatible_test.mp3", "wb") as f:
+            f.write(audio_data)
+        print("Audio saved to: openai_compatible_test.mp3")
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    # Example 3: Streaming response context manager
+    print("\n=== Example 3: Streaming response ===")
+    try:
+        with speechma.with_streaming_response() as streaming:
+            audio_stream = streaming.create_speech(
+                input="This demonstrates streaming response handling.",
+                voice="aria",
+                model="gpt-4o-mini-tts"
+            )
+            audio_data = audio_stream.read()
+            print(f"Streamed {len(audio_data)} bytes of audio data")
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    # Example 4: Voice and model validation
+    print("\n=== Example 4: Parameter validation ===")
+    try:
+        # Test supported voices
+        print("Supported voices:", speechma.SUPPORTED_VOICES[:5], "...")
+        print("Supported models:", speechma.SUPPORTED_MODELS)
+        
+        # Test with different parameters
+        audio_file = speechma.tts(
+            text="Testing different voice parameters.",
+            voice="christopher",
+            model="tts-1",
+            pitch=2,
+            rate=-1,
+            verbose=True
+        )
+        print(f"Audio with custom parameters saved to: {audio_file}")
+    except Exception as e:
+        print(f"Error: {e}")

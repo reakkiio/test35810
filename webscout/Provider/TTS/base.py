@@ -58,6 +58,10 @@ class BaseTTSProvider(TTSProvider):
         Raises:
             ValueError: If model is not supported
         """
+        # If provider doesn't support models, return the model as-is
+        if self.SUPPORTED_MODELS is None:
+            return model
+        
         if model not in self.SUPPORTED_MODELS:
             raise ValueError(f"Model '{model}' not supported. Available models: {', '.join(self.SUPPORTED_MODELS)}")
         return model
@@ -287,6 +291,10 @@ class AsyncBaseTTSProvider:
         Raises:
             ValueError: If model is not supported
         """
+        # If provider doesn't support models, return the model as-is
+        if self.SUPPORTED_MODELS is None:
+            return model
+        
         if model not in self.SUPPORTED_MODELS:
             raise ValueError(f"Model '{model}' not supported. Available models: {', '.join(self.SUPPORTED_MODELS)}")
         return model

@@ -24,7 +24,8 @@ class Scout:
     Enhanced with advanced features and intelligent parsing.
     """
 
-    def __init__(self, markup="", features='html.parser', from_encoding=None, **kwargs):
+    def __init__(self, markup="", features='html.parser', from_encoding=None, 
+                 exclude_encodings=None, element_classes=None, **kwargs):
         """
         Initialize Scout with HTML content.
 
@@ -32,8 +33,17 @@ class Scout:
             markup (str): HTML content to parse
             features (str): Parser to use ('html.parser', 'lxml', 'html5lib', 'lxml-xml')
             from_encoding (str): Source encoding (if known)
+            exclude_encodings (list): Encodings to avoid
+            element_classes (dict): Custom classes for different element types
             **kwargs: Additional parsing options
         """
+        # Store original markup and settings
+        self.original_encoding = from_encoding
+        self.exclude_encodings = exclude_encodings or []
+        self.element_classes = element_classes or {}
+        self.builder_features = features
+        self.contains_replacement_characters = False
+        
         # Intelligent markup handling
         self.markup = self._preprocess_markup(markup, from_encoding)
         self.features = features
@@ -50,13 +60,24 @@ class Scout:
 
         # Parse that HTML! 🎯
         self._soup = self.parser.parse(self.markup)
-
+        
+        # Set up the root element properly
+        if hasattr(self._soup, 'name'):
+            self.name = self._soup.name
+        else:
+            self.name = '[document]'
+            
         # BeautifulSoup-like attributes
-        self.name = self._soup.name if hasattr(self._soup, 'name') else None
         self.attrs = self._soup.attrs if hasattr(self._soup, 'attrs') else {}
-
-        # Advanced parsing options
+        self.contents = self._soup.contents if hasattr(self._soup, 'contents') else []
+        self.parent = None
+        self.next_sibling = None
+        self.previous_sibling = None
+        
+        # Advanced parsing options and caching
         self._cache = {}
+        self._tag_name_cache = {}
+        self._css_selector_cache = {}
 
         # Text and web analyzers
         self.text_analyzer = ScoutTextAnalyzer()

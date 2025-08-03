@@ -1,27 +1,24 @@
-# 🕵️ Scout: Next-Gen Web Parsing Library
+**🚀 The Most Advanced HTML Parser & Web Crawler for AI/LLM Data Collection**
 
-<div align="center">
+**🌟 Built for the Future • Powered by Intelligence • Trusted by Developers**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Maintenance](https://img.shields.io/badge/Maintained-Yes-brightgreen.svg)](https://github.com/OE-LUCIFER/Webscout)
-[![Documentation](https://img.shields.io/badge/Docs-Wiki-orange)](https://github.com/OE-LUCIFER/Webscout/wiki)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](https://github.com/OE-LUCIFER/Webscout/pulls)
-
-</div>
 
 ## 📋 Overview
 
-Scout is a powerful, flexible, and performant HTML parsing library that makes web scraping a breeze! It provides intelligent HTML/XML parsing with advanced features like web crawling, text analysis, semantic extraction, and Markdown conversion. Scout goes beyond traditional parsing libraries with its intuitive API and comprehensive feature set.
+Scout is an ultra-powerful, enterprise-grade HTML parsing and web crawling library designed for the AI era. Built with LLM data collection in mind, Scout provides unparalleled capabilities for extracting, analyzing, and processing web content at scale. With its BeautifulSoup-compatible API enhanced with modern features, Scout is the go-to solution for serious web scraping projects.
 
 <details open>
-<summary><b>Why Choose Scout?</b></summary>
+<summary><b>🌟 Why Scout is the Ultimate Choice</b></summary>
 
-- **Powerful Parsing**: Multiple parser backends with intelligent markup handling
-- **Advanced Analysis**: Built-in text and web content analysis tools
-- **Concurrent Crawling**: Efficient multi-threaded web crawling
-- **Flexible API**: Intuitive interface similar to BeautifulSoup but with enhanced capabilities
-- **Format Conversion**: Convert HTML to JSON, Markdown, and more
+- **🧠 LLM-Optimized Crawling**: Purpose-built for collecting high-quality training data for Large Language Models
+- **🌐 Subdomain Intelligence**: Automatically discovers and crawls subdomains (e.g., blog.example.com, docs.example.com)
+- **⚡ Lightning-Fast Performance**: Multi-threaded concurrent crawling with intelligent rate limiting
+- **🎯 Surgical Precision**: Advanced content extraction that preserves structure while removing noise
+- **🔍 Deep Analysis**: Built-in NLP capabilities for entity extraction, text analysis, and semantic understanding
+- **🛡️ Enterprise-Ready**: Robust error handling, retry mechanisms, and respect for robots.txt
+- **📊 Rich Data Extraction**: Captures metadata, structured data, semantic content, and more
+- **🔄 Format Flexibility**: Export to JSON, Markdown, CSV, or custom formats
+- **🎨 BeautifulSoup++ API**: Familiar interface with 10x more features
 
 </details>
 
@@ -46,7 +43,7 @@ pip install webscout
 Or install the latest version from GitHub:
 
 ```bash
-pip install git+https://github.com/OE-LUCIFER/Webscout.git
+pip install git+https://github.com/OEvortex/Webscout.git
 ```
 
 ## 🚀 Quick Start
@@ -361,7 +358,7 @@ cached_data = scout.cache('parsed_data')
 - `_crawl_page(url, depth=0)`: Crawl a single page (internal method)
 - `_is_valid_url(url)`: Check if a URL is valid (internal method)
 
-For detailed API documentation, please refer to the [documentation](https://github.com/OE-LUCIFER/Webscout/wiki).
+For detailed API documentation, please refer to the [documentation](https://github.com/OEvortex/Webscout/wiki).
 
 ## 🔧 Dependencies
 
@@ -396,9 +393,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 <div align="center">
   <p>Made with ❤️ by the Webscout team</p>
   <p>
-    <a href="https://github.com/OE-LUCIFER/Webscout">GitHub</a> •
-    <a href="https://github.com/OE-LUCIFER/Webscout/wiki">Documentation</a> •
-    <a href="https://github.com/OE-LUCIFER/Webscout/issues">Report Bug</a> •
-    <a href="https://github.com/OE-LUCIFER/Webscout/issues">Request Feature</a>
+    <a href="https://github.com/OEvortex/Webscout">GitHub</a> •
+    <a href="https://github.com/OEvortex/Webscout/wiki">Documentation</a> •
+    <a href="https://github.com/OEvortex/Webscout/issues">Report Bug</a> •
+    <a href="https://github.com/OEvortex/Webscout/issues">Request Feature</a>
   </p>
 </div>

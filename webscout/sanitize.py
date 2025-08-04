@@ -143,7 +143,7 @@ def _process_chunk(
     if to_json:
         try:
             # Only strip before JSON parsing if both boundaries are incorrect
-            if sanitized_chunk[0] not in '{[' and sanitized_chunk[-1] not in '}]':
+            if len(sanitized_chunk) >= 2 and sanitized_chunk[0] not in '{[' and sanitized_chunk[-1] not in '}]':
                 sanitized_chunk = sanitized_chunk.strip()
             return json.loads(sanitized_chunk)
         except (json.JSONDecodeError, Exception) as e:
@@ -646,13 +646,14 @@ async def _sanitize_stream_async(
             f"Stream must yield strings or bytes, not {type(first_item).__name__}"
         )
 
-    async for line in line_iterator:
-        if not line:
-            continue
-        buffer += line
-        while True:
-            if not found_start and start_marker:
-                idx = buffer.find(start_marker)
+    try:
+        async for line in line_iterator:
+            if not line:
+                continue
+            buffer += line
+            while True:
+                if not found_start and start_marker:
+                    idx = buffer.find(start_marker)
                 if idx != -1:
                     found_start = True
                     buffer = buffer[idx + len(start_marker) :]
@@ -735,6 +736,9 @@ async def _sanitize_stream_async(
                 break
             else:
                 break
+    except Exception as e:
+        import sys
+        print(f"Async stream processing error: {str(e)}", file=sys.stderr)
 
 
 def sanitize_stream(
@@ -937,7 +941,7 @@ def sanitize_stream(
             payload, intro_value, to_json, skip_markers, strip_chars,
             start_marker, end_marker, content_extractor, yield_raw_on_error,
             encoding, encoding_errors, buffer_size, line_delimiter, error_handler,
-            skip_regexes, extract_regexes,
+            skip_regexes, extract_regexes, raw,
         )
 
     # Handle async iterables
@@ -966,6 +970,7 @@ def sanitize_stream(
 
 # --- Decorator version of sanitize_stream ---
 import functools
+import asyncio
 from typing import overload
 
 def _sanitize_stream_decorator(
@@ -1057,7 +1062,6 @@ sanitize_stream_decorator = _sanitize_stream_decorator
 lit_streamer = _sanitize_stream_decorator
 
 # Allow @sanitize_stream and @lit_streamer as decorators
-import asyncio
 sanitize_stream.__decorator__ = _sanitize_stream_decorator
 LITSTREAM.__decorator__ = _sanitize_stream_decorator
 lit_streamer.__decorator__ = _sanitize_stream_decorator

@@ -5,7 +5,7 @@ from typing import Any, Dict, Generator, Optional, Union
 from webscout.AIbase import AISearch, SearchResponse
 from webscout import exceptions
 from webscout.litagent import LitAgent
-from webscout.AIutel import sanitize_stream
+from webscout.sanitize import sanitize_stream
 
 
 class PERPLEXED(AISearch):
@@ -141,27 +141,13 @@ class PERPLEXED(AISearch):
 
         def extract_answer_content(data):
             """Extract answer content from PERPLEXED response."""
-            print(f"[DEBUG] extract_answer_content received: {type(data)}")
             if isinstance(data, dict):
-                print(f"[DEBUG] Dict keys: {list(data.keys())}")
-                print(f"[DEBUG] success: {data.get('success')}")
-                print(f"[DEBUG] stage: {data.get('stage')}")
-                print(f"[DEBUG] answer present: {'answer' in data}")
-                answer_val = data.get('answer', 'NOT_FOUND')
-                print(f"[DEBUG] answer value: {repr(answer_val[:100] if isinstance(answer_val, str) and len(answer_val) > 100 else answer_val)}")
-                
                 # Check if this is the final answer - answer field exists and is not empty
                 if data.get("success") and "answer" in data and data["answer"]:
-                    print(f"[DEBUG] Returning answer content (length: {len(data['answer'])})")
                     return data["answer"]
                 # Check if this is a stage update with no answer yet
                 elif data.get("success") and data.get("stage"):
-                    print(f"[DEBUG] Skipping stage update: {data.get('stage')}")
                     return None  # Skip stage updates without answers
-                else:
-                    print(f"[DEBUG] No matching condition, returning None")
-            else:
-                print(f"[DEBUG] Data is not dict, returning None")
             return None
 
         def for_stream():
@@ -178,77 +164,51 @@ class PERPLEXED(AISearch):
                             f"Failed to generate response - ({response.status_code}, {response.reason}) - {response.text}"
                         )
 
-                    # Process the streaming response manually
-                    full_response = ""
-                    for line in response.iter_lines(decode_unicode=True):
-                        if line:
-                            full_response += line
-
-                    # Split by the separator to get individual JSON chunks
-                    chunks = full_response.split("[/PERPLEXED-SEPARATOR]")
+                    # Use sanitize_stream directly with response iterator
+                    processed_chunks = sanitize_stream(
+                        data=response.iter_lines(decode_unicode=True),  # Pass iterator directly
+                        intro_value="",  # No prefix to remove  
+                        to_json=True,    # Parse each chunk as JSON
+                        content_extractor=lambda chunk: SearchResponse(extract_answer_content(chunk)) if extract_answer_content(chunk) else None,
+                        yield_raw_on_error=False,  # Skip invalid JSON chunks
+                        line_delimiter="[/PERPLEXED-SEPARATOR]",  # Use PERPLEXED separator to split chunks
+                        skip_markers=[],  # No specific markers to skip
+                        raw=raw  # Let sanitize_stream handle raw mode automatically
+                    )
                     
-                    for chunk_text in chunks:
-                        if chunk_text.strip():
-                            try:
-                                # Parse the JSON chunk
-                                chunk_data = json.loads(chunk_text.strip())
-                                
-                                if raw:
-                                    # For raw mode, yield the entire JSON string
-                                    yield {"text": chunk_text.strip()}
-                                else:
-                                    # For non-raw mode, extract the answer if available
-                                    answer_content = extract_answer_content(chunk_data)
-                                    if answer_content:
-                                        yield SearchResponse(answer_content)
-                                        
-                            except json.JSONDecodeError:
-                                # Skip invalid JSON chunks
-                                continue
+                    # Yield results from sanitize_stream - it handles raw/non-raw automatically
+                    for processed_chunk in processed_chunks:
+                        if processed_chunk is not None:
+                            yield processed_chunk
 
             except requests.exceptions.RequestException as e:
                 raise exceptions.APIConnectionError(f"Request failed: {e}")
 
         def for_non_stream():
-            if raw:
-                # For raw mode, yield each chunk as it comes
-                for chunk in for_stream():
-                    yield chunk
-            else:
-                # For non-raw mode, accumulate all chunks and return final response
-                full_response = ""
-                for chunk in for_stream():
-                    full_response += str(chunk)
-                
-                if full_response:
-                    self.last_response = SearchResponse(full_response)
-                else:
-                    # Return empty response if no content was extracted
-                    self.last_response = SearchResponse("")
-                
-                return self.last_response
-        
+            full_response = ""
+            for chunk in for_stream():
+                full_response += str(chunk)
+            
+            self.last_response = SearchResponse(full_response)
+            return self.last_response
+
         if stream:
             return for_stream()
         else:
-            # For non-streaming mode, we need to consume the generator and return the result
-            result = for_non_stream()
-            # If result is a generator (which it shouldn't be), consume it
-            if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
-                try:
-                    # This shouldn't happen with our current implementation, but just in case
-                    return list(result)[0] if list(result) else SearchResponse("")
-                except:
-                    return SearchResponse("")
-            return result
+            if raw:
+                # For raw non-streaming, we need to yield each chunk individually
+                return for_stream()
+            else:
+                # For regular non-streaming, accumulate and return complete response
+                return for_non_stream()
 
 
 if __name__ == "__main__":
-    from rich import print
+
     ai = PERPLEXED()
     
     # Test with raw=False to see debug output
-    print("=== Testing with raw=False ===")
-    response = ai.search(input(">>> "), stream=False, raw=False)
-    print("Final response:", response)
-    print("Response type:", type(response))
+    print("=== Testing with raw=True ===")
+    response = ai.search(input(">>> "), stream=True, raw=True)
+    for chunks in response:
+        print(chunks, end="", flush=True)

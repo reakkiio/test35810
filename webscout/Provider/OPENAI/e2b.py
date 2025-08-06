@@ -1042,6 +1042,10 @@ class Completions(BaseCompletions):
         """Enhanced request method with IP rotation, session rotation, and advanced rate limit bypass."""
         url = model_config["apiUrl"]
         target_origin = "https://fragments.e2b.dev"
+        
+        # Use client proxies if none provided
+        if proxies is None:
+            proxies = getattr(self._client, "proxies", None)
 
         for attempt in range(retries):
             try:
@@ -1084,13 +1088,13 @@ class Completions(BaseCompletions):
 
                 json_data = json.dumps(enhanced_request_body)
                 
-                # Use curl_cffi session with enhanced fingerprinting
+                # Use curl_cffi session with enhanced fingerprinting and proxy support
                 response = self._client.session.post(
                     url=url,
                     headers=headers,
                     data=json_data,
                     timeout=timeout or self._client.timeout,
-                    proxies=proxies or getattr(self._client, "proxies", None),
+                    proxies=proxies,
                     impersonate=self._client.impersonation
                 )
 
@@ -1254,17 +1258,21 @@ class E2B(OpenAICompatibleProvider):
         'deepseek-r1-instruct': 'deepseek-r1'
     }
 
-    def __init__(self, retries: int = 3):
+    def __init__(self, retries: int = 3, proxies: Optional[Dict[str, str]] = None, **kwargs):
         """
         Initialize the E2B client with curl_cffi and browser fingerprinting.
 
         Args:
             retries: Number of retries for failed requests.
+            proxies: Proxy configuration for requests.
+            **kwargs: Additional arguments passed to parent class.
         """
         self.timeout = 60  # Default timeout in seconds
-        self.proxies = None  # Default proxies
         self.retries = retries
-
+        
+        # Handle proxy configuration
+        self.proxies = proxies or {}
+        
         # Use LitAgent for user-agent
         self.headers = LitAgent().generate_fingerprint()
 
@@ -1272,6 +1280,20 @@ class E2B(OpenAICompatibleProvider):
         self.impersonation = curl_requests.impersonate.DEFAULT_CHROME
         self.session = curl_requests.Session()
         self.session.headers.update(self.headers)
+        
+        # Apply proxy configuration if provided
+        if self.proxies:
+            self.session.proxies.update(self.proxies)
+
+        # Initialize bypass session data
+        self._session_rotation_data = {}
+        self._last_rotation_time = 0
+        self._rotation_interval = 300  # Rotate session every 5 minutes
+        self._rate_limit_failures = 0
+        self._max_rate_limit_failures = 3
+
+        # Initialize the chat interface
+        self.chat = Chat(self)
 
         # Initialize bypass session data
         self._session_rotation_data = {}
@@ -1624,7 +1646,7 @@ if __name__ == "__main__":
         stream = client_stream.chat.completions.create(
             model="claude-opus-4-1-20250805",
             messages=[
-                {"role": "user", "content": "Write a poem about AI."}
+                {"role": "user", "content": "hi."}
             ],
             stream=True
         )
@@ -1636,6 +1658,7 @@ if __name__ == "__main__":
                 print(content, end="", flush=True)
                 full_stream_response += content
         print("\n--- End of Stream ---")
+        print(client_stream.proxies)
         if not full_stream_response:
              print(f"{RED}Stream test failed: No content received.{RESET}")
     except Exception as e:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # import logging
 import json
-from urllib.parse import quote
+import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -13,10 +13,17 @@ from random import choice, shuffle
 from threading import Event
 from time import sleep, time
 from types import TracebackType
-from typing import Any, cast
-import os
-from typing import Literal, Iterator
+from typing import Any, Literal
+from urllib.parse import quote
+
 from webscout.litagent import LitAgent
+
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
 import curl_cffi.requests  # type: ignore
 
 try:
@@ -28,7 +35,7 @@ try:
 except ImportError:
     LXML_AVAILABLE = False
 
-from .exceptions import ConversationLimitException, WebscoutE, RatelimitE, TimeoutE
+from .exceptions import RatelimitE, TimeoutE, WebscoutE
 from .utils import (
     _calculate_distance,
     _expand_proxy_tb_alias,

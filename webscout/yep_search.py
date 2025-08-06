@@ -1,9 +1,17 @@
-from curl_cffi.requests import Session
-from urllib.parse import urlencode
-from webscout.litagent import LitAgent
-from typing import List, Dict, Optional, Tuple
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
 from concurrent.futures import ThreadPoolExecutor
-import json
+from typing import Dict, List, Optional
+from urllib.parse import urlencode
+
+from curl_cffi.requests import Session
+
+from webscout.litagent import LitAgent
+
 
 class YepSearch:
     """Yep.com search class to get search results."""

@@ -3,16 +3,25 @@ DWEBS - A Google search library with advanced features
 """
 import random
 from time import sleep
+
 from webscout.scout import Scout
-from curl_cffi.requests import Session
-from urllib.parse import unquote, urlencode
-from typing import List, Dict, Optional, Union, Iterator, Any
+
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlencode
+
+from curl_cffi.requests import Session
 
 
 class SearchResult:
     """Class to represent a search result with metadata."""
-    
+
     def __init__(self, url: str, title: str, description: str):
         """
         Initialize a search result.
@@ -96,7 +105,7 @@ class GoogleSearch:
         ssl_mm_version = f"SSL-MM/{random.randint(1, 2)}.{random.randint(3, 5)}"
         openssl_version = f"OpenSSL/{random.randint(1, 3)}.{random.randint(0, 4)}.{random.randint(0, 9)}"
         return f"{lynx_version} {libwww_version} {ssl_mm_version} {openssl_version}"
-    
+
     def _make_request(self, term: str, results: int, start: int = 0, search_type: str = None) -> str:
         """
         Make a request to Google search.
@@ -116,11 +125,11 @@ class GoogleSearch:
             "hl": self.lang,
             "start": start,
         }
-        
+
         # Add search type if specified
         if search_type:
             params["tbm"] = search_type
-        
+
         try:
             # Use the curl_cffi session
             resp = self.session.get(
@@ -137,7 +146,7 @@ class GoogleSearch:
                  raise RuntimeError(f"Search request failed with status {e.response.status_code}: {str(e)}")
             else:
                  raise RuntimeError(f"Search request failed: {str(e)}")
-    
+
     def _extract_url(self, raw_link: str) -> Optional[str]:
         """
         Extract actual URL from Google redirect URL.
@@ -150,7 +159,7 @@ class GoogleSearch:
         """
         if not raw_link:
             return None
-            
+
         if raw_link.startswith("/url?"):
             try:
                 link = unquote(raw_link.split("&")[0].replace("/url?q=", ""))
@@ -159,9 +168,9 @@ class GoogleSearch:
                 return None
         elif raw_link.startswith("http"):
             return unquote(raw_link)
-        
+
         return None
-    
+
     def _is_valid_result(self, link: str, fetched_links: set, unique: bool) -> bool:
         """
         Check if search result is valid.
@@ -176,12 +185,12 @@ class GoogleSearch:
         """
         if any(x in link for x in ["google.", "/search?", "webcache."]):
             return False
-            
+
         if link in fetched_links and unique:
             return False
-            
+
         return True
-    
+
     def _parse_search_results(
         self,
         html: str,
@@ -204,11 +213,11 @@ class GoogleSearch:
         results = []
         soup = Scout(html, features="html.parser")
         result_blocks = soup.find_all("div", class_="ezO2md")
-        
+
         if not result_blocks:
             # Try alternative class patterns if the main one doesn't match
             result_blocks = soup.find_all("div", attrs={"class": lambda c: c and "g" in c.split()})
-        
+
         for result in result_blocks:
             # Find the link - looking for various potential Google result classes
             link_tag = result.find("a", class_=["fuLhoc", "ZWRArf"])
@@ -216,10 +225,10 @@ class GoogleSearch:
                 link_tag = result.find("a")
                 if not link_tag:
                     continue
-            
+
             raw_link = link_tag.get("href", "")
             link = self._extract_url(raw_link)
-            
+
             if not link:
                 continue
 
@@ -235,32 +244,32 @@ class GoogleSearch:
             description_tag = result.find("span", class_="FrIlee")
             if not description_tag:
                 description_tag = result.find(["div", "span"], class_=lambda c: c and any(x in c for x in ["snippet", "description", "VwiC3b"]))
-            
+
             description = description_tag.get_text(strip=True) if description_tag else ""
 
             # Create result object
             search_result = SearchResult(link, title, description)
-            
+
             # Add extra metadata if available
             citation = result.find("cite")
             if citation:
                 search_result.metadata["source"] = citation.get_text(strip=True)
-            
+
             timestamp = result.find("span", class_=lambda c: c and "ZE5qJf" in c)
             if timestamp:
                 search_result.metadata["date"] = timestamp.get_text(strip=True)
 
             fetched_links.add(link)
             results.append(search_result)
-            
+
             if len(results) >= num_results:
                 break
-                
+
         return results
-    
+
     def text(
-        self, 
-        keywords: str, 
+        self,
+        keywords: str,
         region: str = None,
         safesearch: str = "moderate",
         max_results: int = 10,
@@ -283,7 +292,7 @@ class GoogleSearch:
         """
         if not keywords:
             raise ValueError("Search keywords cannot be empty")
-            
+
         # Map safesearch values to Google's safe parameter
         safe_map = {
             "on": "active",
@@ -291,12 +300,12 @@ class GoogleSearch:
             "off": "off"
         }
         safe = safe_map.get(safesearch.lower(), "moderate")
-        
+
         # Keep track of unique results
         fetched_results = []
         fetched_links = set()
         start = start_num
-        
+
         while len(fetched_results) < max_results:
             # Add safe search parameter to the request
             # Note: This modifies the session params for this specific request type
@@ -307,33 +316,33 @@ class GoogleSearch:
 
             response_html = self._make_request(
                 term=term_with_safe, # Pass term with safe search
-                results=max_results - len(fetched_results), 
+                results=max_results - len(fetched_results),
                 start=start
             )
-            
+
             results = self._parse_search_results(
                 html=response_html,
                 num_results=max_results - len(fetched_results),
                 fetched_links=fetched_links,
                 unique=unique
             )
-            
+
             if not results:
                 break
-                
+
             fetched_results.extend(results)
-            
+
             if len(fetched_results) >= max_results:
                 break
-            
+
             start += 10 # Google typically uses increments of 10
             sleep(self.sleep_interval)
-        
+
         return fetched_results[:max_results]
-    
+
     def news(
-        self, 
-        keywords: str, 
+        self,
+        keywords: str,
         region: str = None,
         safesearch: str = "moderate",
         max_results: int = 10
@@ -352,7 +361,7 @@ class GoogleSearch:
         """
         if not keywords:
             raise ValueError("Search keywords cannot be empty")
-            
+
         # Map safesearch values to Google's safe parameter
         safe_map = {
             "on": "active",
@@ -360,7 +369,7 @@ class GoogleSearch:
             "off": "off"
         }
         safe = safe_map.get(safesearch.lower(), "moderate")
-        
+
         # Keep track of unique results
         fetched_links = set()
 
@@ -374,16 +383,16 @@ class GoogleSearch:
             results=max_results,
             search_type="nws"
         )
-        
+
         results = self._parse_search_results(
             html=response_html,
             num_results=max_results,
             fetched_links=fetched_links,
             unique=True # News results are generally unique per request
         )
-        
+
         return results[:max_results]
-    
+
     def suggestions(self, query: str, region: str = None) -> List[str]:
         """
         Get search suggestions for a query term.
@@ -397,26 +406,26 @@ class GoogleSearch:
         """
         if not query:
             raise ValueError("Search query cannot be empty")
-            
+
         try:
             params = {
                 "client": "firefox",
                 "q": query,
             }
-            
+
             # Add region if specified
             if region and region.lower() != "all":
                 params["gl"] = region
-            
+
             url = f"https://www.google.com/complete/search?{urlencode(params)}"
-            
+
             # Use a simpler header set for the suggestions API
             headers = {
                 "User-Agent": self._get_useragent(),
                 "Accept": "application/json, text/javascript, */*",
                 "Accept-Language": self.lang,
             }
-            
+
             # Use session.get but override headers for this specific request
             response = self.session.get(
                 url=url,
@@ -425,13 +434,13 @@ class GoogleSearch:
                 # timeout and verify are handled by session
             )
             response.raise_for_status()
-            
+
             # Response format is typically: ["original query", ["suggestion1", "suggestion2", ...]]
             data = response.json()
             if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list):
                 return data[1]
             return []
-            
+
         except Exception as e:
             # Provide more specific error context if possible
             if hasattr(e, 'response') and e.response is not None:
@@ -454,7 +463,7 @@ def search(term, num_results=10, lang="en", proxy=None, advanced=False, sleep_in
         sleep_interval=sleep_interval,
         impersonate=impersonate # Pass impersonate
     )
-    
+
     # Map legacy safe values
     safe_search_map = {
         "active": "on",
@@ -471,7 +480,7 @@ def search(term, num_results=10, lang="en", proxy=None, advanced=False, sleep_in
         start_num=start_num,
         unique=unique
     )
-    
+
     # Convert to simple URLs if not advanced mode
     if not advanced:
         return [result.url for result in results]
@@ -485,7 +494,7 @@ if __name__ == "__main__":
         proxies=None,  # Optional: Use proxies
         verify=True    # Optional: SSL verification
     )
-    
+
     # Text Search
     print("TEXT SEARCH RESULTS:")
     text_results = google.text(
@@ -499,7 +508,7 @@ if __name__ == "__main__":
         print(f"URL: {result.url}")
         print(f"Description: {result.description}")
         print("---")
-        
+
     # News Search
     print("\nNEWS SEARCH RESULTS:")
     news_results = google.news(
@@ -513,7 +522,7 @@ if __name__ == "__main__":
         print(f"URL: {result.url}")
         print(f"Description: {result.description}")
         print("---")
-        
+
     # Search Suggestions
     print("\nSEARCH SUGGESTIONS:")
     suggestions = google.suggestions("how to")

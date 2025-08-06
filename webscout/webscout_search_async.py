@@ -3,14 +3,19 @@ from __future__ import annotations
 import asyncio
 import os
 import warnings
-from datetime import datetime, timezone
 from functools import cached_property
 from itertools import cycle
 from random import choice, shuffle
 from time import time
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Type, Union, cast, AsyncIterator
+from typing import Any, Dict, List, Optional, Type, Union
 
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
 import curl_cffi.requests
 from lxml.etree import _Element
 from lxml.html import HTMLParser as LHTMLParser
@@ -18,16 +23,13 @@ from lxml.html import document_fromstring
 
 from webscout.litagent.agent import LitAgent
 
-from .exceptions import ConversationLimitException, RatelimitE, TimeoutE, WebscoutE
+from .exceptions import RatelimitE, TimeoutE, WebscoutE
 from .utils import (
     _expand_proxy_tb_alias,
     _extract_vqd,
     _normalize,
     _normalize_url,
-    json_loads,
 )
-
-
 
 
 class AsyncWEBS:

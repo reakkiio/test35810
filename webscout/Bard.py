@@ -8,24 +8,30 @@ import os
 import random
 import re
 import string
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from datetime import datetime
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 # Use curl_cffi for requests
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
 from curl_cffi import CurlError
 from curl_cffi.requests import AsyncSession
-# Import common request exceptions (curl_cffi often wraps these)
-from requests.exceptions import RequestException, Timeout, HTTPError
 
 # For image models using validation. Adjust based on organization internal pydantic.
 # Updated import for Pydantic V2
 from pydantic import BaseModel, field_validator
 
+# Import common request exceptions (curl_cffi often wraps these)
+from requests.exceptions import HTTPError, RequestException, Timeout
+
 # Rich is retained for logging within image methods.
 from rich.console import Console
-from rich.markdown import Markdown
 
 console = Console()
 
@@ -875,7 +881,7 @@ class Image(BaseModel):
         # Generate filename from URL if not provided
         if not filename:
             try:
-                from urllib.parse import urlparse, unquote
+                from urllib.parse import unquote, urlparse
                 parsed_url = urlparse(self.url)
                 base_filename = os.path.basename(unquote(parsed_url.path))
                 # Remove invalid characters for filenames

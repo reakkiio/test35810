@@ -1,20 +1,34 @@
 
 import re
+
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
+import json
+from typing import Any, Dict, Generator, List, Optional, Union
+
 import curl_cffi
 from curl_cffi.requests import Session
-import json
-import os
-from typing import Any, Dict, Optional, Generator, List, Union
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
-from webscout.AIbase import Provider
+
 from webscout import exceptions
+from webscout.AIbase import Provider
+from webscout.AIutel import (  # Import sanitize_stream
+    AwesomePrompts,
+    Conversation,
+    Optimizers,
+    sanitize_stream,
+)
 from webscout.litagent import LitAgent as UserAgent
+
 
 class Cerebras(Provider):
     """
     A class to interact with the Cerebras API using a cookie for authentication.
     """
-    
+
     AVAILABLE_MODELS = [
         "qwen-3-coder-480b",
         "qwen-3-235b-a22b-instruct-2507",
@@ -94,7 +108,7 @@ class Cerebras(Provider):
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        
+
         # Apply proxies to the session
         self.session.proxies = proxies
 
@@ -221,15 +235,15 @@ class Cerebras(Provider):
                 status_code = e.response.status_code
                 if status_code == 401:
                     raise exceptions.APIConnectionError(
-                        f"Authentication failed (401): Invalid API key. Please check your API key and try again."
+                        "Authentication failed (401): Invalid API key. Please check your API key and try again."
                     ) from e
                 elif status_code == 403:
                     raise exceptions.APIConnectionError(
-                        f"Access forbidden (403): Your API key may not have permission to access this resource."
+                        "Access forbidden (403): Your API key may not have permission to access this resource."
                     ) from e
                 elif status_code == 429:
                     raise exceptions.APIConnectionError(
-                        f"Rate limit exceeded (429): Too many requests. Please wait and try again."
+                        "Rate limit exceeded (429): Too many requests. Please wait and try again."
                     ) from e
                 else:
                     raise exceptions.APIConnectionError(f"HTTP {status_code} error: {e}") from e
@@ -261,7 +275,7 @@ class Cerebras(Provider):
 
         try:
             response = self._make_request(messages, stream)
-            
+
             if stream:
                 # Wrap the generator to yield dicts or raw strings
                 def stream_wrapper():
@@ -292,7 +306,7 @@ class Cerebras(Provider):
         """Chat with the model."""
         # Ask returns a generator for stream=True, dict/str for stream=False
         response_gen_or_dict = self.ask(prompt, stream, raw=False, optimizer=optimizer, conversationally=conversationally)
-        
+
         if stream:
             # Wrap the generator from ask() to get message text
             def stream_wrapper():
@@ -312,14 +326,14 @@ class Cerebras(Provider):
 
 if __name__ == "__main__":
     from rich import print
-    
+
     # Example usage
     cerebras = Cerebras(
         api_key='csk-**********************',  # Replace with your actual API key
         model='qwen-3-235b-a22b-instruct-2507',
         system_prompt="You are a helpful AI assistant."
     )
-    
+
     # Test with streaming
     response = cerebras.chat("Hello!", stream=True)
     for chunk in response:

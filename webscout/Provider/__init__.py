@@ -74,7 +74,6 @@ from .WrDoChat import WrDoChat
 from .Nemotron import NEMOTRON
 from .FreeGemini import FreeGemini
 from .Flowith import Flowith
-from .samurai import samurai
 from .lmarena import lmarena
 from .oivscode import oivscode
 from .XenAI import XenAI

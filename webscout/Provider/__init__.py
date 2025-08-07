@@ -85,8 +85,10 @@ from .MiniMax import MiniMax
 from .Qodo import *
 from .monochat import MonoChat
 from .Kimi import Kimi
+from .GptOss import GptOss
 __all__ = [
     'SCNet',
+    'GptOss',
     'MonoChat',
     'Kimi',
     'MiniMax',

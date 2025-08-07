@@ -4,10 +4,9 @@ import requests
 import json
 from typing import List, Dict, Optional, Union, Generator, Any
 
-from webscout.Provider.yep import T
 from webscout.litagent import LitAgent
-from .base import BaseChat, BaseCompletions, OpenAICompatibleProvider
-from .utils import (
+from webscout.Provider.OPENAI.base import BaseChat, BaseCompletions, OpenAICompatibleProvider
+from webscout.Provider.OPENAI.utils import (
     ChatCompletion,
     ChatCompletionChunk,
     Choice,
@@ -208,10 +207,7 @@ class Netwrck(OpenAICompatibleProvider):
         "sao10k/l3-euryale-70b",
         "deepseek/deepseek-chat",
         "deepseek/deepseek-r1",
-        "anthropic/claude-sonnet-4-20250514",
-        "openai/gpt-4.1-mini",
         "gryphe/mythomax-l2-13b",
-        "google/gemini-2.5-flash-preview-04-17",
         "nvidia/llama-3.1-nemotron-70b-instruct",
     ]
 
@@ -308,9 +304,9 @@ class Netwrck(OpenAICompatibleProvider):
             if model.lower() in available_model.lower():
                 return available_model
         
-        # Default to Claude if no match
-        print(f"{BOLD}Warning: Model '{model}' not found, using default model 'anthropic/claude-3-7-sonnet-20250219'{RESET}")
-        return "anthropic/claude-3-7-sonnet-20250219"
+        # Default to DeepSeek if no match
+        print(f"{BOLD}Warning: Model '{model}' not found, using default model 'deepseek/deepseek-r1'{RESET}")
+        return "deepseek/deepseek-r1"
 
     @property
     def models(self):
@@ -327,9 +323,9 @@ if __name__ == "__main__":
 
     # Test a subset of models to avoid excessive API calls
     test_models = [
-        "anthropic/claude-3-7-sonnet-20250219",
-        "openai/gpt-4o-mini",
-        "deepseek/deepseek-chat"
+        "deepseek/deepseek-r1",
+        "deepseek/deepseek-chat",
+        "gryphe/mythomax-l2-13b"
     ]
 
     for model in test_models:

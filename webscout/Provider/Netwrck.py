@@ -18,16 +18,13 @@ class Netwrck(Provider):
         "sao10k/l3-euryale-70b",
         "deepseek/deepseek-chat",
         "deepseek/deepseek-r1",
-        "anthropic/claude-sonnet-4-20250514",
-        "openai/gpt-4.1-mini",
         "gryphe/mythomax-l2-13b",
-        "google/gemini-2.5-flash-preview-04-17",
         "nvidia/llama-3.1-nemotron-70b-instruct",
     ]
 
     def __init__(
         self,
-        model: str = "anthropic/claude-sonnet-4-20250514",
+        model: str = "deepseek/deepseek-r1",
         is_conversation: bool = True,
         max_tokens: int = 4096, # Note: max_tokens is not used by this API
         timeout: int = 30,
@@ -155,10 +152,10 @@ class Netwrck(Provider):
                 self.last_response = {"text": buffer}
                 self.conversation.update_chat_history(payload["query"], buffer)
             except CurlError as e:
-                raise exceptions.ProviderConnectionError(f"Network error (CurlError): {str(e)}") from e
+                raise exceptions.APIConnectionError(f"Network error (CurlError): {str(e)}") from e
             except Exception as e:
                 err_text = getattr(e, 'response', None) and getattr(e.response, 'text', '')
-                raise exceptions.ProviderConnectionError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
+                raise exceptions.APIConnectionError(f"Unexpected error ({type(e).__name__}): {str(e)} - {err_text}") from e
 
         def for_non_stream():
             try:

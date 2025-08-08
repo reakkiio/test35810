@@ -50,7 +50,12 @@ class Copilot(Provider):
     url = "https://copilot.microsoft.com"
     websocket_url = "wss://copilot.microsoft.com/c/api/chat?api-version=2"
     conversation_url = f"{url}/c/api/conversations"
-    AVAILABLE_MODELS = ["Copilot", "Think Deeper"]
+    AVAILABLE_MODELS = ["Copilot", "Think Deeper", "Smart"]
+    MODEL_ALIASES = {
+        "gpt-4o": "Copilot",
+        "o4-mini": "Think Deeper",
+        "gpt-5": "Smart",
+    }
     _access_token: str = None
     _cookies: dict = None
 
@@ -68,8 +73,11 @@ class Copilot(Provider):
         model: str = "Copilot"
     ):
         """Initializes the Copilot API client."""
-        if model not in self.AVAILABLE_MODELS:
+        # Map alias to real model name if needed
+        real_model = self.MODEL_ALIASES.get(model, model)
+        if real_model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
+        self.model = real_model
 
         # Use LitAgent for user-agent
         self.headers = {
@@ -257,6 +265,12 @@ class Copilot(Provider):
                     # WebSocket connection
                     wss = session.ws_connect(websocket_url)
                     wss.send(json.dumps({"event": "setOptions", "supportedCards": ["weather", "local", "image", "sports", "video", "ads", "finance"], "ads": {"supportedTypes": ["multimedia", "product", "tourActivity", "propertyPromotion", "text"]}}))
+                    if self.model == "Smart":
+                        mode_value = "smart"
+                    elif "Think" in self.model:
+                        mode_value = "reasoning"
+                    else:
+                        mode_value = "chat"
                     wss.send(json.dumps({
                         "event": "send",
                         "conversationId": conversation_id,
@@ -264,7 +278,8 @@ class Copilot(Provider):
                             "type": "text",
                             "text": conversation_prompt,
                         }],
-                        "mode": "reasoning" if "Think" in self.model else "chat"
+                        "mode": mode_value,
+                        "model": self.model
                     }).encode(), CurlWsFlag.TEXT)
 
                     # Event-driven response loop
@@ -420,7 +435,7 @@ async def get_nodriver(proxy=None, user_data_dir=None):
 
 if __name__ == "__main__":
     from rich import print
-    ai = Copilot(timeout=900, model="Think Deeper")
+    ai = Copilot(timeout=900, model="gpt-5")
     response = ai.chat(input("> "), stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)

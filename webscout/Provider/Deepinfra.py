@@ -85,6 +85,7 @@ class DeepInfra(Provider):
         "nvidia/Llama-3.1-Nemotron-70B-Instruct",
         "zai-org/GLM-4.5-Air",
         "zai-org/GLM-4.5",
+        "zai-org/GLM-4.5V",
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
         "allenai/olmOCR-7B-0725-FP8",

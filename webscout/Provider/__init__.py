@@ -39,7 +39,6 @@ from .Jadve import *
 from .chatglm import *
 from .hermes import *
 from .TextPollinationsAI import *
-from .Glider import *
 from .QwenLM import *
 from .granite import *
 from .WiseCat import *

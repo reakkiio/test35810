@@ -1,34 +1,48 @@
 
 import re
+
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
+import json
+from typing import Any, Dict, Generator, List, Optional, Union
+
 import curl_cffi
 from curl_cffi.requests import Session
-import json
-import os
-from typing import Any, Dict, Optional, Generator, List, Union
-from webscout.AIutel import Optimizers, Conversation, AwesomePrompts, sanitize_stream # Import sanitize_stream
-from webscout.AIbase import Provider
+
 from webscout import exceptions
+from webscout.AIbase import Provider
+from webscout.AIutel import (  # Import sanitize_stream
+    AwesomePrompts,
+    Conversation,
+    Optimizers,
+    sanitize_stream,
+)
 from webscout.litagent import LitAgent as UserAgent
+
 
 class Cerebras(Provider):
     """
     A class to interact with the Cerebras API using a cookie for authentication.
     """
-    
+
     AVAILABLE_MODELS = [
-        "llama3.1-8b",
-        "llama-3.3-70b",
-        "deepseek-r1-distill-llama-70b",
-        "llama-4-scout-17b-16e-instruct",
+        "qwen-3-coder-480b",
+        "qwen-3-235b-a22b-instruct-2507",
+        "qwen-3-235b-a22b-thinking-2507",
         "qwen-3-32b",
-
-
+        "llama-3.3-70b",
+        "llama-4-maverick-17b-128e-instruct"
     ]
 
     def __init__(
         self,
+        cookie_path: str = None,
         is_conversation: bool = True,
-        max_tokens: int = 2049,
+        max_tokens: int = 40000,
         timeout: int = 30,
         intro: str = None,
         filepath: str = None,
@@ -36,9 +50,11 @@ class Cerebras(Provider):
         proxies: dict = {},
         history_offset: int = 10250,
         act: str = None,
-        cookie_path: str = "cookie.json",
-        model: str = "llama3.1-8b",
+        api_key: str = None,
+        model: str = "qwen-3-coder-480b",
         system_prompt: str = "You are a helpful assistant.",
+        temperature: float = 0.7,
+        top_p: float = 0.8,
     ):
         # Validate model choice
         if model not in self.AVAILABLE_MODELS:
@@ -52,15 +68,26 @@ class Cerebras(Provider):
         self.system_prompt = system_prompt
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
+        self.temperature = temperature
+        self.top_p = top_p
         self.last_response = {}
 
         self.session = Session() # Initialize curl_cffi session
 
-        # Get API key first
-        try:
-            self.api_key = self.get_demo_api_key(cookie_path)
-        except Exception as e:
-            raise exceptions.APIConnectionError(f"Failed to initialize Cerebras client: {e}")
+        # Handle API key - either provided directly or retrieved from cookies
+        if api_key:
+            self.api_key = api_key.strip()
+            # Basic validation for API key format
+            if not self.api_key or len(self.api_key) < 10:
+                raise ValueError("Invalid API key format. API key must be at least 10 characters long.")
+        elif cookie_path:
+            # Get API key from cookies
+            try:
+                self.api_key = self.get_demo_api_key(cookie_path)
+            except Exception as e:
+                raise exceptions.APIConnectionError(f"Failed to initialize Cerebras client: {e}")
+        else:
+            raise ValueError("Either api_key must be provided or cookie_path must be specified")
 
         # Initialize optimizers
         self.__available_optimizers = (
@@ -72,16 +99,16 @@ class Cerebras(Provider):
         # Initialize conversation settings
         Conversation.intro = (
             AwesomePrompts().get_act(
-                act, raise_not_found=True, default=None, case_insensitive=True
+                act, raise_not_found=True, default="You are a helpful assistant.", case_insensitive=True
             )
             if act
-            else None
+            else "You are a helpful assistant."
         )
         self.conversation = Conversation(
             is_conversation, self.max_tokens_to_sample, filepath, update_file
         )
         self.conversation.history_offset = history_offset
-        
+
         # Apply proxies to the session
         self.session.proxies = proxies
 
@@ -105,8 +132,10 @@ class Cerebras(Provider):
             return chunk.get("choices", [{}])[0].get("delta", {}).get("content")
         return None
 
-    def get_demo_api_key(self, cookie_path: str) -> str: # Keep this using requests or switch to curl_cffi
+    def get_demo_api_key(self, cookie_path: str = None) -> str: # Keep this using requests or switch to curl_cffi
         """Retrieves the demo API key using the provided cookie."""
+        if not cookie_path:
+            raise ValueError("cookie_path must be provided when using cookie-based authentication")
         try:
             with open(cookie_path, "r") as file:
                 cookies = {item["name"]: item["value"] for item in json.load(file)}
@@ -159,7 +188,10 @@ class Cerebras(Provider):
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": stream
+            "stream": stream,
+            "max_tokens": self.max_tokens_to_sample,
+            "temperature": self.temperature,
+            "top_p": self.top_p
         }
 
         try:
@@ -197,8 +229,26 @@ class Cerebras(Provider):
 
         except curl_cffi.CurlError as e:
             raise exceptions.APIConnectionError(f"Request failed (CurlError): {e}") from e
-        except Exception as e: # Catch other potential errors
-            raise exceptions.APIConnectionError(f"Request failed: {e}")
+        except Exception as e:
+            # Check if it's an HTTP error with status code
+            if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                status_code = e.response.status_code
+                if status_code == 401:
+                    raise exceptions.APIConnectionError(
+                        "Authentication failed (401): Invalid API key. Please check your API key and try again."
+                    ) from e
+                elif status_code == 403:
+                    raise exceptions.APIConnectionError(
+                        "Access forbidden (403): Your API key may not have permission to access this resource."
+                    ) from e
+                elif status_code == 429:
+                    raise exceptions.APIConnectionError(
+                        "Rate limit exceeded (429): Too many requests. Please wait and try again."
+                    ) from e
+                else:
+                    raise exceptions.APIConnectionError(f"HTTP {status_code} error: {e}") from e
+            else:
+                raise exceptions.APIConnectionError(f"Request failed: {e}") from e
 
     def ask(
         self,
@@ -225,7 +275,7 @@ class Cerebras(Provider):
 
         try:
             response = self._make_request(messages, stream)
-            
+
             if stream:
                 # Wrap the generator to yield dicts or raw strings
                 def stream_wrapper():
@@ -256,7 +306,7 @@ class Cerebras(Provider):
         """Chat with the model."""
         # Ask returns a generator for stream=True, dict/str for stream=False
         response_gen_or_dict = self.ask(prompt, stream, raw=False, optimizer=optimizer, conversationally=conversationally)
-        
+
         if stream:
             # Wrap the generator from ask() to get message text
             def stream_wrapper():
@@ -276,14 +326,14 @@ class Cerebras(Provider):
 
 if __name__ == "__main__":
     from rich import print
-    
+
     # Example usage
     cerebras = Cerebras(
-        cookie_path=r'cookies.json',
-        model='llama3.1-8b',
+        api_key='csk-**********************',  # Replace with your actual API key
+        model='qwen-3-235b-a22b-instruct-2507',
         system_prompt="You are a helpful AI assistant."
     )
-    
+
     # Test with streaming
     response = cerebras.chat("Hello!", stream=True)
     for chunk in response:

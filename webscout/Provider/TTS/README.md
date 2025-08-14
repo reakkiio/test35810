@@ -24,7 +24,6 @@ Webscout's TTS Providers offer a versatile and powerful text-to-speech conversio
 5. **DeepgramTTS**
 6. **StreamElementsTTS**
 7. **SpeechMaTTS**
-8. **SthirTTS**
 9. **FreeTTS**
 ## 🚀 Installation
 

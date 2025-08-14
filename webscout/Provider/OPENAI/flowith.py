@@ -150,8 +150,9 @@ class Chat(BaseChat):
 
 class Flowith(OpenAICompatibleProvider):
     AVAILABLE_MODELS = [
-        "gpt-4.1-mini", "deepseek-chat", "deepseek-reasoner", "claude-3.5-haiku",
-        "gemini-2.0-flash", "gemini-2.5-flash", "grok-3-mini"
+        "gpt-5-nano", "gpt-5-mini", "glm-4.5", "gpt-oss-120b", "gpt-oss-20b", "kimi-k2",
+        "gpt-4.1", "gpt-4.1-mini", "deepseek-chat", "deepseek-reasoner",
+        "gemini-2.5-flash", "grok-3-mini"
     ]
 
     chat: Chat
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     client = Flowith()
     messages = [{"role": "user", "content": "Hello, how are you?"}]
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-5-nano",
         messages=messages,
         stream=True
     )

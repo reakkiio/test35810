@@ -39,7 +39,6 @@ from .Jadve import *
 from .chatglm import *
 from .hermes import *
 from .TextPollinationsAI import *
-from .Glider import *
 from .QwenLM import *
 from .granite import *
 from .WiseCat import *
@@ -74,7 +73,6 @@ from .WrDoChat import WrDoChat
 from .Nemotron import NEMOTRON
 from .FreeGemini import FreeGemini
 from .Flowith import Flowith
-from .samurai import samurai
 from .lmarena import lmarena
 from .oivscode import oivscode
 from .XenAI import XenAI
@@ -85,92 +83,4 @@ from .MiniMax import MiniMax
 from .Qodo import *
 from .monochat import MonoChat
 from .Kimi import Kimi
-__all__ = [
-    'SCNet',
-    'MonoChat',
-    'Kimi',
-    'MiniMax',
-    'QodoAI',
-    'GeminiProxy',
-    'TogetherAI',
-    'oivscode',
-    'DeepSeekAssistant',
-    'lmarena',
-    'XenAI',
-    'NEMOTRON',
-    'Flowith',
-    'samurai',
-    'FreeGemini',
-    'WrDoChat',
-    'GizAI',
-    'ChatSandbox',
-    'SciraAI',
-    'StandardInputAI',
-    'OpenGPT',
-    'Venice',
-    'ExaAI',
-    'Copilot',
-    'TwoAI',
-    'HeckAI',
-    'AllenAI',
-    'PerplexityLabs',
-    'AkashGPT',
-    'WiseCat',
-    'IBMGranite',
-    'QwenLM',
-    'LambdaChat',
-    'TextPollinationsAI',
-    'GliderAI',
-    'Cohere',
-    'REKA',
-    'GROQ',
-    'AsyncGROQ',
-    'OPENAI',
-    'AsyncOPENAI',
-    'KOBOLDAI',
-    'AsyncKOBOLDAI',
-    'BLACKBOXAI',
-    'GEMINI',
-    'DeepInfra',
-    'AI4Chat',
-    'OLLAMA',
-    'AndiSearch',
-    'Sambanova',
-    'KOALA',
-    'Meta',
-    'PiAI',
-    'Julius',
-    'YEPCHAT',
-    'Cloudflare',
-    'TurboSeek',
-    'TeachAnything',
-    'X0GPT',
-    'Cerebras',
-    'GEMINIAPI',
-    'SonusAI',
-    'Cleeai',
-    'Elmo',
-    'ChatGPTClone',
-    'TypefullyAI',
-    'Netwrck',
-    'LLMChat',
-    'LLMChatCo',
-    'Talkai',
-    'Llama3Mitril',
-    'Marcus',
-    'Netwrck',
-    'MultiChatAI',
-    'JadveOpenAI',
-    'ChatGLM',
-    'NousHermes',
-    'FreeAIChat',
-    'GithubChat',
-    'VercelAI',
-    'ExaChat',
-    'AskSteve',
-    'Aitopia',
-    'SearchChatAI',
-    'Toolbaz',
-    'MCPCore',
-    'TypliAI',
-]
+from .GptOss import GptOss

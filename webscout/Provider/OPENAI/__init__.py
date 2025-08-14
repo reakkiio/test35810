@@ -1,6 +1,6 @@
 # This file marks the directory as a Python package.
 from .deepinfra import *
-from .glider import *
+## glider import removed
 from .chatgptclone import *
 from .x0gpt import *
 from .wisecat import *
@@ -44,6 +44,7 @@ from .monochat import *
 from .MiniMax import *  # Add MiniMaxAI provider
 from .qodo import *  # Add QodoAI provider
 from .kimi import *  # Add Kimi provider
+from .gptoss import *  # Add GPT-OSS provider
 # Export auto-proxy functionality
 from .autoproxy import (
     get_auto_proxy,

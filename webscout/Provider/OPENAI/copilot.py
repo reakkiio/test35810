@@ -87,12 +87,22 @@ class Completions(BaseCompletions):
                 images.append({"type": "image", "url": r.json().get("url")})
 
             ws = s.ws_connect(self._client.websocket_url)
-            mode = "reasoning" if "Think" in model else "chat"
+            # Map alias to real model name if needed
+            real_model = Copilot.MODEL_ALIASES.get(model, model)
+            if real_model not in Copilot.AVAILABLE_MODELS:
+                raise RuntimeError(f"Invalid model: {model}. Choose from: {Copilot.AVAILABLE_MODELS}")
+            if real_model == "Smart":
+                mode = "smart"
+            elif "Think" in real_model:
+                mode = "reasoning"
+            else:
+                mode = "chat"
             ws.send(json.dumps({
                 "event": "send",
                 "conversationId": conv_id,
                 "content": images + [{"type": "text", "text": prompt_text}],
-                "mode": mode
+                "mode": mode,
+                "model": real_model
             }).encode(), CurlWsFlag.TEXT)
 
             prompt_tokens = count_tokens(prompt_text)
@@ -281,8 +291,14 @@ class Copilot(OpenAICompatibleProvider):
     url = "https://copilot.microsoft.com"
     conversation_url = f"{url}/c/api/conversations"
     websocket_url = "wss://copilot.microsoft.com/c/api/chat?api-version=2"
-    
-    AVAILABLE_MODELS = ["Copilot", "Think Deeper"]
+
+    AVAILABLE_MODELS = ["Copilot", "Think Deeper", "Smart"]
+    MODEL_ALIASES = {
+        "gpt-4o": "Copilot",
+        "o4-mini": "Think Deeper",
+        "gpt-5": "Smart",
+
+    }
 
     def __init__(self, browser: str = "chrome", tools: Optional[List] = None, **kwargs):
         self.timeout = 900

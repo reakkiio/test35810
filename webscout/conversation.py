@@ -165,29 +165,19 @@ class Conversation:
             ))
 
     def _compress_history(self) -> None:
-        """Compress history when it exceeds threshold."""
+        """Delete old history when it exceeds threshold."""
         if len(self.messages) > self.compression_threshold:
-            # Keep recent messages and summarize older ones
-            keep_recent = 100  # Adjust based on needs
-            self.messages = (
-                [self._summarize_messages(self.messages[:-keep_recent])] +
-                self.messages[-keep_recent:]
-            )
+            # Remove oldest messages, keep only the most recent ones
+            self.messages = self.messages[-self.compression_threshold:]
 
-    def _summarize_messages(self, messages: List[Message]) -> Message:
-        """Create a summary message from older messages."""
-        return Message(
-            role="system",
-            content="[History Summary] Previous conversation summarized for context",
-            metadata={"summarized_count": len(messages)}
-        )
+    # _summarize_messages removed
 
     def gen_complete_prompt(self, prompt: str, intro: Optional[str] = None) -> str:
         """Generate complete prompt with enhanced context management."""
         if not self.status:
             return prompt
 
-        intro = intro or self.intro
+        intro = intro or self.intro or ""
         
         # Add tool information if available
         tools_description = self.get_tools_description()
@@ -260,6 +250,7 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
 
     def _trim_chat_history(self, chat_history: str, intro: str) -> str:
         """Trim chat history with improved token management."""
+        intro = intro or ""
         total_length = len(intro) + len(chat_history)
         
         if total_length > self.history_offset:
@@ -273,20 +264,31 @@ Your goal is to assist the user effectively. Analyze each query and choose one o
         return chat_history
 
     def add_message(self, role: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Add a message with enhanced validation and metadata support."""
+        """Add a message with enhanced validation and metadata support. Deletes oldest messages if total word count exceeds max_tokens_to_sample."""
         try:
             role = role.lower()  # Normalize role to lowercase
             if not self.validate_message(role, content):
                 raise MessageValidationError("Invalid message role or content")
 
+            # Calculate total word count in history
+            def total_word_count(messages):
+                return sum(len(msg.content.split()) for msg in messages)
+
+            # Remove oldest messages until total word count is below limit
+            temp_messages = self.messages.copy()
+            while temp_messages and (total_word_count(temp_messages) + len(content.split()) > self.max_tokens_to_sample):
+                temp_messages.pop(0)
+
+            self.messages = temp_messages
+
             message = Message(role=role, content=content, metadata=metadata or {})
             self.messages.append(message)
-            
+
             if self.file and self.update_file:
                 self._append_to_file(message)
-            
+
             self._compress_history()
-            
+
         except Exception as e:
             raise ConversationError(f"Failed to add message: {str(e)}") from e
 

@@ -8,4 +8,4 @@ from .hika_search import *
 from .scira_search import *
 from .iask_search import *
 from .Perplexity import *
-# from .PERPLEXED_search import *
+from .PERPLEXED_search import *

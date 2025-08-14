@@ -1,17 +1,21 @@
-import os
-import json
-import base64
 import asyncio
+import base64
+import json
+import os
+from typing import Any, Dict, Generator, Union
 from urllib.parse import quote
-from typing import Optional, Dict, Any, List, Union, Generator
 
-from curl_cffi.requests import Session, CurlWsFlag
+# Import trio before curl_cffi to prevent eventlet socket monkey-patching conflicts
+# See: https://github.com/python-trio/trio/issues/3015
+try:
+    import trio  # noqa: F401
+except ImportError:
+    pass  # trio is optional, ignore if not available
+from curl_cffi.requests import CurlWsFlag, Session
 
-from webscout.AIutel import Optimizers
-from webscout.AIutel import Conversation
-from webscout.AIutel import AwesomePrompts, sanitize_stream
-from webscout.AIbase import Provider, AsyncProvider
 from webscout import exceptions
+from webscout.AIbase import Provider
+from webscout.AIutel import AwesomePrompts, Conversation, Optimizers
 from webscout.litagent import LitAgent
 
 try:
@@ -41,12 +45,17 @@ class Copilot(Provider):
     """
     A class to interact with the Microsoft Copilot API.
     """
-    
+
     label = "Microsoft Copilot"
     url = "https://copilot.microsoft.com"
     websocket_url = "wss://copilot.microsoft.com/c/api/chat?api-version=2"
     conversation_url = f"{url}/c/api/conversations"
-    AVAILABLE_MODELS = ["Copilot", "Think Deeper"]
+    AVAILABLE_MODELS = ["Copilot", "Think Deeper", "Smart"]
+    MODEL_ALIASES = {
+        "gpt-4o": "Copilot",
+        "o4-mini": "Think Deeper",
+        "gpt-5": "Smart",
+    }
     _access_token: str = None
     _cookies: dict = None
 
@@ -64,9 +73,12 @@ class Copilot(Provider):
         model: str = "Copilot"
     ):
         """Initializes the Copilot API client."""
-        if model not in self.AVAILABLE_MODELS:
+        # Map alias to real model name if needed
+        real_model = self.MODEL_ALIASES.get(model, model)
+        if real_model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {model}. Choose from: {self.AVAILABLE_MODELS}")
-            
+        self.model = real_model
+
         # Use LitAgent for user-agent
         self.headers = {
             'User-Agent': LitAgent().random(),
@@ -79,7 +91,7 @@ class Copilot(Provider):
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
         }
-        
+
         self.is_conversation = is_conversation
         self.max_tokens_to_sample = max_tokens
         self.timeout = timeout
@@ -253,6 +265,12 @@ class Copilot(Provider):
                     # WebSocket connection
                     wss = session.ws_connect(websocket_url)
                     wss.send(json.dumps({"event": "setOptions", "supportedCards": ["weather", "local", "image", "sports", "video", "ads", "finance"], "ads": {"supportedTypes": ["multimedia", "product", "tourActivity", "propertyPromotion", "text"]}}))
+                    if self.model == "Smart":
+                        mode_value = "smart"
+                    elif "Think" in self.model:
+                        mode_value = "reasoning"
+                    else:
+                        mode_value = "chat"
                     wss.send(json.dumps({
                         "event": "send",
                         "conversationId": conversation_id,
@@ -260,7 +278,8 @@ class Copilot(Provider):
                             "type": "text",
                             "text": conversation_prompt,
                         }],
-                        "mode": "reasoning" if "Think" in self.model else "chat"
+                        "mode": mode_value,
+                        "model": self.model
                     }).encode(), CurlWsFlag.TEXT)
 
                     # Event-driven response loop
@@ -307,8 +326,8 @@ class Copilot(Provider):
         **kwargs
     ) -> Union[str, Generator]:
         def for_stream():
-            for response in self.ask(prompt, True, optimizer=optimizer, 
-                                     conversationally=conversationally, 
+            for response in self.ask(prompt, True, optimizer=optimizer,
+                                     conversationally=conversationally,
                                      images=images, api_key=api_key, **kwargs):
                 if isinstance(response, dict):
                     if "text" in response:
@@ -320,13 +339,13 @@ class Copilot(Provider):
                             yield "\nSuggested follow-up questions:\n"
                             for suggestion in response["suggestions"]:
                                 yield f"- {suggestion}\n"
-                    
+
         def for_non_stream():
-            response = self.ask(prompt, False, optimizer=optimizer, 
+            response = self.ask(prompt, False, optimizer=optimizer,
                                 conversationally=conversationally,
                                 images=images, api_key=api_key, **kwargs)
             return self.get_message(response)
-            
+
         return for_stream() if stream else for_non_stream()
 
     def get_message(self, response: dict) -> str:
@@ -379,7 +398,7 @@ def readHAR(url: str):
             for file in os.listdir(path):
                 if file.endswith(".har"):
                     har_files.append(os.path.join(path, file))
-    
+
     for path in har_files:
         with open(path, 'rb') as file:
             try:
@@ -416,7 +435,7 @@ async def get_nodriver(proxy=None, user_data_dir=None):
 
 if __name__ == "__main__":
     from rich import print
-    ai = Copilot(timeout=900, model="Think Deeper")
+    ai = Copilot(timeout=900, model="gpt-5")
     response = ai.chat(input("> "), stream=True)
     for chunk in response:
         print(chunk, end="", flush=True)
